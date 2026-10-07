@@ -77,7 +77,7 @@ function url(string $path = '', array $query = []): string
 /**
  * Redirect to a project path and stop the script.
  */
-function redirect(string $path, array $query = []): never
+function redirect(string $path, array $query = []): void
 {
     header('Location: ' . url($path, $query));
     exit;

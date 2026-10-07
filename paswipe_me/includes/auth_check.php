@@ -80,7 +80,7 @@ function destroy_session(): void
 /**
  * End the session and send the user to the login page with a message.
  */
-function force_logout(string $message): never
+function force_logout(string $message): void
 {
     destroy_session();
     start_secure_session();

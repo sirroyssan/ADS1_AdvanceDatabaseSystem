@@ -16,6 +16,12 @@ const APP_TAGLINE = 'Credit card, borrower and repayment tracking';
  */
 const APP_BASE_URL = '';
 
+/*
+ * Show error details on screen (true) or only a friendly message (false).
+ * Turn on temporarily while setting up XAMPP; keep false otherwise.
+ */
+const APP_DEBUG = false;
+
 // Roles from the user_roles.role ENUM that may use the admin dashboard.
 const ADMIN_ROLES = ['owner', 'admin'];
 

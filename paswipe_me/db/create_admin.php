@@ -19,6 +19,7 @@ if (PHP_SAPI !== 'cli') {
 
 define('APP_ROOT', dirname(__DIR__));
 require_once APP_ROOT . '/config/app.php';
+require_once APP_ROOT . '/includes/error_handler.php';
 require_once APP_ROOT . '/config/database.php';
 
 function ask(string $question, bool $hidden = false): string

@@ -44,8 +44,8 @@ function db(): PDO
     } catch (PDOException $e) {
         // Log the real reason; never show connection details to the browser.
         error_log('[' . APP_NAME . '] Database connection failed: ' . $e->getMessage());
-        http_response_code(503);
-        exit('The system is temporarily unavailable. Please make sure MySQL is running and config/database.php is correct.');
+        render_error_page(setup_hint($e), $e->getMessage());
+        exit;
     }
 
     // Use PHP's time zone (config/app.php) for NOW() and CURRENT_TIMESTAMP,

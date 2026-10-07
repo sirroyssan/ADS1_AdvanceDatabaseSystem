@@ -143,6 +143,7 @@ not links, so no placeholder pages exist.
 ```
 paswipe_me/
 ├── index.php                      → redirects to dashboard or login
+├── setup_check.php                → installation checker (localhost only)
 ├── README.md
 ├── assets/
 │   ├── css/
@@ -175,6 +176,7 @@ paswipe_me/
 │   ├── csrf.php                   → CSRF token helpers
 │   ├── activity_log.php           → writes to activity_logs
 │   ├── icons.php                  → inline SVG icons (no CDN)
+│   ├── error_handler.php          → friendly error page + setup hints instead of blank 500
 │   ├── header.php                 → <head>, top bar, opens layout (includes sidebar.php)
 │   ├── sidebar.php                → navigation built from the schema's modules
 │   └── footer.php                 → footer, shared confirm modal, JS
@@ -303,6 +305,19 @@ to the PHP time zone in `config/app.php` (default `Asia/Manila`). That keeps `NO
 7. *(Optional, test database only)* import `db/test_data_categories.sql` to get sample categories.
    Every row is marked `[TEST]`, and the file contains the SQL to remove them.
 8. **Open** `http://localhost/paswipe_me/` and sign in with the username or email you entered.
+
+### Troubleshooting (blank page / "HTTP ERROR 500")
+
+1. Open **`http://localhost/paswipe_me/setup_check.php`** (works only from the same computer).
+   It checks PHP version, `pdo_mysql`/`mbstring`, the session folder, the MySQL connection,
+   the database, the imported tables and whether an admin account exists, and says how to fix each ✕.
+2. Errors now show a "Something went wrong" page with the likely cause instead of a blank 500.
+3. To see the exact technical error on screen, set `const APP_DEBUG = true;` in `config/app.php`
+   (set it back to `false` afterwards). Details are always written to
+   `xampp/php/logs/php_error_log` / `xampp/apache/logs/error.log`.
+
+Common causes: schema imported into a different database than `DB_NAME`; MySQL not started;
+a MySQL root password set but `DB_PASS` left empty; XAMPP with PHP older than 8.0.
 
 ---
 
