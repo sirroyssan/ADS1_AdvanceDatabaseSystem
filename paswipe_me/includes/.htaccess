@@ -1,0 +1,2 @@
+# Configuration files are included by PHP only, never served directly.
+Require all denied

@@ -1,0 +1,2 @@
+# Schema files and CLI tools must not be downloadable or runnable from the browser.
+Require all denied

@@ -1,0 +1,87 @@
+/* ==========================================================================
+   Categories module
+   Shared layout, tables, forms and print rules live in dashboard.css.
+   ========================================================================== */
+
+#category-table .cell-description {
+    max-width: 320px;
+    color: var(--text-muted);
+}
+
+#category-table .chip {
+    margin-left: 6px;
+    vertical-align: middle;
+}
+
+#category-form textarea {
+    min-height: 120px;
+}
+
+.char-count.is-near-limit {
+    color: var(--warning);
+    font-weight: 600;
+}
+
+/* Usage counters on the detail page */
+.usage-counts {
+    display: grid;
+    gap: 8px;
+}
+
+.usage-counts li {
+    display: flex;
+    justify-content: space-between;
+    padding: 8px 12px;
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+    font-size: 14px;
+}
+
+.usage-counts strong {
+    font-variant-numeric: tabular-nums;
+}
+
+.usage-counts + .field-help {
+    margin-top: 12px;
+}
+
+/* Sub-category list on the detail page */
+.child-list {
+    display: grid;
+    gap: 6px;
+}
+
+.child-list li {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 8px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-size: 14px;
+}
+
+.panel--danger .field-help {
+    margin-bottom: 12px;
+}
+
+@media (max-width: 720px) {
+    #category-table .cell-description {
+        max-width: none;
+    }
+}
+
+@media print {
+    #category-table .cell-description {
+        max-width: none;
+        color: #000000;
+    }
+
+    .usage-counts li,
+    .child-list li {
+        padding: 4px 0;
+        border: 0;
+        background: none;
+    }
+}
