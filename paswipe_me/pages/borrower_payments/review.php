@@ -55,6 +55,21 @@ try {
             throw new DomainException('This payment was changed by someone else. Please review it again.');
         }
         payment_record_decision($payment, $decision, $reason === '' ? null : $reason, $checks, $currentUser['id']);
+
+        // Tell the borrower in their portal.
+        $messages = [
+            'under_review'        => 'The owner is now reviewing your payment.',
+            'approved'            => 'Your payment was approved and will be applied to your balance.',
+            'rejected'            => 'Your payment was not accepted.',
+            'correction_required' => 'Please fix your payment and submit it again.',
+            'cancelled'           => 'Your payment was cancelled by the owner.',
+        ];
+        if (isset($messages[$decision])) {
+            notify_borrower($payment['borrower_id'], 'payment_' . $decision,
+                'Payment ' . $payment['payment_number'] . ': ' . humanize($decision),
+                $messages[$decision] . ' Amount: ' . format_money($payment['amount']) . '.' . ($reason !== '' ? ' Reason: ' . $reason : ''),
+                'borrower_payment', $payment['id']);
+        }
     });
 
     log_activity('review', 'borrower_payment', $payment['id'], $payment['payment_number'] . ' ' . $decision . ($reason ? ': ' . $reason : ''),

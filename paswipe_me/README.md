@@ -540,6 +540,38 @@ utilization = used ÷ credit limit × 100
 - **Over-limit check:** a cash loan that would push the card over its limit is refused.
 - **No schema change.**
 
+## Borrower portal (`portal/`)
+
+Users with the **Borrower** role sign in to their own portal instead of the admin panel. The admin panel stays administrators-only.
+
+**Setup (admin), once per borrower:**
+1. In Users & Roles, create a user with the *Borrower* role.
+2. Open the borrower's record (Borrowers → View) and link that user under *Sign-in account*.
+3. Until the account is linked, the borrower sees "Your account is not linked yet".
+
+| Page | What the borrower can do |
+|---|---|
+| `portal/index.php` My Account | See their remaining balance, overdue amount, next due date, total paid, open items and recent payments. Alerts appear for corrections and new notices. |
+| `portal/obligations.php`, `obligation.php` | See what they owe (search, filter, print): payments applied, items purchased, installment schedule and late charges |
+| `portal/pay.php` | Submit a payment with method, date, amount, reference and proof file. Proof is required unless paid in cash. A duplicate reference is refused. They can fix a payment the owner sent back. |
+| `portal/payments.php`, `payment.php`, `payment_cancel.php` | See their payments, the status, the owner's reason, proof files, where the payment was applied and its history. They can cancel a payment before review starts. |
+| `portal/agreements.php`, `agreement.php` | Read their agreements (not drafts) with text, files and signature status |
+| `portal/letters.php`, `letter.php` | Read the notices sent to them and acknowledge them (sent → acknowledged) |
+| `portal/notifications.php` | See their in-app notifications. Opening one marks it read and goes to the record. |
+| `pages/profile/*` | Edit their profile and change their password (shown in the portal layout) |
+
+**Security:**
+- `require_borrower()` re-checks the role and the linked borrower on every request.
+- Every portal query is filtered by that borrower's id, and ids from the URL are re-checked (`portal_find`).
+- Files are served by `portal/download.php` only when they are attached to the borrower's own payment, agreement or sent notice.
+- Admin pages return 403 for borrowers. CSRF is required on every POST.
+
+**Notifications** (`notifications` table, in-app):
+- **To the owner and admins:** when a borrower submits, corrects or cancels a payment, or acknowledges a notice.
+- **To the borrower:** when a payment is reviewed (under review, approved, rejected, correction required, cancelled) or applied, when a notice is sent, and when a new obligation is created.
+
+No schema change.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |

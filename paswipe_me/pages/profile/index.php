@@ -6,7 +6,9 @@
 
 require_once __DIR__ . '/../../includes/auth_check.php';
 
-$currentUser = require_admin();
+// Every signed-in role manages its own profile; borrowers see it inside the portal layout.
+$currentUser = require_role(array_merge(ADMIN_ROLES, ['borrower']));
+$layout = user_is_admin($currentUser) ? 'admin' : 'portal';
 
 $fields = [
     'first_name'  => ['label' => 'First name', 'type' => 'text', 'max' => 100],
@@ -58,6 +60,6 @@ require APP_ROOT . '/includes/header.php';
     </div>
 </section>
 
-<?= render_record_form(url('pages/profile/index.php'), $fields, $data, $errors, 'Save profile', url('pages/dashboard.php')) ?>
+<?= render_record_form(url('pages/profile/index.php'), $fields, $data, $errors, 'Save profile', url($layout === 'portal' ? 'portal/index.php' : 'pages/dashboard.php')) ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

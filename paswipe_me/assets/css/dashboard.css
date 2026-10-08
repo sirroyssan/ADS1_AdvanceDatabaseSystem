@@ -1972,3 +1972,18 @@ input[type="file"] {
 .stat-card__label a:hover {
     color: var(--primary);
 }
+
+/* Borrower portal */
+.steps-list {
+    margin: 0;
+    padding-left: 20px;
+    color: var(--text-muted);
+}
+
+.steps-list li + li {
+    margin-top: 6px;
+}
+
+.activity-list li.is-unread p strong {
+    color: var(--primary, #1d4ed8);
+}

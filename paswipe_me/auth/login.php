@@ -21,7 +21,10 @@ function home_for(array $roles): string
         return 'pages/dashboard.php';
     }
 
-    // Borrower pages are planned but not built yet.
+    if (in_array('borrower', $roles, true)) {
+        return 'portal/index.php';
+    }
+
     return 'auth/access_denied.php';
 }
 

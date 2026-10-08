@@ -27,6 +27,10 @@ if (is_post()) {
             $update['acknowledged_at'] = date('Y-m-d H:i:s');
         }
         db_update('demand_letters', $update, $id);
+        if ($status === 'sent') {
+            notify_borrower($letter['borrower_id'], 'demand_letter', 'New notice: ' . $letter['letter_number'],
+                'The owner sent you a notice. Please open it and acknowledge that you have read it.', 'demand_letter', $id);
+        }
         log_activity('status_change', 'demand_letter', $id, $letter['letter_number'] . ' changed to ' . $status, ['status' => $letter['status']], ['status' => $status]);
         flash('success', 'Letter ' . $letter['letter_number'] . ' is now ' . humanize($status) . '.');
     }

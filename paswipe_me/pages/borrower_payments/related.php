@@ -35,6 +35,8 @@ try {
                 break;
             }
             log_activity('allocate', 'borrower_payment', $payment['id'], 'Allocated ' . format_money($amount) . ' of ' . $payment['payment_number']);
+            notify_borrower($payment['borrower_id'], 'payment_applied', 'Payment ' . $payment['payment_number'] . ' applied',
+                format_money($amount) . ' of your payment was applied to your balance.', 'borrower_payment', $payment['id']);
             flash('success', format_money($amount) . ' was applied to the obligation.');
             break;
 
@@ -63,6 +65,8 @@ try {
             }
             if ($applied > 0) {
                 log_activity('allocate', 'borrower_payment', $payment['id'], 'Auto-allocated ' . format_money($applied) . ' of ' . $payment['payment_number']);
+                notify_borrower($payment['borrower_id'], 'payment_applied', 'Payment ' . $payment['payment_number'] . ' applied',
+                    format_money($applied) . ' of your payment was applied to your balance.', 'borrower_payment', $payment['id']);
                 flash('success', format_money($applied) . ' was applied to the oldest open obligations.');
             } elseif (!$open) {
                 flash('error', 'This borrower has no open obligations.');

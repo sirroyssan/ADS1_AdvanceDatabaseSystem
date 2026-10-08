@@ -76,13 +76,47 @@ $navigation = [
         ],
     ],
 ];
+
+// Borrowers see only their own account pages.
+if (($layout ?? 'admin') === 'portal') {
+    $navigation = [
+        [
+            'label' => null,
+            'items' => [
+                ['key' => 'portal_home', 'label' => 'My Account', 'icon' => 'dashboard', 'path' => 'portal/index.php'],
+            ],
+        ],
+        [
+            'label' => 'My Balance',
+            'items' => [
+                ['key' => 'portal_obligations', 'label' => 'What I Owe',     'icon' => 'file-text', 'path' => 'portal/obligations.php'],
+                ['key' => 'portal_payments',    'label' => 'My Payments',    'icon' => 'receipt',   'path' => 'portal/payments.php'],
+                ['key' => 'portal_pay',         'label' => 'Submit Payment', 'icon' => 'wallet',    'path' => 'portal/pay.php'],
+            ],
+        ],
+        [
+            'label' => 'Documents',
+            'items' => [
+                ['key' => 'portal_agreements', 'label' => 'Agreements', 'icon' => 'file-sign',  'path' => 'portal/agreements.php'],
+                ['key' => 'portal_letters',    'label' => 'Notices',    'icon' => 'mail-alert', 'path' => 'portal/letters.php'],
+            ],
+        ],
+        [
+            'label' => 'Account',
+            'items' => [
+                ['key' => 'portal_notifications', 'label' => 'Notifications', 'icon' => 'bell', 'path' => 'portal/notifications.php'],
+                ['key' => 'profile',              'label' => 'My Profile',    'icon' => 'user', 'path' => 'pages/profile/index.php'],
+            ],
+        ],
+    ];
+}
 ?>
 <aside class="sidebar" id="sidebar" aria-label="Main navigation">
     <div class="sidebar__brand">
         <span class="brand-mark"><?= icon('credit-card') ?></span>
         <span class="sidebar__brand-text">
             <strong><?= e(APP_NAME) ?></strong>
-            <small>Admin Panel</small>
+            <small><?= ($layout ?? 'admin') === 'portal' ? 'Borrower Portal' : 'Admin Panel' ?></small>
         </span>
         <button type="button" class="icon-button sidebar__close" data-sidebar-close aria-label="Close navigation">
             <?= icon('x') ?>

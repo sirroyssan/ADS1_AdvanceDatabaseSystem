@@ -14,6 +14,10 @@ if (http_response_code() === 200 && $isAdmin) {
     // Admins opening this page directly have nothing to see here.
     redirect('pages/dashboard.php');
 }
+if (http_response_code() === 200 && in_array('borrower', $user['roles'], true)) {
+    redirect('portal/index.php');
+}
+$isBorrower = in_array('borrower', $user['roles'], true);
 ?>
 <!DOCTYPE html>
 <html lang="en">
@@ -36,7 +40,10 @@ if (http_response_code() === 200 && $isAdmin) {
             </div>
         <?php endforeach; ?>
 
-        <?php if (http_response_code() === 403): ?>
+        <?php if (isset($deniedTitle)): ?>
+            <h1 id="denied-title"><?= e($deniedTitle) ?></h1>
+            <p class="text-muted"><?= e($deniedMessage ?? '') ?></p>
+        <?php elseif (http_response_code() === 403): ?>
             <h1 id="denied-title">Access denied</h1>
             <p class="text-muted">
                 Your account (<?= e(role_label($user['role'])) ?>) does not have permission to open this page.
@@ -53,6 +60,10 @@ if (http_response_code() === 200 && $isAdmin) {
             <?php if ($isAdmin): ?>
                 <a class="btn btn--primary" href="<?= e(url('pages/dashboard.php')) ?>">
                     <?= icon('dashboard') ?> <span>Back to dashboard</span>
+                </a>
+            <?php elseif ($isBorrower && !isset($deniedTitle)): ?>
+                <a class="btn btn--primary" href="<?= e(url('portal/index.php')) ?>">
+                    <?= icon('dashboard') ?> <span>Back to my account</span>
                 </a>
             <?php endif; ?>
             <form method="post" action="<?= e(url('auth/logout.php')) ?>">

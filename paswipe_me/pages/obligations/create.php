@@ -35,6 +35,8 @@ if (is_post()) {
             $data['obligation_number'] ??= generate_reference('OBL', 'borrower_obligations', 'obligation_number');
             db_insert('borrower_obligations', ['id' => $id] + $data + ['total_paid' => '0.00', 'created_by' => $currentUser['id'], 'updated_by' => $currentUser['id']]);
             log_activity('create', 'obligation', $id, 'Created obligation ' . $data['obligation_number'] . ' for ' . format_money($data['total_amount_due']), null, $data);
+            notify_borrower($data['borrower_id'], 'obligation_created', 'New item: ' . $data['obligation_number'],
+                format_money($data['total_amount_due']) . ' was added to your balance' . ($data['due_date'] ? ', due ' . format_date($data['due_date']) : '') . '.', 'obligation', $id);
             flash('success', 'Obligation ' . $data['obligation_number'] . ' was created.');
             redirect('pages/obligations/view.php', ['id' => $id]);
         } catch (PDOException $e) {

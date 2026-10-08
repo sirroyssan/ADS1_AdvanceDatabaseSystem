@@ -6,7 +6,8 @@
  *   $pageTitle  (string)   - shown in <title> and the top bar
  *   $activeNav  (string)   - key of the sidebar item to highlight
  *   $pageStyles (string[]) - extra CSS files, e.g. ['assets/css/categories.css']
- *   $currentUser (array)   - returned by require_admin()
+ *   $currentUser (array)   - returned by require_admin() / require_borrower()
+ *   $layout     (string)   - 'admin' (default) or 'portal' (borrower pages)
  */
 
 defined('APP_ROOT') or exit('No direct access.');
@@ -15,6 +16,8 @@ $pageTitle   = $pageTitle ?? 'Dashboard';
 $activeNav   = $activeNav ?? '';
 $pageStyles  = $pageStyles ?? [];
 $currentUser = $currentUser ?? current_user();
+$layout      = $layout ?? 'admin';
+$isPortal    = $layout === 'portal';
 
 // Unread in-app notifications for the signed-in user (notifications table).
 $unreadNotifications = 0;
@@ -74,7 +77,7 @@ $initials = strtoupper(mb_substr(user_display_name($currentUser), 0, 1));
             </div>
 
             <div class="topbar__right">
-                <a class="icon-button notification-bell" href="<?= e(url('pages/notifications/index.php', ['mine' => 'unread'])) ?>"
+                <a class="icon-button notification-bell" href="<?= e($isPortal ? url('portal/notifications.php') : url('pages/notifications/index.php', ['mine' => 'unread'])) ?>"
                    aria-label="<?= e($unreadNotifications) ?> unread notifications"
                    title="<?= e($unreadNotifications) ?> unread notification(s)">
                     <?= icon('bell') ?>

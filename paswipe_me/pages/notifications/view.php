@@ -6,6 +6,14 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/notification_functions.php';
 
+/** Pages that open the record a notification is about. */
+const ADMIN_ENTITY_PAGES = [
+    'borrower_payment' => 'pages/borrower_payments/view.php',
+    'demand_letter'    => 'pages/demand_letters/view.php',
+    'obligation'       => 'pages/obligations/view.php',
+    'agreement'        => 'pages/agreements/view.php',
+];
+
 $currentUser = require_admin();
 
 $note = find_or_redirect(notification_find(request_id()), 'pages/notifications/index.php', 'Notification');
@@ -76,7 +84,9 @@ require APP_ROOT . '/includes/header.php';
                 'Type'           => e(humanize($note['notification_type'])),
                 'Channel'        => e(humanize($note['channel'])),
                 'Status'         => badge($note['status']),
-                'Related record' => $note['entity_type'] ? e($note['entity_type']) . ($note['entity_id'] ? ' <code>' . e($note['entity_id']) . '</code>' : '') : '',
+                'Related record' => $note['entity_type'] ? (isset(ADMIN_ENTITY_PAGES[$note['entity_type']]) && $note['entity_id']
+                    ? '<a href="' . e(url(ADMIN_ENTITY_PAGES[$note['entity_type']], ['id' => $note['entity_id']])) . '">Open ' . e(humanize($note['entity_type'])) . '</a>'
+                    : e($note['entity_type']) . ($note['entity_id'] ? ' <code>' . e($note['entity_id']) . '</code>' : '')) : '',
                 'Scheduled'      => show($note['scheduled_at'] ? format_datetime($note['scheduled_at']) : null),
                 'Sent'           => show($note['sent_at'] ? format_datetime($note['sent_at']) : null),
                 'Read'           => show($note['read_at'] ? format_datetime($note['read_at']) : null),

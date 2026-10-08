@@ -148,8 +148,10 @@ function add_search_condition(array $state, array $columns, array &$where, array
 
 function render_breadcrumb(array $trail): string
 {
+    // Borrower portal pages ($layout = 'portal') start at "My Account".
+    $portal = ($GLOBALS['layout'] ?? 'admin') === 'portal';
     $html = '<nav class="breadcrumb no-print" aria-label="Breadcrumb">'
-        . '<a href="' . e(url('pages/dashboard.php')) . '">Dashboard</a>';
+        . ($portal ? '<a href="' . e(url('portal/index.php')) . '">My Account</a>' : '<a href="' . e(url('pages/dashboard.php')) . '">Dashboard</a>');
 
     foreach ($trail as $label => $link) {
         $html .= '<span aria-hidden="true">/</span>';
