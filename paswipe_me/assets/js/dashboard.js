@@ -175,6 +175,9 @@
         pendingForm = form;
         lastFocus = document.activeElement;
         modalMessage.textContent = form.getAttribute('data-confirm');
+        // Optional wording for non-delete confirmations (cancel, approve, ...).
+        document.getElementById('confirm-title').textContent = form.getAttribute('data-confirm-title') || 'Delete record?';
+        modalAccept.querySelector('.btn__label').textContent = form.getAttribute('data-confirm-button') || 'Delete';
         modal.hidden = false;
         body.classList.add('modal-open');
         modal.querySelector('[data-modal-close].btn').focus();

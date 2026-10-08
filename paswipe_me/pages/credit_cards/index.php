@@ -1,0 +1,103 @@
+<?php
+/**
+ * Credit Cards - list with utilization, search, filter, print.
+ */
+
+require_once __DIR__ . '/../../includes/auth_check.php';
+require_once __DIR__ . '/credit_card_functions.php';
+
+$currentUser = require_admin();
+
+$state = list_state([
+    'path'    => 'pages/credit_cards/index.php',
+    'title'   => 'Credit Cards',
+    'search'  => 'Search nickname, issuer or last four…',
+    'filters' => [
+        'status'  => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_CARD_STATUS), 'all' => 'All statuses'],
+        'network' => ['label' => 'Network', 'type' => 'select', 'options' => enum_options(ENUM_CARD_NETWORK), 'all' => 'All networks'],
+        'owner'   => ['label' => 'Owner', 'type' => 'select', 'options' => admin_user_options(), 'all' => 'All owners'],
+    ],
+    'sorts'   => [
+        'name'        => ['Nickname (A–Z)', 'cc.card_nickname ASC'],
+        'utilization' => ['Highest utilization', 'utilization DESC'],
+        'limit'       => ['Highest limit', 'cc.credit_limit DESC'],
+    ],
+]);
+
+$where = [];
+$params = [];
+add_search_condition($state, ['cc.card_nickname', 'cc.issuer', 'cc.last_four'], $where, $params);
+foreach (['status' => 'cc.status', 'network' => 'cc.network', 'owner' => 'cc.owner_user_id'] as $key => $column) {
+    if ($state['filters'][$key] !== '') {
+        $where[] = $column . ' = :' . $key;
+        $params[':' . $key] = $state['filters'][$key];
+    }
+}
+
+$result = run_list(
+    $state,
+    "cc.id, cc.card_nickname, cc.issuer, cc.network, cc.last_four, cc.credit_limit, cc.available_credit, cc.status, cc.payment_due_day,
+     IF(cc.credit_limit > 0, ROUND((cc.credit_limit - cc.available_credit) / cc.credit_limit * 100, 1), 0) AS utilization,
+     COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) AS owner_name",
+    'credit_cards cc LEFT JOIN users u ON u.id = cc.owner_user_id',
+    $where,
+    $params
+);
+
+$pageTitle = 'Credit Cards';
+$activeNav = 'credit_cards';
+require APP_ROOT . '/includes/header.php';
+?>
+
+<?= render_print_header($state, $result['total'], $result['pager']) ?>
+<?= render_list_header($state, 'The owner\'s credit cards, limits and available credit.', url('pages/credit_cards/create.php')) ?>
+<?= render_list_toolbar($state) ?>
+
+<section class="panel panel--flush" aria-label="Credit card list">
+    <?php if ($result['total'] === 0): ?>
+        <?= render_empty_state($state, url('pages/credit_cards/create.php'), 'Add the owner\'s credit cards (last four digits only).', 'credit-card') ?>
+    <?php else: ?>
+        <div class="table-wrap">
+            <table class="table table--cards">
+                <thead>
+                <tr>
+                    <th scope="col" class="col-num">#</th>
+                    <th scope="col">Card</th>
+                    <th scope="col">Issuer / Network</th>
+                    <th scope="col">Owner</th>
+                    <th scope="col" class="num">Limit</th>
+                    <th scope="col" class="num">Available</th>
+                    <th scope="col" class="num">Used</th>
+                    <th scope="col">Due day</th>
+                    <th scope="col">Status</th>
+                    <th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th>
+                </tr>
+                </thead>
+                <tbody>
+                <?php foreach ($result['rows'] as $i => $row): ?>
+                    <tr>
+                        <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
+                        <td data-label="Card"><a class="table-link" href="<?= e(url('pages/credit_cards/view.php', ['id' => $row['id']])) ?>"><?= e($row['card_nickname']) ?></a><br><span class="text-muted">•••• <?= e($row['last_four']) ?></span></td>
+                        <td data-label="Issuer / Network"><?= e($row['issuer']) ?><?= $row['network'] ? ' · ' . e(strtoupper($row['network'])) : '' ?></td>
+                        <td data-label="Owner"><?= show($row['owner_name']) ?></td>
+                        <td data-label="Limit" class="num"><?= e(format_money($row['credit_limit'])) ?></td>
+                        <td data-label="Available" class="num"><?= e(format_money($row['available_credit'])) ?></td>
+                        <td data-label="Used" class="num"><?= e(number_format((float) $row['utilization'], 1)) ?>%</td>
+                        <td data-label="Due day"><?= show($row['payment_due_day']) ?></td>
+                        <td data-label="Status"><?= badge($row['status']) ?></td>
+                        <td class="actions no-print">
+                            <div class="row-actions">
+                                <?= icon_link(url('pages/credit_cards/view.php', ['id' => $row['id']]), 'eye', 'View ' . $row['card_nickname']) ?>
+                                <?= icon_link(url('pages/credit_cards/edit.php', ['id' => $row['id']]), 'edit', 'Edit ' . $row['card_nickname']) ?>
+                            </div>
+                        </td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+        <?= render_list_footer($state, $result) ?>
+    <?php endif; ?>
+</section>
+
+<?php require APP_ROOT . '/includes/footer.php'; ?>

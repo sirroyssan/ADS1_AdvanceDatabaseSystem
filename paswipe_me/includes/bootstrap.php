@@ -32,5 +32,9 @@ require_once APP_ROOT . '/includes/functions.php';
 require_once APP_ROOT . '/includes/icons.php';
 require_once APP_ROOT . '/includes/csrf.php';
 require_once APP_ROOT . '/includes/activity_log.php';
+require_once APP_ROOT . '/includes/db_helpers.php';
+require_once APP_ROOT . '/includes/form_fields.php';
+require_once APP_ROOT . '/includes/list_helpers.php';
+require_once APP_ROOT . '/includes/lookups.php';
 
 start_secure_session();

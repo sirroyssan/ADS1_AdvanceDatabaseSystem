@@ -35,6 +35,7 @@ $pageScripts = $pageScripts ?? [];
 </div>
 
 <script src="<?= e(asset('assets/js/dashboard.js')) ?>"></script>
+<script src="<?= e(asset('assets/js/modules.js')) ?>"></script>
 <?php foreach ($pageScripts as $script): ?>
     <script src="<?= e(asset($script)) ?>"></script>
 <?php endforeach; ?>

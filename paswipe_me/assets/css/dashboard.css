@@ -1516,3 +1516,237 @@ body.modal-open {
         margin-top: 16px;
     }
 }
+
+/* ==========================================================================
+   Shared module components (record forms, detail pages, sub-lists, reports)
+   ========================================================================== */
+
+.form-card--wide {
+    max-width: 1040px;
+}
+
+.form-section {
+    margin: 4px 0 -4px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+    font-size: 14px;
+    text-transform: uppercase;
+    letter-spacing: 0.6px;
+    color: var(--text-muted);
+}
+
+.input-num {
+    text-align: right;
+    font-variant-numeric: tabular-nums;
+}
+
+.date-filter {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+    color: var(--text-muted);
+}
+
+.date-filter input {
+    width: auto;
+}
+
+.status--info {
+    background: var(--info-soft);
+    color: var(--info);
+}
+
+/* Key figures on view pages */
+.figure-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));
+    gap: 12px;
+}
+
+.figure {
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+}
+
+.figure__label {
+    font-size: 12.5px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.figure__value {
+    margin-top: 2px;
+    font-size: 18px;
+    font-weight: 700;
+    font-variant-numeric: tabular-nums;
+}
+
+/* Related records inside a view page */
+.subpanel {
+    display: grid;
+    gap: 12px;
+}
+
+.subpanel .table-wrap {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.inline-panel {
+    padding: 16px;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius);
+    background: var(--surface-muted);
+}
+
+.inline-panel .form-grid {
+    grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+}
+
+.inline-panel .form-group--full {
+    grid-column: 1 / -1;
+}
+
+.inline-panel__actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 10px;
+    margin-top: 14px;
+}
+
+.action-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.status-form {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-end;
+    gap: 10px;
+}
+
+.status-form .form-group {
+    flex: 1 1 200px;
+}
+
+.document-body {
+    padding: 24px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    font-family: Georgia, "Times New Roman", serif;
+    font-size: 15.5px;
+    line-height: 1.7;
+    white-space: pre-line;
+}
+
+.json-block {
+    margin: 0;
+    padding: 12px;
+    max-height: 360px;
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+    font-family: var(--font-mono);
+    font-size: 12.5px;
+    white-space: pre-wrap;
+    word-break: break-word;
+}
+
+.report-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+    gap: 16px;
+}
+
+.report-card {
+    display: grid;
+    gap: 6px;
+    padding: 18px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: var(--shadow-sm);
+    color: var(--text);
+}
+
+.report-card:hover {
+    border-color: var(--primary);
+    text-decoration: none;
+}
+
+.report-card .icon {
+    color: var(--primary);
+}
+
+.report-card strong {
+    font-size: 15.5px;
+}
+
+.table tfoot td {
+    background: var(--surface-muted);
+    font-weight: 700;
+    border-top: 2px solid var(--border-strong);
+}
+
+.text-danger {
+    color: var(--danger);
+}
+
+.text-success {
+    color: var(--success);
+}
+
+@media (max-width: 720px) {
+    .date-filter {
+        width: 100%;
+        justify-content: space-between;
+    }
+
+    .date-filter input {
+        flex: 1;
+    }
+
+    .table--cards tfoot {
+        display: block;
+    }
+
+    .table--cards tfoot tr {
+        display: block;
+    }
+}
+
+@media print {
+    .figure {
+        border: 1px solid #999999;
+        background: none;
+    }
+
+    .inline-panel,
+    .action-bar,
+    .status-form {
+        display: none !important;
+    }
+
+    .document-body {
+        border: 0;
+        padding: 0;
+    }
+
+    .table tfoot td {
+        background: #eeeeee !important;
+        -webkit-print-color-adjust: exact;
+        print-color-adjust: exact;
+    }
+}
+
+.panel__header--padded {
+    margin: 0;
+    padding: 16px 18px 14px;
+}
