@@ -1,0 +1,168 @@
+<?php
+/**
+ * Cash Loans - loan details, repayment schedule and borrower allocations.
+ */
+
+require_once __DIR__ . '/../../includes/auth_check.php';
+require_once __DIR__ . '/cash_loan_functions.php';
+
+$currentUser = require_admin();
+
+$loan = find_or_redirect(cash_loan_find(request_id()), 'pages/cash_loans/index.php', 'Cash loan');
+$id = $loan['id'];
+
+$schedule = db_all('SELECT * FROM cash_loan_schedules WHERE cash_loan_id = :id ORDER BY installment_number', [':id' => $id]);
+$allocations = db_all(
+    'SELECT a.*, b.first_name, b.last_name, o.obligation_number, o.outstanding_amount, o.status AS obligation_status
+       FROM cash_loan_allocations a
+       LEFT JOIN borrowers b ON b.id = a.borrower_id
+       LEFT JOIN borrower_obligations o ON o.id = a.obligation_id
+      WHERE a.cash_loan_id = :id ORDER BY a.created_at',
+    [':id' => $id]
+);
+$distributable = cash_loan_distributable($loan);
+$isOpen = !in_array($loan['status'], ['cancelled', 'rejected', 'completed'], true);
+$canGenerate = !$schedule && $loan['term_months'] && $loan['first_due_date'] && (float) $loan['total_repayment'] > 0;
+$related = url('pages/cash_loans/related.php');
+
+$pageTitle = 'Cash Loan';
+$activeNav = 'cash_loans';
+require APP_ROOT . '/includes/header.php';
+?>
+
+<?= render_breadcrumb(['Cash Loans' => url('pages/cash_loans/index.php'), $loan['loan_reference'] => null]) ?>
+
+<div class="print-header">
+    <p class="print-header__system"><?= e(APP_NAME) ?></p>
+    <h2 class="print-header__title">Cash Loan <?= e($loan['loan_reference']) ?></h2>
+    <p class="print-header__meta">Printed: <?= e(date('F j, Y g:i A')) ?></p>
+</div>
+
+<section class="page-header">
+    <div>
+        <h2 class="page-header__title"><?= e($loan['loan_reference']) ?></h2>
+        <p class="page-header__subtitle"><?= e($loan['card_nickname']) ?> •••• <?= e($loan['last_four']) ?> · <?= badge($loan['status']) ?></p>
+    </div>
+    <div class="page-header__actions no-print">
+        <a href="<?= e(url('pages/cash_loans/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
+        <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
+        <a href="<?= e(url('pages/cash_loans/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+    </div>
+</section>
+
+<section class="figure-grid">
+    <div class="figure"><p class="figure__label">Accepted</p><p class="figure__value"><?= e(format_money($loan['accepted_amount'])) ?></p></div>
+    <div class="figure"><p class="figure__label">Cash received</p><p class="figure__value"><?= e(format_money($loan['actual_cash_received'])) ?></p></div>
+    <div class="figure"><p class="figure__label">Total repayment</p><p class="figure__value"><?= e(format_money($loan['total_repayment'])) ?></p></div>
+    <div class="figure"><p class="figure__label">Allocated to borrowers</p><p class="figure__value"><?= e(format_money($loan['allocated'])) ?></p></div>
+    <div class="figure"><p class="figure__label">Not yet allocated</p><p class="figure__value"><?= e(format_money(max(0, $distributable - (float) $loan['allocated']))) ?></p></div>
+</section>
+
+<div class="detail-layout">
+    <section class="panel">
+        <header class="panel__header"><h3>Loan details</h3></header>
+        <?= render_details([
+            'Loan reference'       => e($loan['loan_reference']),
+            'Offer number'         => show($loan['offer_number']),
+            'Card'                 => related_link($loan['credit_card_id'], $loan['card_nickname'] . ' •••• ' . $loan['last_four'], 'pages/credit_cards/view.php'),
+            'Requested'            => e(format_money($loan['requested_amount'])),
+            'Offered'              => e(format_money($loan['offered_amount'])),
+            'Approved'             => e(format_money($loan['approved_amount'])),
+            'Accepted'             => e(format_money($loan['accepted_amount'])),
+            'Actual cash received' => e(format_money($loan['actual_cash_received'])),
+            'Processing fee'       => e(format_money($loan['processing_fee'])),
+            'Other fees'           => e(format_money($loan['other_fees'])),
+            'Interest rate'        => show($loan['interest_rate'] !== null ? $loan['interest_rate'] . '%' : null),
+            'Total repayment'      => '<strong>' . e(format_money($loan['total_repayment'])) . '</strong>',
+            'Term'                 => show($loan['term_months'] ? $loan['term_months'] . ' month(s)' : null),
+            'Monthly payment'      => show_money($loan['monthly_payment']),
+            'Payment frequency'    => show($loan['payment_frequency'] ? humanize($loan['payment_frequency']) : null),
+            'Start date'           => show($loan['start_date'] ? format_date($loan['start_date']) : null),
+            'First due date'       => show($loan['first_due_date'] ? format_date($loan['first_due_date']) : null),
+            'End date'             => show($loan['end_date'] ? format_date($loan['end_date']) : null),
+            'Status'               => badge($loan['status']),
+            'Notes'                => show_multiline($loan['notes']),
+            'Created'              => e(format_datetime($loan['created_at'])),
+            'Last updated'         => e(format_datetime($loan['updated_at'])),
+        ]) ?>
+    </section>
+
+    <div class="detail-side">
+        <section class="panel panel--danger no-print">
+            <header class="panel__header"><h3>Delete</h3></header>
+            <?php if ($allocations || array_filter($schedule, static fn ($s) => (float) $s['amount_paid'] > 0) || !in_array($loan['status'], ['offered', 'rejected', 'cancelled'], true)): ?>
+                <p class="field-help">Only offers that were never taken (no allocations, no payments) can be deleted. Set the status to Cancelled or Rejected instead.</p>
+            <?php else: ?>
+                <p class="field-help">This offer has no allocations or payments.</p>
+                <?= post_button(url('pages/cash_loans/delete.php'), ['id' => $id], 'Delete loan', 'trash', 'btn btn--danger btn--block',
+                    'Delete cash loan ' . $loan['loan_reference'] . '? This cannot be undone.') ?>
+            <?php endif; ?>
+        </section>
+    </div>
+</div>
+
+<section class="panel subpanel">
+    <header class="panel__header">
+        <h3><?= icon('users') ?> Borrower allocations</h3>
+        <?php if ($isOpen): ?>
+            <button type="button" class="btn btn--sm btn--outline no-print" data-toggle-panel="add-allocation"><?= icon('plus') ?> <span>Add allocation</span></button>
+        <?php endif; ?>
+    </header>
+    <?php if ($isOpen): ?>
+        <form method="post" action="<?= e($related) ?>" class="inline-panel no-print" id="add-allocation" hidden novalidate data-validate>
+            <?= csrf_field() ?>
+            <input type="hidden" name="id" value="<?= e($id) ?>">
+            <input type="hidden" name="action" value="add_allocation">
+            <?= render_fields(allocation_fields(), form_defaults(allocation_fields(), ['allocated_amount' => number_format(max(0, $distributable - (float) $loan['allocated']), 2, '.', '')]), []) ?>
+            <div class="inline-panel__actions">
+                <button type="button" class="btn btn--outline" data-toggle-panel="add-allocation">Cancel</button>
+                <button type="submit" class="btn btn--primary" data-loading-text="Saving…"><?= icon('check') ?> <span class="btn__label">Save allocation</span></button>
+            </div>
+        </form>
+    <?php endif; ?>
+    <?php if (!$allocations): ?>
+        <p class="empty-inline">The loan has not been split to anyone.</p>
+    <?php else: ?>
+        <div class="table-wrap">
+            <table class="table table--cards table--compact">
+                <thead><tr><th scope="col">Borrower</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col" class="num">Amount</th><th scope="col">Obligation</th><th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                <?php foreach ($allocations as $a): ?>
+                    <tr>
+                        <td data-label="Borrower"><?= $a['borrower_id'] ? related_link($a['borrower_id'], borrower_name($a), 'pages/borrowers/view.php') : '<span class="text-muted">Owner</span>' ?></td>
+                        <td data-label="Type"><?= e(humanize($a['allocation_type'])) ?></td>
+                        <td data-label="Description"><?= show($a['description']) ?></td>
+                        <td data-label="Amount" class="num"><?= e(format_money($a['allocated_amount'])) ?></td>
+                        <td data-label="Obligation"><?= $a['obligation_id'] ? related_link($a['obligation_id'], $a['obligation_number'], 'pages/obligations/view.php') . ' ' . badge($a['obligation_status']) : '<span class="text-muted">None</span>' ?></td>
+                        <td class="actions no-print"><div class="row-actions">
+                            <?php if (!$a['obligation_id'] && $a['borrower_id']): ?>
+                                <?= post_button($related, ['id' => $id, 'action' => 'create_obligation', 'item_id' => $a['id']], 'Create obligation', 'file-text', 'btn btn--sm btn--outline',
+                                    'Create a borrower obligation of ' . format_money($a['allocated_amount']) . ' for this allocation?', false, 'Create obligation?') ?>
+                            <?php endif; ?>
+                            <?php if (!$a['obligation_id']): ?>
+                                <?= post_button($related, ['id' => $id, 'action' => 'delete_allocation', 'item_id' => $a['id']], 'Remove allocation', 'trash', 'icon-button icon-button--danger',
+                                    'Remove this allocation?', true) ?>
+                            <?php endif; ?>
+                        </div></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+</section>
+
+<section class="panel subpanel">
+    <header class="panel__header">
+        <h3><?= icon('calendar') ?> Repayment schedule</h3>
+        <?php if ($canGenerate && $isOpen): ?>
+            <?= post_button($related, ['id' => $id, 'action' => 'generate_schedule'], 'Generate schedule', 'repeat', 'btn btn--sm btn--primary no-print') ?>
+        <?php endif; ?>
+    </header>
+    <?php if (!$schedule && !$canGenerate): ?>
+        <p class="field-help">Enter the term (months), first due date and total repayment on the loan to generate its schedule.</p>
+    <?php endif; ?>
+    <?= render_schedule_table($schedule, $related, ['id' => $id], $isOpen) ?>
+</section>
+
+<?php require APP_ROOT . '/includes/footer.php'; ?>
