@@ -1,0 +1,3 @@
+# Uploaded documents are runtime data, not source code.
+documents/*
+!documents/.gitkeep
