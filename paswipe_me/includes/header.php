@@ -74,14 +74,14 @@ $initials = strtoupper(mb_substr(user_display_name($currentUser), 0, 1));
             </div>
 
             <div class="topbar__right">
-                <span class="icon-button notification-bell" role="img"
-                      aria-label="<?= e($unreadNotifications) ?> unread notifications"
-                      title="<?= e($unreadNotifications) ?> unread notification(s)">
+                <a class="icon-button notification-bell" href="<?= e(url('pages/notifications/index.php', ['mine' => 'unread'])) ?>"
+                   aria-label="<?= e($unreadNotifications) ?> unread notifications"
+                   title="<?= e($unreadNotifications) ?> unread notification(s)">
                     <?= icon('bell') ?>
                     <?php if ($unreadNotifications > 0): ?>
                         <span class="badge-dot"><?= e($unreadNotifications > 99 ? '99+' : $unreadNotifications) ?></span>
                     <?php endif; ?>
-                </span>
+                </a>
 
                 <div class="profile-menu" data-dropdown>
                     <button type="button" class="profile-menu__button" data-dropdown-toggle
@@ -107,6 +107,8 @@ $initials = strtoupper(mb_substr(user_display_name($currentUser), 0, 1));
                                 <?php endforeach; ?>
                             </span>
                         </div>
+                        <a class="dropdown__item" href="<?= e(url('pages/profile/index.php')) ?>"><?= icon('user') ?> <span>My profile</span></a>
+                        <a class="dropdown__item" href="<?= e(url('pages/profile/password.php')) ?>"><?= icon('lock') ?> <span>Change password</span></a>
                         <form method="post" action="<?= e(url('auth/logout.php')) ?>">
                             <?= csrf_field() ?>
                             <button type="submit" class="dropdown__item dropdown__item--danger">

@@ -312,7 +312,12 @@
 }
 
 .notification-bell {
-    cursor: default;
+    cursor: pointer;
+}
+
+a.dropdown__item {
+    color: var(--text);
+    text-decoration: none;
 }
 
 .badge-dot {
@@ -1713,12 +1718,9 @@ body.modal-open {
         flex: 1;
     }
 
+    /* Totals rows are shown on wider screens and in print; the card layout hides them. */
     .table--cards tfoot {
-        display: block;
-    }
-
-    .table--cards tfoot tr {
-        display: block;
+        display: none;
     }
 }
 
@@ -1880,4 +1882,12 @@ input[type="file"] {
     .print-document .document-body {
         font-size: 12pt;
     }
+}
+
+.stat-card__label a {
+    color: inherit;
+}
+
+.stat-card__label a:hover {
+    color: var(--primary);
 }

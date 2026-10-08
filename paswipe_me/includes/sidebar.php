@@ -2,9 +2,8 @@
 /**
  * Persistent sidebar (included by header.php on every dashboard page).
  *
- * Menu groups follow the tables in the PA-SWIPE AKO schema.
- * Items with 'path' => null are planned modules: shown disabled, no fake pages.
- * To publish a new module, set its 'path' to the module's index page.
+ * Every item links to a finished module. Pages set $activeNav to the item's
+ * 'key' so the current module is highlighted.
  */
 
 defined('APP_ROOT') or exit('No direct access.');
@@ -20,54 +19,60 @@ $navigation = [
         'label' => 'Master Data',
         'items' => [
             ['key' => 'categories',      'label' => 'Categories',      'icon' => 'tag',    'path' => 'pages/categories/index.php'],
-            ['key' => 'merchants',       'label' => 'Merchants',       'icon' => 'store',  'path' => null],
-            ['key' => 'payment_methods', 'label' => 'Payment Methods', 'icon' => 'wallet', 'path' => null],
-            ['key' => 'penalty_rules',   'label' => 'Penalty Rules',   'icon' => 'scale',  'path' => null],
+            ['key' => 'merchants',       'label' => 'Merchants',       'icon' => 'store',  'path' => 'pages/merchants/index.php'],
+            ['key' => 'payment_methods', 'label' => 'Payment Methods', 'icon' => 'wallet', 'path' => 'pages/payment_methods/index.php'],
+            ['key' => 'penalty_rules',   'label' => 'Penalty Rules',   'icon' => 'scale',  'path' => 'pages/penalty_rules/index.php'],
         ],
     ],
     [
         'label' => 'Borrowers',
         'items' => [
-            ['key' => 'borrowers',         'label' => 'Borrowers',         'icon' => 'users',     'path' => null],
-            ['key' => 'obligations',       'label' => 'Obligations',       'icon' => 'file-text', 'path' => null],
-            ['key' => 'borrower_payments', 'label' => 'Borrower Payments', 'icon' => 'receipt',   'path' => null],
+            ['key' => 'borrowers',         'label' => 'Borrowers',         'icon' => 'users',     'path' => 'pages/borrowers/index.php'],
+            ['key' => 'obligations',       'label' => 'Obligations',       'icon' => 'file-text', 'path' => 'pages/obligations/index.php'],
+            ['key' => 'borrower_payments', 'label' => 'Borrower Payments', 'icon' => 'receipt',   'path' => 'pages/borrower_payments/index.php'],
         ],
     ],
     [
         'label' => 'Credit Cards',
         'items' => [
-            ['key' => 'credit_cards', 'label' => 'Credit Cards',       'icon' => 'credit-card', 'path' => null],
-            ['key' => 'statements',   'label' => 'Statements',         'icon' => 'calendar',    'path' => null],
-            ['key' => 'card_payments','label' => 'Card Payments & Charges', 'icon' => 'banknote', 'path' => null],
+            ['key' => 'credit_cards',  'label' => 'Credit Cards',  'icon' => 'credit-card', 'path' => 'pages/credit_cards/index.php'],
+            ['key' => 'statements',    'label' => 'Statements',    'icon' => 'calendar',    'path' => 'pages/statements/index.php'],
+            ['key' => 'card_payments', 'label' => 'Card Payments', 'icon' => 'banknote',    'path' => 'pages/card_payments/index.php'],
+            ['key' => 'bank_charges',  'label' => 'Bank Charges',  'icon' => 'receipt',     'path' => 'pages/bank_charges/index.php'],
         ],
     ],
     [
         'label' => 'Transactions',
         'items' => [
-            ['key' => 'transactions', 'label' => 'Transactions',       'icon' => 'layers', 'path' => null],
-            ['key' => 'installments', 'label' => 'Installment Plans',  'icon' => 'repeat', 'path' => null],
-            ['key' => 'cash_loans',   'label' => 'Cash Loans & Advances', 'icon' => 'banknote', 'path' => null],
+            ['key' => 'transactions',  'label' => 'Transactions',      'icon' => 'layers',   'path' => 'pages/transactions/index.php'],
+            ['key' => 'installments',  'label' => 'Installment Plans', 'icon' => 'repeat',   'path' => 'pages/installment_plans/index.php'],
+            ['key' => 'cash_loans',    'label' => 'Cash Loans',        'icon' => 'banknote', 'path' => 'pages/cash_loans/index.php'],
+            ['key' => 'cash_advances', 'label' => 'Cash Advances',     'icon' => 'wallet',   'path' => 'pages/cash_advances/index.php'],
         ],
     ],
     [
         'label' => 'Documents',
         'items' => [
-            ['key' => 'agreements',     'label' => 'Agreements',     'icon' => 'file-sign',  'path' => null],
-            ['key' => 'demand_letters', 'label' => 'Demand Letters', 'icon' => 'mail-alert', 'path' => null],
-            ['key' => 'documents',      'label' => 'Document Files', 'icon' => 'folder',     'path' => null],
+            ['key' => 'agreements',          'label' => 'Agreements',          'icon' => 'file-sign',  'path' => 'pages/agreements/index.php'],
+            ['key' => 'demand_letters',      'label' => 'Demand Letters',      'icon' => 'mail-alert', 'path' => 'pages/demand_letters/index.php'],
+            ['key' => 'documents',           'label' => 'Document Files',      'icon' => 'folder',     'path' => 'pages/documents/index.php'],
+            ['key' => 'agreement_templates', 'label' => 'Agreement Templates', 'icon' => 'file-text',  'path' => 'pages/agreement_templates/index.php'],
+            ['key' => 'letter_templates',    'label' => 'Letter Templates',    'icon' => 'mail-alert', 'path' => 'pages/letter_templates/index.php'],
         ],
     ],
     [
         'label' => 'Reports',
         'items' => [
-            ['key' => 'reports', 'label' => 'Reports', 'icon' => 'chart', 'path' => null],
+            ['key' => 'reports', 'label' => 'Reports', 'icon' => 'chart', 'path' => 'pages/reports/index.php'],
         ],
     ],
     [
         'label' => 'System',
         'items' => [
-            ['key' => 'users',         'label' => 'Users & Roles', 'icon' => 'shield',  'path' => null],
-            ['key' => 'activity_logs', 'label' => 'Activity Logs', 'icon' => 'history', 'path' => null],
+            ['key' => 'users',         'label' => 'Users & Roles', 'icon' => 'shield',  'path' => 'pages/users/index.php'],
+            ['key' => 'notifications', 'label' => 'Notifications', 'icon' => 'bell',    'path' => 'pages/notifications/index.php'],
+            ['key' => 'activity_logs', 'label' => 'Activity Logs', 'icon' => 'history', 'path' => 'pages/activity_logs/index.php'],
+            ['key' => 'profile',       'label' => 'My Profile',    'icon' => 'user',    'path' => 'pages/profile/index.php'],
         ],
     ],
 ];
@@ -94,22 +99,13 @@ $navigation = [
                     <?php foreach ($group['items'] as $item): ?>
                         <?php $isActive = $item['key'] === $activeNav; ?>
                         <li>
-                            <?php if ($item['path'] !== null): ?>
-                                <a href="<?= e(url($item['path'])) ?>"
-                                   class="nav-link<?= $isActive ? ' is-active' : '' ?>"
-                                   <?= $isActive ? 'aria-current="page"' : '' ?>
-                                   title="<?= e($item['label']) ?>">
-                                    <?= icon($item['icon']) ?>
-                                    <span class="nav-link__label"><?= e($item['label']) ?></span>
-                                </a>
-                            <?php else: ?>
-                                <span class="nav-link is-disabled" aria-disabled="true"
-                                      title="<?= e($item['label']) ?> (planned)">
-                                    <?= icon($item['icon']) ?>
-                                    <span class="nav-link__label"><?= e($item['label']) ?></span>
-                                    <span class="nav-link__badge">Soon</span>
-                                </span>
-                            <?php endif; ?>
+                            <a href="<?= e(url($item['path'])) ?>"
+                               class="nav-link<?= $isActive ? ' is-active' : '' ?>"
+                               <?= $isActive ? 'aria-current="page"' : '' ?>
+                               title="<?= e($item['label']) ?>">
+                                <?= icon($item['icon']) ?>
+                                <span class="nav-link__label"><?= e($item['label']) ?></span>
+                            </a>
                         </li>
                     <?php endforeach; ?>
                 </ul>

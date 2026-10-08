@@ -1,7 +1,12 @@
-# PA-SWIPE AKO — First Version (PHP + MySQL/MariaDB + XAMPP)
+# PA-SWIPE AKO — Administrative System (PHP + MySQL/MariaDB + XAMPP)
 
 Secure login → session authentication → role check → admin dashboard with a persistent
-sidebar → one complete CRUD module (**Categories**) with search, filters, pagination and print.
+sidebar → **all administrative modules** of the schema with CRUD (where appropriate), search,
+filters, pagination, print and reports.
+
+> **Version 2 (complete system)** is documented in the section
+> [COMPLETE SYSTEM — ALL MODULES](#complete-system--all-modules) at the end of this file.
+> Parts 1–10 below describe the original foundation (login, dashboard, Categories), which is unchanged.
 
 Plain PHP 8 + PDO, HTML5, custom CSS and vanilla JavaScript. No frameworks, no Node/npm, no CDN.
 
@@ -115,8 +120,7 @@ Why these are admin modules: they hold the owner's financial records (cards, swi
 borrowers' obligations and the approval workflow for their payments. Borrower self-service
 (`role = 'borrower'`, `borrower_user_accounts`) is a separate future portal.
 
-In the sidebar, the modules that aren't built yet appear as **disabled items marked "Soon"**. They are
-not links, so no placeholder pages exist.
+All of these modules are now built and linked from the sidebar (see the final section).
 
 ---
 
@@ -398,3 +402,192 @@ Tested with PHP 8.3 + MariaDB 10.11 against the imported schema:
 | Error exposure | `display_errors = 0`. PDO errors are logged with `error_log()` and users see friendly messages. A failed DB connection shows a generic notice. |
 | File exposure | `.htaccess` denies `config/`, `includes/`, `db/`. Include files also exit when opened directly, and `create_admin.php` refuses to run outside the CLI. |
 | Audit | Logins, failed logins, lockouts, access denials and every category change go to `activity_logs` with old/new values, IP and user agent. |
+
+
+---
+
+# COMPLETE SYSTEM — ALL MODULES
+
+## A. Completed modules
+
+| # | Module | Table(s) | Create | Read | Update | Delete | Search | Print | Notes |
+|---|---|---|---|---|---|---|---|---|---|
+| 1 | Login / Logout / Session | users, user_roles | – | – | – | – | – | – | unchanged foundation |
+| 2 | Dashboard | views + live counts | – | ✓ | – | – | – | ✓ | links to modules added |
+| 3 | Categories | categories | ✓ | ✓ | ✓ | ✓ unused / deactivate | ✓ | ✓ | first module, unchanged |
+| 4 | Merchants | merchants | ✓ | ✓ | ✓ | ✓ unused only | ✓ | ✓ | filter: category, type |
+| 5 | Payment Methods | payment_methods | ✓ | ✓ | ✓ | ✓ unused / deactivate | ✓ | ✓ | owner **or** borrower |
+| 6 | Penalty Rules | penalty_rules | ✓ | ✓ | ✓ | ✓ unused / deactivate | ✓ | ✓ | percentage or fixed, cap |
+| 7 | Agreement Templates | agreement_templates | ✓ | ✓ | ✓ | ✓ unused / deactivate | ✓ | ✓ | {{placeholders}} |
+| 8 | Demand Letter Templates | demand_letter_templates | ✓ | ✓ | ✓ | ✓ unused / deactivate | ✓ | ✓ | {{placeholders}} |
+| 9 | Users & Roles | users, user_roles | ✓ | ✓ | ✓ | status only | ✓ | ✓ | roles as checkboxes, unlock, reset password |
+| 10 | My Profile | users | – | ✓ | ✓ | – | – | – | change password (current password required) |
+| 11 | Borrowers | borrowers, borrower_addresses, borrower_contacts, borrower_user_accounts | ✓ | ✓ | ✓ | ✓ no history / inactive | ✓ | ✓ | addresses, contacts, sign-in link on the page |
+| 12 | Credit Cards | credit_cards, card_billing_cycles | ✓ | ✓ | ✓ | ✓ no history / inactive | ✓ | ✓ | billing cycles on the page |
+| 13 | Statements | credit_card_statements | ✓ | ✓ | ✓ | ✓ unlinked only | ✓ | ✓ | total auto-computed, date range |
+| 14 | Card Payments | credit_card_payments | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | card → statement dependent dropdown |
+| 15 | Bank Charges | bank_charges | ✓ | ✓ | ✓ | ✗ | ✓ | ✓ | |
+| 16 | Cash Advances | cash_advances | ✓ | ✓ | ✓ | cancel | ✓ | ✓ | |
+| 17 | Transactions | transactions, transaction_items, transaction_attachments | ✓ | ✓ | ✓ | drafts only / cancel | ✓ | ✓ | items + attachments + status |
+| 18 | Installment Plans | installment_plans, installment_schedules | ✓ | ✓ | ✓ | before payments only | ✓ | ✓ | schedule generated automatically |
+| 19 | Cash Loans | cash_loans, cash_loan_schedules, cash_loan_allocations | ✓ | ✓ | ✓ | untaken offers only | ✓ | ✓ | split to borrowers → obligations |
+| 20 | Obligations | borrower_obligations, applied_penalties | ✓ | ✓ | ✓ | ✗ cancel / write off | ✓ | ✓ | penalties on the page |
+| 21 | Borrower Payments | borrower_payments, borrower_payment_allocations, payment_verifications, payment_verification_logs, payment_attachments | ✓ | ✓ | ✓ while open | ✗ cancel / reject | ✓ | ✓ | review → approve → allocate |
+| 22 | Document Files | documents | ✓ upload | ✓ | ✓ | archive / restore | ✓ | ✓ | secure download, preview |
+| 23 | Agreements | agreements, agreement_signatories, agreement_documents | ✓ | ✓ | ✓ | drafts only / cancel | ✓ | ✓ | printable text, signatures |
+| 24 | Demand Letters | demand_letters | ✓ | ✓ | ✓ draft/approved | drafts only / cancel | ✓ | ✓ | fill from template, workflow |
+| 25 | Notifications | notifications, notification_logs | ✓ send | ✓ | read / cancel | ✗ | ✓ | ✓ | header bell shows unread |
+| 26 | Activity Logs | activity_logs | – | ✓ | – | – | ✓ | ✓ | read-only audit |
+| 27 | Reports (6) | 4 views + live queries | – | ✓ | – | – | ✓ | ✓ | date ranges, totals |
+
+Reports: Borrower Balances (vw_borrower_balances), Overdue Obligations with aging (vw_overdue_obligations),
+Pending Payment Approvals (vw_pending_payment_approvals), Collections (approved payments by period and
+method), Transactions (by period, card, borrower, payment type), Credit Card Utilization (vw_credit_card_utilization).
+
+### Module dependencies (build order)
+
+```
+categories ─► merchants ─┐
+users/roles ─► credit_cards ─► statements ─► card payments / bank charges / cash advances
+borrowers ─► payment_methods            │
+          └──────────────► transactions ─► items, attachments, installment plans
+                                  └──────► obligations ◄── cash loan allocations ◄── cash_loans
+penalty_rules ───────────────────────────► applied penalties (on obligations)
+borrower_payments ─► review ─► allocations ─► obligations (total_paid / outstanding)
+documents ─► attachments (transactions, payments, agreements, statements, letters)
+templates ─► agreements ─► signatories ;  templates ─► demand letters
+```
+
+## B. Modules without full CRUD — and why
+
+| Module | No Create | No Update | No Delete |
+|---|---|---|---|
+| Activity Logs | written automatically by the app | an audit trail must not change (schema note 6: append-only) | same |
+| Reports | they summarise other data | – | – |
+| Card Payments, Bank Charges | – | – | financial history and the tables have **no status/void column**; mistakes are corrected with Edit (logged with old/new values) |
+| Obligations | – | total due can't drop below what was paid | referenced by payments, penalties, agreements, letters → **cancel** (only before payments) or **write off** |
+| Borrower Payments | – | only while *submitted* / *correction required* | money received is history → **cancel** or **reject**; allocations can't be removed |
+| Cash Advances | – | not after cancel | **cancel** (status) |
+| Users | – | own status/admin role protected | referenced as created_by/reviewed_by/actor everywhere → status *inactive/suspended* |
+| Documents | – | file content never replaced | proof for other records → **archive** (`is_deleted = 1`) |
+| Notifications | – | a sent message is not edited | history → **cancel** (if pending) / mark read |
+| Transactions / Agreements / Demand Letters | – | locked when cancelled/completed | only **drafts**; otherwise cancel |
+
+Junction / child tables managed inside their parent page (no ugly standalone CRUD):
+`user_roles` (user form checkboxes), `borrower_addresses`, `borrower_contacts`, `borrower_user_accounts`
+(borrower page), `card_billing_cycles` (card page), `transaction_items`, `transaction_attachments`
+(transaction page), `installment_schedules` (plan page), `cash_loan_schedules`, `cash_loan_allocations`
+(loan page), `applied_penalties` (obligation page), `borrower_payment_allocations`,
+`payment_verifications`, `payment_verification_logs`, `payment_attachments` (payment page),
+`agreement_signatories`, `agreement_documents` (agreement page), `notification_logs` (notification page).
+
+**Roles** are an ENUM in `user_roles.role` (owner, admin, borrower), so there is no role CRUD.
+**Settings:** the schema has no settings table, so there is no Settings page; configuration stays in
+`config/app.php` and `config/database.php`.
+
+## Key business rules implemented
+
+- **Reference numbers** (`TXN-`, `OBL-`, `PAY-`, `BRW-`, `CL-`, `AGR-`, `DL-` + date + sequence) are generated when left blank; uniqueness is checked before saving.
+- **Dependent dropdowns** (no AJAX needed): card → statement, borrower → transaction / obligation / agreement / payment method, obligation → installment.
+- **Payment workflow:** submitted → under review → approved / rejected / correction required; cancelled. Each decision writes `payment_verifications` (latest) and `payment_verification_logs` (history) in one DB transaction. Reasons are required for reject/correction/cancel.
+- **Allocation:** only approved payments; amount ≤ unallocated and ≤ outstanding; updates the obligation (total paid, outstanding, overdue, status *partially paid*/*paid*, completed date), optionally an installment row, and the payment's allocation status — all in one transaction with row locks. The schema trigger is a second guard. *Auto-allocate* pays the oldest open obligations first.
+- **Schedules:** amounts split evenly with the last row absorbing rounding; monthly dates keep the day, clamped to month end (Jan 31 → Feb 28). Plans/loans complete automatically when every row is paid or waived.
+- **Cash loans:** allocations can't exceed the cash received (or accepted amount); an allocation becomes a borrower obligation with both links set.
+- **Penalties:** amount from the rule (percentage of base or fixed, capped by maximum charge) unless typed.
+- **Deletes** always re-check dependencies inside a transaction with `SELECT … FOR UPDATE`, because MariaDB 10.4 may not enforce the inline foreign keys.
+- **Documents:** extension whitelist + real MIME check (fileinfo), 10 MB limit, stored outside the web (`storage/` has `Require all denied`), served only by `download.php` after the admin check with `nosniff`.
+
+## DATABASE LIMITATIONS (no schema changes were made)
+
+| Feature | Missing information | Affected module | Recommended schema change |
+|---|---|---|---|
+| Voiding a card payment or bank charge | no `status` / `voided_at` column | Card Payments, Bank Charges | add `status ENUM('posted','void') DEFAULT 'posted'` |
+| Deactivating a merchant | no `is_active` column | Merchants | add `is_active TINYINT(1) NOT NULL DEFAULT 1` |
+| Penalties counted in balances | `applied_penalties` is not part of `vw_borrower_balances` | Obligations, Reports | add penalty totals to the view, or allocate payments to penalties |
+| Email / SMS / push delivery | no provider settings table | Notifications | add a settings table or configure a mail provider; queued items stay *pending* |
+| Settings page | no settings table | System | add a `settings` key/value table |
+| Stored agreement text | `agreements` has no body column | Agreements | the text is generated from the template; store a PDF via *Generated copy* |
+
+Waiting for your approval before any structural database change.
+
+## C. Files created (version 2)
+
+```
+includes/db_helpers.php      includes/form_fields.php     includes/list_helpers.php
+includes/lookups.php         includes/schedules.php        assets/js/modules.js
+storage/.htaccess  storage/.gitignore  storage/documents/.gitkeep
+pages/merchants/            merchant_functions, index, create, edit, view, delete
+pages/payment_methods/      payment_method_functions, index, create, edit, view, delete
+pages/penalty_rules/        penalty_rule_functions, index, create, edit, view, delete
+pages/agreement_templates/  template_functions, index, create, edit, view, delete
+pages/letter_templates/     template_functions, index, create, edit, view, delete
+pages/users/                user_functions, _form, index, create, edit, view, actions
+pages/profile/              index, password
+pages/borrowers/            borrower_functions, index, create, edit, view, related, delete
+pages/credit_cards/         credit_card_functions, index, create, edit, view, related, delete
+pages/statements/           statement_functions, index, create, edit, view, delete
+pages/card_payments/        card_payment_functions, index, create, edit, view
+pages/bank_charges/         bank_charge_functions, index, create, edit, view
+pages/cash_advances/        cash_advance_functions, index, create, edit, view
+pages/transactions/         transaction_functions, index, create, edit, view, item, related, delete
+pages/installment_plans/    plan_functions, index, create, edit, view, related, delete
+pages/cash_loans/           cash_loan_functions, index, create, edit, view, related, delete
+pages/obligations/          obligation_functions, index, create, edit, view, related
+pages/borrower_payments/    payment_functions, index, create, edit, view, review, related
+pages/documents/            document_functions, index, create, edit, view, download, delete
+pages/agreements/           agreement_functions, index, create, edit, view, related, delete
+pages/demand_letters/       letter_functions, index, create, edit, view, delete
+pages/notifications/        notification_functions, index, create, view
+pages/activity_logs/        index, view
+pages/reports/              index, borrower_balances, overdue, pending_payments, collections, transactions, card_utilization
+```
+
+(`*_functions.php` holds the module's fields, validation and queries; `related.php` handles actions on child rows.)
+
+## D. Files modified
+
+| File | Reason |
+|---|---|
+| includes/sidebar.php | all modules linked, "Soon" placeholders removed, new groups |
+| includes/header.php | bell links to unread notifications; profile/password in the menu |
+| includes/footer.php | loads shared `modules.js` |
+| includes/bootstrap.php | loads the new helper files |
+| includes/functions.php | `fill_template()` for templates |
+| includes/auth_check.php, includes/functions.php | `never` → `void` (PHP 8.0 XAMPP compatibility) |
+| pages/dashboard.php | links from cards and panels to modules |
+| assets/css/base.css | date/tel/url inputs styled like other inputs |
+| assets/css/dashboard.css | shared module styles (forms, figures, sub-panels, schedules, documents, reports) |
+| assets/js/dashboard.js | confirmation dialog supports custom title/button (cancel, approve…) |
+
+Login, authentication, database connection, layout and the Categories module were **not rebuilt**.
+
+## E. Database tables used — all 41
+
+users, user_roles, borrowers, borrower_user_accounts, borrower_addresses, borrower_contacts, categories,
+merchants, credit_cards, card_billing_cycles, documents, credit_card_statements, transactions,
+transaction_items, transaction_attachments, installment_plans, installment_schedules, cash_loans,
+cash_loan_schedules, cash_advances, cash_loan_allocations, borrower_obligations, payment_methods,
+borrower_payments, borrower_payment_allocations, payment_verifications, payment_verification_logs,
+payment_attachments, credit_card_payments, bank_charges, penalty_rules, applied_penalties,
+agreement_templates, agreements, agreement_signatories, agreement_documents, demand_letter_templates,
+demand_letters, notifications, notification_logs, activity_logs — plus the 4 views in Reports/Dashboard.
+
+## F. Testing checklist (run against MariaDB 10.11 with the imported schema)
+
+**Authentication** — ☑ login ☑ logout ☑ session/idle timeout ☑ borrower gets 403 on every new module (including POST actions and downloads) ☑ anonymous → login.
+
+**Every module** — ☑ list ☑ create ☑ validation (required, length, number, date, unique, foreign key, cross-record ownership) ☑ view ☑ edit ☑ delete/cancel rules ☑ search ☑ filters ☑ pagination with filters kept ☑ print preview of filtered rows. An automated crawl of every list, print, create, view and edit page returned no PHP warnings or errors.
+
+**Workflows** — ☑ transaction → items → attachment → installment plan → schedule payment ☑ obligation → penalty (cap applied) → overdue status ☑ payment: allocate blocked before approval → approve → allocate to installment → auto-allocate → fully allocated, obligation partially paid ☑ cash loan → schedule → allocation cap → obligation created and linked ☑ agreement → signatory → signed ☑ demand letter → fill from template → approve → sent (invalid jump rejected) ☑ document upload (fake PDF rejected), preview, archive/restore ☑ notification delivered / queued, bell count.
+
+**Regression** — ☑ Categories create/duplicate/edit/search/print/delete protection ☑ login/logout.
+
+**UI** — ☑ desktop ☑ tablet (820px) ☑ mobile (390px, card tables, drawer) ☑ modals ☑ notifications ☐ please check printing on your own printer.
+
+## Security audit (all modules)
+
+☑ prepared statements everywhere (identifiers only from code, checked by pattern) ☑ whitelisted sort/filter values
+☑ output escaped with `e()` ☑ CSRF on every POST (create, update, delete, cancel, approve, allocate, upload, status)
+☑ `require_admin()` on every page, re-reading status and roles ☑ password hashing / current-password check
+☑ safe delete with dependency checks in transactions ☑ friendly errors only (`db_error_message()`)
+☑ uploads validated and stored outside the web root folder rules ☑ no `SELECT *` on list pages; one PDO connection; server-side pagination (print capped at 5,000 rows).

@@ -306,6 +306,10 @@ input[type="email"],
 input[type="password"],
 input[type="search"],
 input[type="number"],
+input[type="date"],
+input[type="datetime-local"],
+input[type="tel"],
+input[type="url"],
 select,
 textarea {
     width: 100%;

@@ -62,14 +62,14 @@ $stats = [
 ];
 
 $pendingPayments = dashboard_rows(
-    'SELECT payment_number, first_name, last_name, payment_date, amount, display_name, status
+    'SELECT id, payment_number, first_name, last_name, payment_date, amount, display_name, status
        FROM vw_pending_payment_approvals
       ORDER BY submitted_at ASC
       LIMIT 5'
 );
 
 $overdueObligations = dashboard_rows(
-    'SELECT obligation_number, first_name, last_name, outstanding_amount, due_date, overdue_days
+    'SELECT id, obligation_number, first_name, last_name, outstanding_amount, due_date, overdue_days
        FROM vw_overdue_obligations
       ORDER BY overdue_days DESC
       LIMIT 5'
@@ -107,7 +107,7 @@ require APP_ROOT . '/includes/header.php';
     <article class="stat-card">
         <div class="stat-card__icon stat-card__icon--primary"><?= icon('users') ?></div>
         <div>
-            <p class="stat-card__label">Borrowers</p>
+            <p class="stat-card__label"><a href="<?= e(url('pages/borrowers/index.php')) ?>">Borrowers</a></p>
             <p class="stat-card__value"><?= e(stat_number($stats['borrowers'])) ?></p>
             <p class="stat-card__meta">
                 <?= e(stat_number($stats['borrowers_good'])) ?> in good standing ·
@@ -119,7 +119,7 @@ require APP_ROOT . '/includes/header.php';
     <article class="stat-card">
         <div class="stat-card__icon stat-card__icon--info"><?= icon('credit-card') ?></div>
         <div>
-            <p class="stat-card__label">Active credit cards</p>
+            <p class="stat-card__label"><a href="<?= e(url('pages/credit_cards/index.php')) ?>">Active credit cards</a></p>
             <p class="stat-card__value"><?= e(stat_number($stats['cards_active'])) ?></p>
             <p class="stat-card__meta"><?= e(stat_number($stats['cards_total'])) ?> cards on record</p>
         </div>
@@ -128,7 +128,7 @@ require APP_ROOT . '/includes/header.php';
     <article class="stat-card">
         <div class="stat-card__icon stat-card__icon--primary"><?= icon('layers') ?></div>
         <div>
-            <p class="stat-card__label">Transactions</p>
+            <p class="stat-card__label"><a href="<?= e(url('pages/transactions/index.php')) ?>">Transactions</a></p>
             <p class="stat-card__value"><?= e(stat_number($stats['transactions'])) ?></p>
             <p class="stat-card__meta"><?= e(stat_number($stats['transactions_month'])) ?> this month</p>
         </div>
@@ -137,7 +137,7 @@ require APP_ROOT . '/includes/header.php';
     <article class="stat-card">
         <div class="stat-card__icon stat-card__icon--warning"><?= icon('wallet') ?></div>
         <div>
-            <p class="stat-card__label">Outstanding balance</p>
+            <p class="stat-card__label"><a href="<?= e(url('pages/obligations/index.php', ['open' => 'open'])) ?>">Outstanding balance</a></p>
             <p class="stat-card__value"><?= $stats['outstanding'] === null ? '—' : e(format_money($stats['outstanding'])) ?></p>
             <p class="stat-card__meta">Open borrower obligations</p>
         </div>
@@ -146,7 +146,7 @@ require APP_ROOT . '/includes/header.php';
     <article class="stat-card">
         <div class="stat-card__icon stat-card__icon--warning"><?= icon('receipt') ?></div>
         <div>
-            <p class="stat-card__label">Pending payment approvals</p>
+            <p class="stat-card__label"><a href="<?= e(url('pages/borrower_payments/index.php', ['status' => 'pending'])) ?>">Pending payment approvals</a></p>
             <p class="stat-card__value"><?= e(stat_number($stats['pending_payments'])) ?></p>
             <p class="stat-card__meta">Submitted, under review or needing correction</p>
         </div>
@@ -155,7 +155,7 @@ require APP_ROOT . '/includes/header.php';
     <article class="stat-card">
         <div class="stat-card__icon stat-card__icon--danger"><?= icon('alert') ?></div>
         <div>
-            <p class="stat-card__label">Overdue obligations</p>
+            <p class="stat-card__label"><a href="<?= e(url('pages/reports/overdue.php')) ?>">Overdue obligations</a></p>
             <p class="stat-card__value"><?= e(stat_number($stats['overdue'])) ?></p>
             <p class="stat-card__meta">
                 <?= $stats['overdue_amount'] === null ? '—' : e(format_money($stats['overdue_amount'])) ?> overdue
@@ -166,7 +166,7 @@ require APP_ROOT . '/includes/header.php';
     <article class="stat-card">
         <div class="stat-card__icon stat-card__icon--info"><?= icon('shield') ?></div>
         <div>
-            <p class="stat-card__label">User accounts</p>
+            <p class="stat-card__label"><a href="<?= e(url('pages/users/index.php')) ?>">User accounts</a></p>
             <p class="stat-card__value"><?= e(stat_number($stats['users_total'])) ?></p>
             <p class="stat-card__meta"><?= e(stat_number($stats['users_active'])) ?> active</p>
         </div>
@@ -187,6 +187,7 @@ require APP_ROOT . '/includes/header.php';
     <section class="panel" aria-labelledby="pending-title">
         <header class="panel__header">
             <h3 id="pending-title"><?= icon('receipt') ?> Pending payment approvals</h3>
+            <a class="btn btn--sm btn--outline" href="<?= e(url('pages/borrower_payments/index.php', ['status' => 'pending'])) ?>">View all</a>
         </header>
         <?php if (!$pendingPayments): ?>
             <p class="empty-inline">No payments are waiting for review.</p>
@@ -199,7 +200,7 @@ require APP_ROOT . '/includes/header.php';
                     <tbody>
                     <?php foreach ($pendingPayments as $row): ?>
                         <tr>
-                            <td><?= e($row['payment_number']) ?></td>
+                            <td><a href="<?= e(url('pages/borrower_payments/view.php', ['id' => $row['id']])) ?>"><?= e($row['payment_number']) ?></a></td>
                             <td><?= e($row['first_name'] . ' ' . $row['last_name']) ?></td>
                             <td><?= e(format_date($row['payment_date'])) ?></td>
                             <td class="num"><?= e(format_money($row['amount'])) ?></td>
@@ -215,6 +216,7 @@ require APP_ROOT . '/includes/header.php';
     <section class="panel" aria-labelledby="overdue-title">
         <header class="panel__header">
             <h3 id="overdue-title"><?= icon('alert') ?> Most overdue obligations</h3>
+            <a class="btn btn--sm btn--outline" href="<?= e(url('pages/reports/overdue.php')) ?>">View report</a>
         </header>
         <?php if (!$overdueObligations): ?>
             <p class="empty-inline">No overdue obligations.</p>
@@ -227,7 +229,7 @@ require APP_ROOT . '/includes/header.php';
                     <tbody>
                     <?php foreach ($overdueObligations as $row): ?>
                         <tr>
-                            <td><?= e($row['obligation_number']) ?></td>
+                            <td><a href="<?= e(url('pages/obligations/view.php', ['id' => $row['id']])) ?>"><?= e($row['obligation_number']) ?></a></td>
                             <td><?= e($row['first_name'] . ' ' . $row['last_name']) ?></td>
                             <td><?= e(format_date($row['due_date'])) ?></td>
                             <td class="num"><?= e($row['overdue_days']) ?></td>
@@ -243,6 +245,7 @@ require APP_ROOT . '/includes/header.php';
     <section class="panel" aria-labelledby="cards-title">
         <header class="panel__header">
             <h3 id="cards-title"><?= icon('credit-card') ?> Credit card utilization</h3>
+            <a class="btn btn--sm btn--outline" href="<?= e(url('pages/reports/card_utilization.php')) ?>">View report</a>
         </header>
         <?php if (!$cardUtilization): ?>
             <p class="empty-inline">No active credit cards.</p>
@@ -266,6 +269,7 @@ require APP_ROOT . '/includes/header.php';
     <section class="panel" aria-labelledby="activity-title">
         <header class="panel__header">
             <h3 id="activity-title"><?= icon('history') ?> Recent activity</h3>
+            <a class="btn btn--sm btn--outline" href="<?= e(url('pages/activity_logs/index.php')) ?>">View all</a>
         </header>
         <?php if (!$recentActivity): ?>
             <p class="empty-inline">No activity recorded yet.</p>
