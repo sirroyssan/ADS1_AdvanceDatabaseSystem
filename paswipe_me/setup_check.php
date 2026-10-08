@@ -118,7 +118,7 @@ $allOk = !in_array(false, array_column($checks, 'ok'), true);
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Setup check · PA-SWIPE AKO</title>
+    <title>Setup check · PA-KASKAS</title>
     <style>
         body { font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif; background: #f4f6fa; color: #172033; margin: 0; padding: 24px 16px; }
         main { max-width: 760px; margin: 0 auto; background: #fff; border: 1px solid #e1e5ee; border-radius: 14px; padding: 24px; }
@@ -133,7 +133,7 @@ $allOk = !in_array(false, array_column($checks, 'ok'), true);
 </head>
 <body>
 <main>
-    <h1>PA-SWIPE AKO — setup check</h1>
+    <h1>PA-KASKAS — setup check</h1>
     <p class="detail">
         <?= $allOk ? 'Everything is ready. <a href="index.php">Open the system</a>.' : 'Fix the items marked ✕, then reload this page.' ?>
     </p>

@@ -138,7 +138,7 @@ require APP_ROOT . '/includes/header.php';
         <div class="stat-card__icon stat-card__icon--warning"><?= icon('wallet') ?></div>
         <div>
             <p class="stat-card__label"><a href="<?= e(url('pages/obligations/index.php', ['open' => 'open'])) ?>">Outstanding balance</a></p>
-            <p class="stat-card__value"><?= $stats['outstanding'] === null ? '—' : e(format_money($stats['outstanding'])) ?></p>
+            <p class="stat-card__value stat-card__value--money"><?= $stats['outstanding'] === null ? '—' : e(format_money($stats['outstanding'])) ?></p>
             <p class="stat-card__meta">Open borrower obligations</p>
         </div>
     </article>

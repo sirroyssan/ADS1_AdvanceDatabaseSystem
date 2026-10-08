@@ -5,8 +5,9 @@
 
 defined('APP_ROOT') or exit('No direct access.');
 
-// System name taken from the schema header ("PA-SWIPE AKO").
-const APP_NAME    = 'PA-SWIPE AKO';
+// System name shown in the header, sidebar, login page, footer and printouts.
+// (The database is still pa_swipe_ako; only the displayed name changed.)
+const APP_NAME    = 'PA-KASKAS';
 const APP_TAGLINE = 'Credit card, borrower and repayment tracking';
 
 /*

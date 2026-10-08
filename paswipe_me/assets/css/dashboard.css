@@ -597,12 +597,24 @@ a.dropdown__item {
     color: var(--text-muted);
 }
 
+.stat-card > div:last-child {
+    /* Let the text column shrink inside the card instead of overflowing it. */
+    min-width: 0;
+}
+
 .stat-card__value {
     margin-top: 2px;
     font-size: 26px;
+    overflow-wrap: anywhere;
     font-weight: 700;
     line-height: 1.2;
     font-variant-numeric: tabular-nums;
+}
+
+.stat-card__value--money {
+    /* Peso amounts are long (e.g. ₱1,071,314.52): smaller type so they fit. */
+    font-size: clamp(18px, 1.35vw, 22px);
+    letter-spacing: -0.2px;
 }
 
 .stat-card__meta {

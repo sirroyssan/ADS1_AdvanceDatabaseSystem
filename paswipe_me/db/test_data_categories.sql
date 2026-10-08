@@ -1,6 +1,6 @@
 -- ============================================================
 -- *** TEST DATA ONLY - NOT PRODUCTION DATA ***
--- PA-SWIPE AKO - optional sample rows for testing the Categories module.
+-- PA-KASKAS - optional sample rows for testing the Categories module.
 --
 -- Import this ONLY into a test database, after the schema.
 -- Every row is marked "[TEST]" in its description so it is easy to find

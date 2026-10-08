@@ -1,4 +1,6 @@
-# PA-SWIPE AKO — Administrative System (PHP + MySQL/MariaDB + XAMPP)
+# PA-KASKAS — Administrative System (PHP + MySQL/MariaDB + XAMPP)
+
+> The system was renamed from **PA-SWIPE AKO** to **PA-KASKAS** (`APP_NAME` in `config/app.php`). The database name `pa_swipe_ako`, the schema file and the `paswipe_me` folder are unchanged.
 
 Secure login → session authentication → role check → admin dashboard with a persistent
 sidebar → **all administrative modules** of the schema with CRUD (where appropriate), search,
