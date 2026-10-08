@@ -30,7 +30,7 @@ try {
                 flash('error', 'Cancel the borrower obligations of this transaction first.');
                 break;
             }
-            db_update('transactions', ['status' => $status, 'updated_by' => $currentUser['id']], $txn['id']);
+            card_usage_apply([$txn['credit_card_id']], fn () => db_update('transactions', ['status' => $status, 'updated_by' => $currentUser['id']], $txn['id']));
             log_activity('status_change', 'transaction', $txn['id'], $txn['transaction_number'] . ' changed to ' . $status, ['status' => $txn['status']], ['status' => $status]);
             flash('success', 'Transaction status changed to ' . humanize($status) . '.');
             break;

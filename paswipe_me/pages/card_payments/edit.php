@@ -19,7 +19,7 @@ if (is_post()) {
 
     if (!$errors) {
         try {
-            db_update('credit_card_payments', $data, $payment['id']);
+            card_usage_apply([$payment['credit_card_id'], $data['credit_card_id']], fn () => db_update('credit_card_payments', $data, $payment['id']));
             log_activity('update', 'card_payment', $payment['id'], 'Corrected card payment', array_intersect_key($payment, $data), $data);
             flash('success', 'Card payment was updated successfully.');
             redirect('pages/card_payments/view.php', ['id' => $payment['id']]);

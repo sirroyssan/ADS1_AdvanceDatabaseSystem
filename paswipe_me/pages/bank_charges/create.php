@@ -20,7 +20,7 @@ if (is_post()) {
     if (!$errors) {
         try {
             $id = new_uuid();
-            db_insert('bank_charges', ['id' => $id] + $data);
+            card_usage_apply([$data['credit_card_id']], fn () => db_insert('bank_charges', ['id' => $id] + $data));
             log_activity('create', 'bank_charge', $id, 'Recorded bank charge "' . $data['charge_type'] . '" of ' . format_money($data['amount']), null, $data);
             flash('success', 'Bank charge was recorded.');
             redirect('pages/bank_charges/view.php', ['id' => $id]);

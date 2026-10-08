@@ -184,7 +184,11 @@ function require_role(array $roles): array
  */
 function require_admin(): array
 {
-    return require_role(ADMIN_ROLES);
+    $user = require_role(ADMIN_ROLES);
+    // Cards saved before used credit was calculated get their opening balance once.
+    card_usage_ensure_opening_balances();
+
+    return $user;
 }
 
 function user_is_admin(?array $user): bool

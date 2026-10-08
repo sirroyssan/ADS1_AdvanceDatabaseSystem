@@ -21,7 +21,8 @@ $allocations = db_all(
     [':id' => $id]
 );
 $distributable = cash_loan_distributable($loan);
-$hold = cash_loan_hold($id);
+$charge = cash_loan_card_charge($loan);
+$cardUsage = card_usage($loan['credit_card_id']);
 $isOpen = !in_array($loan['status'], ['cancelled', 'rejected', 'completed'], true);
 $canGenerate = !$schedule && $loan['term_months'] && $loan['first_due_date'] && (float) $loan['total_repayment'] > 0;
 $related = url('pages/cash_loans/related.php');
@@ -55,10 +56,17 @@ require APP_ROOT . '/includes/header.php';
     <div class="figure"><p class="figure__label">Accepted</p><p class="figure__value"><?= e(format_money($loan['accepted_amount'])) ?></p></div>
     <div class="figure"><p class="figure__label">Cash received</p><p class="figure__value"><?= e(format_money($loan['actual_cash_received'])) ?></p></div>
     <div class="figure"><p class="figure__label">Total repayment</p><p class="figure__value"><?= e(format_money($loan['total_repayment'])) ?></p></div>
-    <div class="figure"><p class="figure__label">Credit held on card</p><p class="figure__value"><?= e(format_money($hold['amount'])) ?></p></div>
+    <div class="figure"><p class="figure__label">Total card charge</p><p class="figure__value"><?= e(format_money($charge['counts'] ? $charge['total'] : 0)) ?></p></div>
     <div class="figure"><p class="figure__label">Allocated to borrowers</p><p class="figure__value"><?= e(format_money($loan['allocated'])) ?></p></div>
     <div class="figure"><p class="figure__label">Not yet allocated</p><p class="figure__value"><?= e(format_money(max(0, $distributable - (float) $loan['allocated']))) ?></p></div>
 </section>
+
+<?php if (!$charge['counts']): ?>
+    <div class="alert alert--warning" role="status">
+        <?= icon('alert') ?>
+        <span>This loan is <strong><?= e(humanize($loan['status'])) ?></strong>, so it does not use the card's credit<?= in_array($loan['status'], ['offered'], true) ? '. Edit it and set the status to Accepted (or Disbursed / Active) once you take the loan' : '' ?>.</span>
+    </div>
+<?php endif; ?>
 
 <div class="detail-layout">
     <section class="panel">
@@ -76,7 +84,6 @@ require APP_ROOT . '/includes/header.php';
             'Other fees'           => e(format_money($loan['other_fees'])),
             'Interest rate'        => show($loan['interest_rate'] !== null ? $loan['interest_rate'] . '%' : null),
             'Total repayment'      => '<strong>' . e(format_money($loan['total_repayment'])) . '</strong>',
-            'Credit held on card'  => e(format_money($hold['amount'])) . ' <span class="text-muted">(principal ' . e(format_money($hold['principal'])) . ' − paid ' . e(format_money($hold['paid'])) . ')</span>',
             'Term'                 => show($loan['term_months'] ? $loan['term_months'] . ' month(s)' : null),
             'Monthly payment'      => show_money($loan['monthly_payment']),
             'Payment frequency'    => show($loan['payment_frequency'] ? humanize($loan['payment_frequency']) : null),
@@ -91,6 +98,23 @@ require APP_ROOT . '/includes/header.php';
     </section>
 
     <div class="detail-side">
+        <section class="panel">
+            <header class="panel__header"><h3>Charge to <?= e($loan['card_nickname']) ?> •••• <?= e($loan['last_four']) ?></h3></header>
+            <dl class="usage-breakdown">
+                <div><dt>Principal</dt><dd><?= e(format_money($charge['principal'])) ?></dd></div>
+                <div><dt>Interest (total repayment − principal)</dt><dd><?= e(format_money($charge['interest'])) ?></dd></div>
+                <div><dt>Fees billed to the card</dt><dd><?= e(format_money($charge['fees'])) ?></dd></div>
+                <?php if ($charge['fees_deducted'] > 0): ?>
+                    <div><dt>Fees taken from the cash received</dt><dd class="text-muted"><?= e(format_money($charge['fees_deducted'])) ?></dd></div>
+                <?php endif; ?>
+                <div class="is-total"><dt>Total card charge</dt><dd><?= e(format_money($charge['total'])) ?></dd></div>
+                <div><dt>Status</dt><dd><?= $charge['counts'] ? 'Counted in used credit' : 'Not counted' ?></dd></div>
+            </dl>
+            <p class="field-help">The whole card now: <?= e(format_money($cardUsage['used'])) ?> used of <?= e(format_money($cardUsage['credit_limit'])) ?>,
+                <?= e(format_money($cardUsage['available'])) ?> available (<?= e(number_format($cardUsage['utilization'], 2)) ?>%).
+                Card payments lower the used credit; tick "Also a card payment" when paying an installment below.</p>
+        </section>
+
         <section class="panel panel--danger no-print">
             <header class="panel__header"><h3>Delete</h3></header>
             <?php if ($allocations || array_filter($schedule, static fn ($s) => (float) $s['amount_paid'] > 0) || !in_array($loan['status'], ['offered', 'rejected', 'cancelled'], true)): ?>
@@ -165,7 +189,7 @@ require APP_ROOT . '/includes/header.php';
     <?php if (!$schedule && !$canGenerate): ?>
         <p class="field-help">Enter the term (months), first due date and total repayment on the loan to generate its schedule.</p>
     <?php endif; ?>
-    <?= render_schedule_table($schedule, $related, ['id' => $id], $isOpen) ?>
+    <?= render_schedule_table($schedule, $related, ['id' => $id], $isOpen, true) ?>
 </section>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

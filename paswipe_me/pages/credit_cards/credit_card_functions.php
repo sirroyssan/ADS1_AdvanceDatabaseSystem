@@ -19,7 +19,8 @@ function credit_card_fields(?array $current = null): array
         'last_four'         => ['label' => 'Last four digits', 'type' => 'text', 'max' => 4, 'required' => true, 'pattern' => '/^[0-9]{4}$/', 'pattern_message' => 'Enter exactly 4 digits.', 'help' => 'Never enter the full card number.'],
         'status'            => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_CARD_STATUS), 'required' => true, 'initial' => 'active'],
         'credit_limit'      => ['label' => 'Credit limit', 'type' => 'decimal', 'min' => 0, 'required' => true, 'section' => 'Limits and billing'],
-        'available_credit'  => ['label' => 'Available credit', 'type' => 'decimal', 'min' => 0, 'required' => true, 'help' => 'Cannot exceed the credit limit. Cash loans update this automatically; correct it here to match your bank statement.'],
+        'opening_balance'   => ['label' => 'Opening balance', 'type' => 'decimal', 'min' => 0, 'default' => '0.00',
+                                'help' => 'Amount already used on the card before you started recording it here. Used credit, available credit and utilization are then calculated automatically from your transactions, cash loans, cash advances, bank charges and payments.'],
         'interest_rate'     => ['label' => 'Interest rate (%)', 'type' => 'decimal', 'scale' => 4, 'digits' => 8, 'min' => 0, 'placeholder' => '0.0000'],
         'billing_cycle_day' => ['label' => 'Billing cycle day', 'type' => 'int', 'min' => 1, 'max' => 31],
         'payment_due_day'   => ['label' => 'Payment due day', 'type' => 'int', 'min' => 1, 'max' => 31],
@@ -35,11 +36,6 @@ function credit_card_validate(array $fields, array $input, ?string $id = null): 
 {
     [$data, $errors] = validate_fields($fields, $input, $id);
 
-    if (!isset($errors['available_credit'], $errors['credit_limit'])
-        && $data['available_credit'] !== null && $data['credit_limit'] !== null
-        && (float) $data['available_credit'] > (float) $data['credit_limit']) {
-        $errors['available_credit'] = 'Available credit cannot be more than the credit limit.';
-    }
     if ($data['opening_date'] && $data['expiration_date'] && $data['expiration_date'] < $data['opening_date']) {
         $errors['expiration_date'] = 'Expiration date must be after the opening date.';
     }
@@ -48,6 +44,27 @@ function credit_card_validate(array $fields, array $input, ?string $id = null): 
     }
 
     return [$data, $errors];
+}
+
+/**
+ * Save a card and its opening balance; available_credit is then calculated
+ * (card_usage.php), never typed. Returns nothing; throws PDOException.
+ */
+function credit_card_save(?string $id, array $data, ?string $existingId = null): void
+{
+    $opening = $data['opening_balance'] ?? '0.00';
+    unset($data['opening_balance']);
+    $cardId = $existingId ?? $id;
+
+    card_usage_apply([$cardId], function () use ($id, $existingId, $cardId, $data, $opening) {
+        if ($existingId === null) {
+            // Start at the full limit (schema CHECK); card_usage_apply then stores the real figure.
+            db_insert('credit_cards', ['id' => $id] + $data + ['available_credit' => $data['credit_limit']]);
+        } else {
+            db_update('credit_cards', $data, $existingId);
+        }
+        card_set_opening_balance($cardId, $opening, $data['opening_date'] ?? null);
+    });
 }
 
 function credit_card_find(string $id): ?array
@@ -74,7 +91,7 @@ function credit_card_label(array $card): string
  */
 function credit_card_usage(string $id): array
 {
-    return record_usage([
+    $usage = record_usage([
         'transactions'  => ['transactions', 'credit_card_id'],
         'statements'    => ['credit_card_statements', 'credit_card_id'],
         'cash loans'    => ['cash_loans', 'credit_card_id'],
@@ -82,6 +99,13 @@ function credit_card_usage(string $id): array
         'card payments' => ['credit_card_payments', 'credit_card_id'],
         'bank charges'  => ['bank_charges', 'credit_card_id'],
     ], $id);
+
+    // The opening balance is a setting of the card itself, not a record that keeps it.
+    $opening = (int) db_value('SELECT COUNT(*) FROM bank_charges WHERE credit_card_id = :id AND charge_type = :t', [':id' => $id, ':t' => OPENING_BALANCE_TYPE]);
+    $usage['bank charges'] -= $opening;
+    $usage['total'] -= $opening;
+
+    return $usage;
 }
 
 function billing_cycle_fields(): array

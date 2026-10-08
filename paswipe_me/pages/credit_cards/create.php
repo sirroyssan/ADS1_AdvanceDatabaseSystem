@@ -19,7 +19,7 @@ if (is_post()) {
     if (!$errors) {
         try {
             $id = new_uuid();
-            db_insert('credit_cards', ['id' => $id] + $data);
+            credit_card_save($id, $data);
             log_activity('create', 'credit_card', $id, 'Added card ' . $data['card_nickname'] . ' •••• ' . $data['last_four'], null, $data);
             flash('success', 'Card "' . $data['card_nickname'] . '" was added successfully.');
             redirect('pages/credit_cards/view.php', ['id' => $id]);

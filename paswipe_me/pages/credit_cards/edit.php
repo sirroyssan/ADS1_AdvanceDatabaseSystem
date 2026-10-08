@@ -10,7 +10,7 @@ $currentUser = require_admin();
 
 $card = find_or_redirect(credit_card_find(request_id()), 'pages/credit_cards/index.php', 'Credit card');
 $fields = credit_card_fields($card);
-$data = form_data_from_row($fields, $card);
+$data = form_data_from_row($fields, $card + ['opening_balance' => card_opening_balance($card['id'])['amount'] ?? '0.00']);
 $errors = [];
 
 if (is_post()) {
@@ -19,7 +19,7 @@ if (is_post()) {
 
     if (!$errors) {
         try {
-            db_update('credit_cards', $data, $card['id']);
+            credit_card_save(null, $data, $card['id']);
             log_activity('update', 'credit_card', $card['id'], 'Updated card ' . $data['card_nickname'], array_intersect_key($card, $data), $data);
             flash('success', 'Card "' . $data['card_nickname'] . '" was updated successfully.');
             redirect('pages/credit_cards/view.php', ['id' => $card['id']]);

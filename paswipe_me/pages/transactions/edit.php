@@ -33,7 +33,7 @@ if (is_post()) {
 
     if (!$errors) {
         try {
-            db_update('transactions', $data + ['updated_by' => $currentUser['id']], $txn['id']);
+            card_usage_apply([$txn['credit_card_id'], $data['credit_card_id'] ?? null], fn () => db_update('transactions', $data + ['updated_by' => $currentUser['id']], $txn['id']));
             log_activity('update', 'transaction', $txn['id'], 'Updated transaction ' . $data['transaction_number'], array_intersect_key($txn, $data), $data);
             flash('success', 'Transaction ' . $data['transaction_number'] . ' was updated successfully.');
             redirect('pages/transactions/view.php', ['id' => $txn['id']]);

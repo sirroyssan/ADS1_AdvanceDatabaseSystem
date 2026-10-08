@@ -14,7 +14,7 @@ $reports = [
     ['pending_payments.php',  'receipt',     'Pending Payment Approvals',  'Borrower payments waiting for review (view vw_pending_payment_approvals).'],
     ['collections.php',       'banknote',    'Collections',                'Approved borrower payments by date range and payment method.'],
     ['transactions.php',      'layers',      'Transactions',               'Card swipes by date range, card, borrower and payment type with totals.'],
-    ['card_utilization.php',  'credit-card', 'Credit Card Utilization',    'Limit, used amount and utilization of active cards (view vw_credit_card_utilization).'],
+    ['card_utilization.php',  'credit-card', 'Credit Card Utilization',    'Limit, used credit (from transactions, cash loans, advances, charges and payments) and utilization of active cards.'],
 ];
 
 $pageTitle = 'Reports';

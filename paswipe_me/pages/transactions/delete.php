@@ -17,7 +17,7 @@ $txn = find_or_redirect(transaction_find(request_id()), 'pages/transactions/inde
 require_csrf('pages/transactions/view.php?id=' . $txn['id']);
 
 try {
-    db_transaction(function () use ($txn) {
+    card_usage_apply([$txn['credit_card_id']], function () use ($txn) {
         $status = db_value('SELECT status FROM transactions WHERE id = :id FOR UPDATE', [':id' => $txn['id']]);
         if ($status !== 'draft') {
             throw new DomainException('Only draft transactions can be deleted. Cancel this transaction instead.');

@@ -30,6 +30,7 @@ try {
             throw new DomainException('This card cannot be deleted because it has ' . usage_text($usage) . '. Mark it inactive instead.');
         }
         db_exec('DELETE FROM card_billing_cycles WHERE credit_card_id = :id', [':id' => $card['id']]);
+        db_exec('DELETE FROM bank_charges WHERE credit_card_id = :id AND charge_type = :t', [':id' => $card['id'], ':t' => OPENING_BALANCE_TYPE]);
         db_exec('DELETE FROM credit_cards WHERE id = :id', [':id' => $card['id']]);
     });
 

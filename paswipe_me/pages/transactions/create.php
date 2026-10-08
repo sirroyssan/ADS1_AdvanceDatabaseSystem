@@ -27,7 +27,7 @@ if (is_post()) {
         try {
             $id = new_uuid();
             $data['transaction_number'] ??= generate_reference('TXN', 'transactions', 'transaction_number');
-            db_insert('transactions', ['id' => $id] + $data + ['created_by' => $currentUser['id'], 'updated_by' => $currentUser['id']]);
+            card_usage_apply([$data['credit_card_id']], fn () => db_insert('transactions', ['id' => $id] + $data + ['created_by' => $currentUser['id'], 'updated_by' => $currentUser['id']]));
             log_activity('create', 'transaction', $id, 'Recorded transaction ' . $data['transaction_number'] . ' for ' . format_money($data['amount']), null, $data);
             flash('success', 'Transaction ' . $data['transaction_number'] . ' was recorded. You can now add the purchased items.');
             redirect('pages/transactions/view.php', ['id' => $id]);

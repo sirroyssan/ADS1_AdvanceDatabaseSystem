@@ -11,11 +11,11 @@ $currentUser = require_admin();
 $card = find_or_redirect(credit_card_find(request_id()), 'pages/credit_cards/index.php', 'Credit card');
 $id = $card['id'];
 
-$used = (float) $card['credit_limit'] - (float) $card['available_credit'];
-$utilization = (float) $card['credit_limit'] > 0 ? $used / (float) $card['credit_limit'] * 100 : 0;
-
-$loanHolds = card_cash_loan_holds($id);
-$heldByLoans = array_sum(array_column($loanHolds, 'amount'));
+$cardUsage = card_usage($id);
+$cashLoans = db_all(
+    'SELECT * FROM cash_loans WHERE credit_card_id = :id ORDER BY created_at DESC LIMIT 8',
+    [':id' => $id]
+);
 
 $cycles = db_all('SELECT * FROM card_billing_cycles WHERE credit_card_id = :id ORDER BY cycle_start_date DESC', [':id' => $id]);
 $transactions = db_all(
@@ -58,12 +58,7 @@ require APP_ROOT . '/includes/header.php';
 </section>
 
 <section class="figure-grid" aria-label="Card figures">
-    <div class="figure"><p class="figure__label">Credit limit</p><p class="figure__value"><?= e(format_money($card['credit_limit'])) ?></p></div>
-    <div class="figure"><p class="figure__label">Available</p><p class="figure__value"><?= e(format_money($card['available_credit'])) ?></p></div>
-    <div class="figure"><p class="figure__label">Used</p><p class="figure__value"><?= e(format_money($used)) ?></p></div>
-    <div class="figure"><p class="figure__label">Held by cash loans</p><p class="figure__value"><?= e(format_money($heldByLoans)) ?></p></div>
-    <div class="figure"><p class="figure__label">Utilization</p><p class="figure__value"><?= e(number_format($utilization, 1)) ?>%</p>
-        <progress class="meter" max="100" value="<?= e(min(100, max(0, $utilization))) ?>"><?= e(number_format($utilization, 1)) ?>%</progress></div>
+    <?= render_card_usage_figures($cardUsage) ?>
 </section>
 
 <div class="detail-layout">
@@ -91,21 +86,37 @@ require APP_ROOT . '/includes/header.php';
 
     <div class="detail-side">
         <section class="panel">
+            <header class="panel__header"><h3>Credit card summary</h3></header>
+            <dl class="usage-breakdown">
+                <div><dt>Credit limit</dt><dd><?= e(format_money($cardUsage['credit_limit'])) ?></dd></div>
+                <?php foreach (CARD_USAGE_PARTS as $part => $label): ?>
+                    <?php if ($part === 'opening_balance' && $cardUsage[$part] == 0) { continue; } ?>
+                    <?php $minus = in_array($part, ['payments', 'credits'], true); ?>
+                    <div class="<?= $minus ? 'is-minus' : '' ?>"><dt><?= $minus ? '− ' : '+ ' ?><?= e($label) ?></dt><dd><?= e(format_money($cardUsage[$part])) ?></dd></div>
+                <?php endforeach; ?>
+                <div class="is-total"><dt>Current used credit</dt><dd><?= e(format_money($cardUsage['used'])) ?></dd></div>
+                <div><dt>Available credit</dt><dd class="<?= $cardUsage['over_limit'] ? 'text-danger' : '' ?>"><?= e(format_money($cardUsage['available'])) ?></dd></div>
+                <div><dt>Utilization</dt><dd><?= e(number_format($cardUsage['utilization'], 2)) ?>%</dd></div>
+            </dl>
+            <p class="field-help">Calculated from this card's posted transactions, cash loans (accepted, disbursed, active, completed), cash advances, bank charges and card payments. Drafts, offers, cancelled and rejected records are not counted.</p>
+        </section>
+
+        <section class="panel">
             <header class="panel__header">
                 <h3>Cash loans on this card</h3>
                 <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/cash_loans/create.php', ['credit_card_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
             </header>
-            <?php if (!$loanHolds): ?>
-                <p class="empty-inline">No cash loan is using this card's credit.</p>
+            <?php if (!$cashLoans): ?>
+                <p class="empty-inline">No cash loans on this card.</p>
             <?php else: ?>
                 <ul class="child-list">
-                    <?php foreach ($loanHolds as $l): ?>
+                    <?php foreach ($cashLoans as $l): ?>
+                        <?php $charge = cash_loan_card_charge($l); ?>
                         <li><a href="<?= e(url('pages/cash_loans/view.php', ['id' => $l['id']])) ?>"><?= e($l['loan_reference']) ?></a>
-                            <span><?= e(format_money($l['amount'])) ?> held <?= badge($l['status']) ?></span></li>
+                            <span><?= $charge['counts'] ? e(format_money($charge['total'])) . ' charged' : 'Not charged' ?> <?= badge($l['status']) ?></span></li>
                     <?php endforeach; ?>
                 </ul>
             <?php endif; ?>
-            <p class="field-help">Accepted, disbursed and active cash loans reduce the available credit by their unpaid principal. Paying an installment gives that principal back.</p>
         </section>
 
         <section class="panel">

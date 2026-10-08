@@ -88,7 +88,7 @@ require APP_ROOT . '/includes/header.php';
 
 <section class="panel subpanel">
     <header class="panel__header"><h3><?= icon('calendar') ?> Payment schedule</h3></header>
-    <?= render_schedule_table($schedule, url('pages/installment_plans/related.php'), ['id' => $plan['id']], $plan['status'] === 'active') ?>
+    <?= render_schedule_table($schedule, url('pages/installment_plans/related.php'), ['id' => $plan['id']], $plan['status'] === 'active', true) ?>
 </section>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

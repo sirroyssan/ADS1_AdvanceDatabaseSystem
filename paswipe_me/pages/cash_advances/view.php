@@ -15,7 +15,7 @@ if (is_post()) {
     $status = input_string($_POST, 'status');
 
     if ($advance['status'] === 'active' && in_array($status, ['completed', 'cancelled'], true)) {
-        db_update('cash_advances', ['status' => $status], $advance['id']);
+        card_usage_apply([$advance['credit_card_id']], fn () => db_update('cash_advances', ['status' => $status], $advance['id']));
         log_activity('status_change', 'cash_advance', $advance['id'], 'Cash advance marked ' . $status, ['status' => $advance['status']], ['status' => $status]);
         flash('success', 'Cash advance marked as ' . humanize($status) . '.');
     } else {

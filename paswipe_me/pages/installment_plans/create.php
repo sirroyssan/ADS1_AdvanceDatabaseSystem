@@ -25,7 +25,9 @@ if (is_post()) {
     if (!$errors) {
         try {
             $id = new_uuid();
-            db_transaction(function () use ($id, $data) {
+            $planCard = db_value('SELECT credit_card_id FROM transactions WHERE id = :id', [':id' => $data['transaction_id']]);
+            // Plan interest and fees are billed to the card, so recalculate its used credit.
+            card_usage_apply([$planCard], function () use ($id, $data) {
                 db_insert('installment_plans', ['id' => $id] + $data);
                 plan_generate_schedule($id, $data);
             });

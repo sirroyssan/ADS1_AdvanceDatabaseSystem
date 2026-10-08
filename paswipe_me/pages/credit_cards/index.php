@@ -36,10 +36,10 @@ foreach (['status' => 'cc.status', 'network' => 'cc.network', 'owner' => 'cc.own
 
 $result = run_list(
     $state,
-    "cc.id, cc.card_nickname, cc.issuer, cc.network, cc.last_four, cc.credit_limit, cc.available_credit, cc.status, cc.payment_due_day,
-     IF(cc.credit_limit > 0, ROUND((cc.credit_limit - cc.available_credit) / cc.credit_limit * 100, 1), 0) AS utilization,
+    "cc.id, cc.card_nickname, cc.issuer, cc.network, cc.last_four, cc.credit_limit, cc.status, cc.payment_due_day,
+     " . card_usage_columns() . ",
      COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) AS owner_name",
-    'credit_cards cc LEFT JOIN users u ON u.id = cc.owner_user_id',
+    'credit_cards cc LEFT JOIN users u ON u.id = cc.owner_user_id ' . card_usage_join(),
     $where,
     $params
 );
@@ -66,8 +66,9 @@ require APP_ROOT . '/includes/header.php';
                     <th scope="col">Issuer / Network</th>
                     <th scope="col">Owner</th>
                     <th scope="col" class="num">Limit</th>
-                    <th scope="col" class="num">Available</th>
                     <th scope="col" class="num">Used</th>
+                    <th scope="col" class="num">Available</th>
+                    <th scope="col" class="num">Utilization</th>
                     <th scope="col">Due day</th>
                     <th scope="col">Status</th>
                     <th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th>
@@ -81,8 +82,9 @@ require APP_ROOT . '/includes/header.php';
                         <td data-label="Issuer / Network"><?= e($row['issuer']) ?><?= $row['network'] ? ' · ' . e(strtoupper($row['network'])) : '' ?></td>
                         <td data-label="Owner"><?= show($row['owner_name']) ?></td>
                         <td data-label="Limit" class="num"><?= e(format_money($row['credit_limit'])) ?></td>
-                        <td data-label="Available" class="num"><?= e(format_money($row['available_credit'])) ?></td>
-                        <td data-label="Used" class="num"><?= e(number_format((float) $row['utilization'], 1)) ?>%</td>
+                        <td data-label="Used" class="num"><?= e(format_money($row['used_credit'])) ?></td>
+                        <td data-label="Available" class="num<?= (float) $row['remaining_credit'] < 0 ? ' text-danger' : '' ?>"><?= e(format_money($row['remaining_credit'])) ?></td>
+                        <td data-label="Utilization" class="num"><?= e(number_format((float) $row['utilization'], 2)) ?>%</td>
                         <td data-label="Due day"><?= show($row['payment_due_day']) ?></td>
                         <td data-label="Status"><?= badge($row['status']) ?></td>
                         <td class="actions no-print">

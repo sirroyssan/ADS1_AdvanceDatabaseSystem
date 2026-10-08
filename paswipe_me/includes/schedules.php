@@ -84,7 +84,12 @@ function schedule_status_after_payment(float $amountDue, float $amountPaid, stri
  * @param string $actionUrl POST target that handles record_payment / schedule_status
  * @param array  $hidden    hidden fields identifying the parent record
  */
-function render_schedule_table(array $rows, string $actionUrl, array $hidden, bool $canEdit): string
+/**
+ * With $cardPaymentOption, each Pay form has an "Also a card payment" box
+ * (checked): the amount is then also saved in credit_card_payments, which is
+ * what lowers the card's used credit.
+ */
+function render_schedule_table(array $rows, string $actionUrl, array $hidden, bool $canEdit, bool $cardPaymentOption = false): string
 {
     if (!$rows) {
         return '<p class="empty-inline">No schedule generated.</p>';
@@ -124,7 +129,12 @@ function render_schedule_table(array $rows, string $actionUrl, array $hidden, bo
                 $html .= '<input type="hidden" name="action" value="record_payment"><input type="hidden" name="schedule_id" value="' . e($row['id']) . '">'
                     . '<label class="visually-hidden" for="pay-' . e($row['id']) . '">Amount paid for installment ' . e($row['installment_number']) . '</label>'
                     . '<input type="text" inputmode="decimal" class="input-num" id="pay-' . e($row['id']) . '" name="amount" value="' . e($row['remaining_amount']) . '" required>'
-                    . '<button type="submit" class="btn btn--sm btn--primary" data-loading-text="…">' . icon('check') . ' <span class="btn__label">Pay</span></button></form>';
+                    . '<button type="submit" class="btn btn--sm btn--primary" data-loading-text="…">' . icon('check') . ' <span class="btn__label">Pay</span></button>'
+                    . ($cardPaymentOption
+                        ? '<label class="schedule-pay__card" title="Also saves this amount as a payment to the bank, which lowers the card\'s used credit. Untick it if you record the whole statement payment in Card Payments.">'
+                          . '<input type="checkbox" name="card_payment" value="1" checked> Also a card payment</label>'
+                        : '')
+                    . '</form>';
                 $html .= post_button($actionUrl, $hidden + ['action' => 'schedule_status', 'schedule_id' => $row['id'], 'status' => 'waived'], 'Waive installment ' . $row['installment_number'], 'x',
                     'icon-button', 'Waive the remaining amount of installment ' . $row['installment_number'] . '?', true, 'Waive installment?');
             }

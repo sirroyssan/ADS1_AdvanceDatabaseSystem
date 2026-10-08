@@ -87,3 +87,16 @@ function allocation_fields(): array
         'description'      => ['label' => 'Description', 'type' => 'text', 'max' => 500],
     ];
 }
+
+/**
+ * Flash text telling how much of the card's credit a saved loan uses.
+ */
+function cash_loan_usage_message(array $loan): string
+{
+    $charge = cash_loan_card_charge($loan);
+    if (!$charge['counts']) {
+        return 'Status "' . humanize($loan['status']) . '" does not use the card\'s credit. Change it to Accepted once you take the loan.';
+    }
+
+    return 'It uses ' . format_money($charge['total']) . ' of the card\'s credit.';
+}

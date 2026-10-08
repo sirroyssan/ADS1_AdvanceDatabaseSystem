@@ -19,7 +19,7 @@ if (is_post()) {
 
     if (!$errors) {
         try {
-            db_update('bank_charges', $data, $charge['id']);
+            card_usage_apply([$charge['credit_card_id'], $data['credit_card_id']], fn () => db_update('bank_charges', $data, $charge['id']));
             log_activity('update', 'bank_charge', $charge['id'], 'Corrected bank charge', array_intersect_key($charge, $data), $data);
             flash('success', 'Bank charge was updated successfully.');
             redirect('pages/bank_charges/view.php', ['id' => $charge['id']]);

@@ -20,7 +20,7 @@ if (is_post()) {
     if (!$errors) {
         try {
             $id = new_uuid();
-            db_insert('cash_advances', ['id' => $id] + $data);
+            card_usage_apply([$data['credit_card_id']], fn () => db_insert('cash_advances', ['id' => $id] + $data));
             log_activity('create', 'cash_advance', $id, 'Recorded cash advance of ' . format_money($data['amount']), null, $data);
             flash('success', 'Cash advance was recorded.');
             redirect('pages/cash_advances/view.php', ['id' => $id]);

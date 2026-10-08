@@ -26,7 +26,7 @@ if (is_post()) {
     if (!$errors) {
         try {
             $id = new_uuid();
-            db_insert('credit_card_payments', ['id' => $id] + $data);
+            card_usage_apply([$data['credit_card_id']], fn () => db_insert('credit_card_payments', ['id' => $id] + $data));
             log_activity('create', 'card_payment', $id, 'Recorded card payment of ' . format_money($data['amount']), null, $data);
             flash('success', 'Card payment of ' . format_money($data['amount']) . ' was recorded.');
             redirect('pages/card_payments/view.php', ['id' => $id]);

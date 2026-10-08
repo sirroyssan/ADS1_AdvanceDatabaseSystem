@@ -1768,15 +1768,84 @@ body.modal-open {
 /* Schedule rows: inline "record payment" form */
 .schedule-pay {
     display: inline-flex;
+    flex-wrap: wrap;
     align-items: center;
     gap: 6px;
+    min-width: 172px;
     margin: 0 4px 0 0;
+    vertical-align: middle;
 }
 
-.schedule-pay input {
-    width: 110px;
+.schedule-pay input[type="text"] {
+    width: 96px;
     min-height: 32px;
     padding: 4px 8px;
+}
+
+/* "Also a card payment" box under a schedule Pay form */
+.schedule-pay__card {
+    display: inline-flex;
+    flex-basis: 100%;
+    align-items: center;
+    gap: 6px;
+    margin: 0;
+    color: var(--text-muted);
+    font-size: 12px;
+    font-weight: 500;
+    white-space: nowrap;
+    cursor: pointer;
+}
+
+.schedule-pay__card input {
+    width: auto;
+    min-height: 0;
+    margin: 0;
+}
+
+/* Card usage breakdown */
+.usage-breakdown {
+    margin: 0;
+}
+
+.usage-breakdown div {
+    display: flex;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 8px 0;
+    border-bottom: 1px solid var(--border);
+}
+
+.usage-breakdown dt {
+    color: var(--text-muted);
+}
+
+.usage-breakdown dd {
+    margin: 0;
+    font-variant-numeric: tabular-nums;
+    font-weight: 600;
+    text-align: right;
+}
+
+.usage-breakdown .is-minus dd {
+    color: var(--success, #15803d);
+}
+
+.usage-breakdown .is-total {
+    border-bottom: 0;
+    border-top: 2px solid var(--text);
+    margin-top: 4px;
+}
+
+.usage-breakdown .is-total dt,
+.usage-breakdown .is-total dd {
+    color: var(--text);
+    font-weight: 700;
+}
+
+.figure__note {
+    margin: 4px 0 0;
+    font-size: 12px;
+    font-weight: 600;
 }
 
 /* Role checkboxes on the user form */
@@ -1824,7 +1893,7 @@ body.modal-open {
         width: 100%;
     }
 
-    .schedule-pay input {
+    .schedule-pay input[type="text"] {
         flex: 1;
     }
 }

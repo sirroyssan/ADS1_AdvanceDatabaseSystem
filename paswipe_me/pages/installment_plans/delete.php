@@ -16,7 +16,7 @@ $plan = find_or_redirect(plan_find(request_id()), 'pages/installment_plans/index
 require_csrf('pages/installment_plans/view.php?id=' . $plan['id']);
 
 try {
-    db_transaction(function () use ($plan) {
+    card_usage_apply([$plan['credit_card_id']], function () use ($plan) {
         db_value('SELECT id FROM installment_plans WHERE id = :id FOR UPDATE', [':id' => $plan['id']]);
         if (plan_is_locked($plan['id'])) {
             throw new DomainException('This plan has recorded payments, so it cannot be deleted. Set its status to Cancelled instead.');

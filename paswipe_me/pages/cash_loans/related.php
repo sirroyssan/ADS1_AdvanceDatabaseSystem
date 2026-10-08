@@ -35,8 +35,8 @@ try {
                 flash('error', 'Enter the term, first due date and total repayment first.');
                 break;
             }
-            // Same principal as the credit hold: accepted amount, else approved amount.
-            $loanPrincipal = (float) $loan['accepted_amount'] > 0 ? (float) $loan['accepted_amount'] : (float) $loan['approved_amount'];
+            // Same principal as the card usage calculation.
+            $loanPrincipal = cash_loan_principal($loan);
             $principal = $loanPrincipal > 0 ? min((float) $loan['total_repayment'], $loanPrincipal) : (float) $loan['total_repayment'];
             $charges = (float) $loan['total_repayment'] - $principal;
             $rows = build_schedule($principal, $charges, 0, (int) $loan['term_months'], $loan['first_due_date'], $loan['payment_frequency'] ?? 'monthly');
@@ -53,12 +53,19 @@ try {
             break;
 
         case 'record_payment':
-            $heldBefore = cash_loan_hold($loan['id'])['amount'];
-            // Paying an installment releases its principal back to the card's available credit.
-            [$error, $completed] = cash_loan_sync_hold($loan['id'], function () use ($loan) {
-                $error = apply_schedule_payment('cash_loan_schedules', 'cash_loan_id', $loan['id'], input_string($_POST, 'schedule_id'), input_string($_POST, 'amount'));
+            $amount = input_string($_POST, 'amount');
+            $asCardPayment = input_string($_POST, 'card_payment') === '1';
+            // Only payments to the bank lower the card's used credit; "Also a card payment" records one.
+            [$error, $completed] = card_usage_apply([$loan['credit_card_id']], function () use ($loan, $amount, $asCardPayment) {
+                $scheduleId = input_string($_POST, 'schedule_id');
+                $error = apply_schedule_payment('cash_loan_schedules', 'cash_loan_id', $loan['id'], $scheduleId, $amount);
                 if ($error !== null) {
                     return [$error, false];
+                }
+                if ($asCardPayment) {
+                    $number = db_value('SELECT installment_number FROM cash_loan_schedules WHERE id = :id', [':id' => $scheduleId]);
+                    record_installment_card_payment($loan['credit_card_id'], str_replace([',', ' ', '₱'], '', $amount),
+                        $loan['loan_reference'] . ' #' . $number, 'Cash loan installment', 'Installment ' . $number . ' of cash loan ' . $loan['loan_reference']);
                 }
                 $open = (int) db_value("SELECT COUNT(*) FROM cash_loan_schedules WHERE cash_loan_id = :id AND status NOT IN ('paid', 'waived', 'cancelled')", [':id' => $loan['id']]);
                 if ($open === 0) {
@@ -70,16 +77,18 @@ try {
                 flash('error', $error);
                 break;
             }
-            $released = $heldBefore - cash_loan_hold($loan['id'])['amount'];
-            log_activity('schedule_payment', 'cash_loan', $loan['id'], 'Recorded ' . input_string($_POST, 'amount') . ' on a cash loan installment');
-            flash('success', 'Installment payment was recorded.' . ($released > 0.004 ? ' ' . format_money($released) . ' of available credit was released on the card.' : ''));
+            log_activity('schedule_payment', 'cash_loan', $loan['id'], 'Recorded ' . $amount . ' on a cash loan installment' . ($asCardPayment ? ' (also a card payment)' : ''));
+            flash('success', 'Installment payment was recorded.' . ($asCardPayment
+                ? ' It was also saved as a card payment, so the card\'s used credit went down.'
+                : ' It was not saved as a card payment, so the card\'s used credit did not change.'));
             if ($completed) {
                 flash('success', 'All installments are paid — the cash loan is now completed.');
             }
             break;
 
         case 'schedule_status':
-            $count = cash_loan_sync_hold($loan['id'], fn () => db_exec(
+            // A waived installment is a credit: the bank no longer charges it.
+            $count = card_usage_apply([$loan['credit_card_id']], fn () => db_exec(
                 "UPDATE cash_loan_schedules SET status = 'waived' WHERE id = :i AND cash_loan_id = :l AND status NOT IN ('paid', 'waived', 'cancelled')",
                 [':i' => input_string($_POST, 'schedule_id'), ':l' => $loan['id']]
             ));

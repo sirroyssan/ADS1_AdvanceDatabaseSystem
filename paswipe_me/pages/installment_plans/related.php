@@ -27,13 +27,24 @@ $scheduleId = input_string($_POST, 'schedule_id');
 try {
     switch (input_string($_POST, 'action')) {
         case 'record_payment':
-            $error = apply_schedule_payment('installment_schedules', 'installment_plan_id', $plan['id'], $scheduleId, input_string($_POST, 'amount'));
+            $amount = input_string($_POST, 'amount');
+            $asCardPayment = input_string($_POST, 'card_payment') === '1';
+            // Only payments to the bank lower the card's used credit; "Also a card payment" records one.
+            $error = card_usage_apply([$plan['credit_card_id']], function () use ($plan, $scheduleId, $amount, $asCardPayment) {
+                $error = apply_schedule_payment('installment_schedules', 'installment_plan_id', $plan['id'], $scheduleId, $amount);
+                if ($error === null && $asCardPayment) {
+                    $number = db_value('SELECT installment_number FROM installment_schedules WHERE id = :id', [':id' => $scheduleId]);
+                    record_installment_card_payment($plan['credit_card_id'], str_replace([',', ' ', '₱'], '', $amount),
+                        $plan['transaction_number'] . ' #' . $number, 'Installment plan payment', 'Installment ' . $number . ' of ' . $plan['transaction_number']);
+                }
+                return $error;
+            });
             if ($error !== null) {
                 flash('error', $error);
                 break;
             }
-            log_activity('schedule_payment', 'installment_plan', $plan['id'], 'Recorded ' . input_string($_POST, 'amount') . ' on an installment');
-            flash('success', 'Installment payment was recorded.');
+            log_activity('schedule_payment', 'installment_plan', $plan['id'], 'Recorded ' . $amount . ' on an installment' . ($asCardPayment ? ' (also a card payment)' : ''));
+            flash('success', 'Installment payment was recorded.' . ($asCardPayment ? ' It was also saved as a card payment, so the card\'s used credit went down.' : ''));
             break;
 
         case 'schedule_status':
@@ -41,10 +52,11 @@ try {
                 flash('error', 'Unsupported status.');
                 break;
             }
-            $count = db_exec(
+            // A waived installment is a credit: the bank no longer charges it.
+            $count = card_usage_apply([$plan['credit_card_id']], fn () => db_exec(
                 "UPDATE installment_schedules SET status = 'waived' WHERE id = :i AND installment_plan_id = :p AND status NOT IN ('paid', 'waived', 'cancelled')",
                 [':i' => $scheduleId, ':p' => $plan['id']]
-            );
+            ));
             if ($count) {
                 log_activity('schedule_waive', 'installment_plan', $plan['id'], 'Waived an installment');
             }

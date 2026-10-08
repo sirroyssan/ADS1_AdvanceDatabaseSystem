@@ -495,10 +495,50 @@ Junction / child tables managed inside their parent page (no ugly standalone CRU
 - **Allocation:** only approved payments; amount ≤ unallocated and ≤ outstanding; updates the obligation (total paid, outstanding, overdue, status *partially paid*/*paid*, completed date), optionally an installment row, and the payment's allocation status — all in one transaction with row locks. The schema trigger is a second guard. *Auto-allocate* pays the oldest open obligations first.
 - **Schedules:** amounts split evenly with the last row absorbing rounding; monthly dates keep the day, clamped to month end (Jan 31 → Feb 28). Plans/loans complete automatically when every row is paid or waived.
 - **Cash loans:** allocations can't exceed the cash received (or accepted amount); an allocation becomes a borrower obligation with both links set.
-- **Cash loans use the card's credit limit** (`includes/credit_holds.php`): while a loan is *accepted*, *disbursed* or *active*, its unpaid principal (accepted amount, else approved amount, minus the principal portion of paid/waived installments) is deducted from `credit_cards.available_credit`. Paying an installment gives that principal back; cancelling, rejecting or completing the loan releases the rest. Changes are applied as a difference inside one transaction with the card row locked, so editing, moving a loan to another card, or paying never double-counts. A loan larger than the available credit is refused. Every change is written to the activity log (`credit_hold`). Loans recorded **before** this feature never had their hold applied — correct those cards' available credit once on the card's Edit page.
+- **Credit card usage** — see the section *Credit card usage (one source of truth)* below.
 - **Penalties:** amount from the rule (percentage of base or fixed, capped by maximum charge) unless typed.
 - **Deletes** always re-check dependencies inside a transaction with `SELECT … FOR UPDATE`, because MariaDB 10.4 may not enforce the inline foreign keys.
 - **Documents:** extension whitelist + real MIME check (fileinfo), 10 MB limit, stored outside the web (`storage/` has `Require all denied`), served only by `download.php` after the admin check with `nosniff`.
+
+## Credit card usage (one source of truth)
+
+**Root cause of the old "Used ₱0 / 0 %":** every screen calculated *used = credit limit − available credit*, and `credit_cards.available_credit` was only the number typed on the card form. Purchases, cash advances, bank charges and card payments never changed it. Cash loans changed it only while their status was Accepted/Disbursed/Active, and new loans start as **Offered**. The dashboard and the report read the schema view `vw_credit_card_utilization`, which reads the same typed column.
+
+**Fix:** `includes/card_usage.php` calculates usage from the stored records. The dashboard, card list, card page, cash loan page and the utilization report all use it (`card_usage()`, `card_usage_sql()`, `card_utilization_sql()`):
+
+```
+used        = opening balance
+            + purchases          transactions with status posted, active, completed, disputed or refunded
+            + cash loans         principal (accepted, else approved, else offered amount) of
+                                 accepted, disbursed, active and completed loans
+            + cash advances      amount of active and completed advances
+            + interest / fees    cash loan: (total repayment − principal) + processing/other fees
+                                            not deducted from the cash received
+                                 cash advance: fee + interest
+                                 installment plan: interest + fees
+                                 bank charges (except the opening balance)
+            − payments           credit_card_payments
+            − credits / refunds  refunded transactions, waived installments
+available   = credit limit − used
+utilization = used ÷ credit limit × 100
+```
+
+- **Not counted:** draft and cancelled transactions; offered, cancelled and rejected loans; cancelled advances.
+- **Counted once:** a transaction with payment type *cash loan* or *cash advance* is the same charge as a cash loan or advance when its reference number equals that record's reference on the same card. In that case only the cash loan or advance is counted.
+- **Payments:**
+  - Only card payments (payments to the bank) lower the used credit.
+  - When an installment is paid on a cash loan or installment plan, the *Also a card payment* box (ticked by default) saves the same amount in Card Payments. Its reference is `CL-… #n` or `TXN-… #n`.
+  - Untick the box if you record the whole statement payment in Card Payments instead. This avoids counting the payment twice.
+- **Opening balance:**
+  - This is the balance a card already had before it was recorded here.
+  - It is entered on the card form and stored as a bank charge of type *Opening balance*.
+  - Cards saved before this update get it once, automatically: the typed balance minus what the records explain. No figure is lost.
+- **Stored copy:**
+  - `available_credit` is recalculated after every save that affects a card (`card_usage_apply`, in the same transaction, with the card row locked). Changes are logged as `credit_recalc`.
+  - Because of this, the schema view and phpMyAdmin show the same figure as the pages.
+  - The stored copy stays within the schema CHECK range (0 … limit). The pages show the real value, including when the card is over its limit.
+- **Over-limit check:** a cash loan that would push the card over its limit is refused.
+- **No schema change.**
 
 ## DATABASE LIMITATIONS (no schema changes were made)
 

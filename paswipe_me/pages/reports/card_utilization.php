@@ -29,7 +29,7 @@ if ($state['filters']['level'] !== '') {
     $where[] = $levels[$state['filters']['level']];
 }
 
-$from = 'vw_credit_card_utilization v';
+$from = '(' . card_utilization_sql() . ') v';
 $result = run_list($state, 'v.id, v.card_nickname, v.issuer, v.last_four, v.credit_limit, v.outstanding, v.available_credit, v.utilization_percentage', $from, $where, $params);
 $totals = db_row('SELECT COALESCE(SUM(v.credit_limit), 0) AS limit_total, COALESCE(SUM(v.outstanding), 0) AS used, COALESCE(SUM(v.available_credit), 0) AS available FROM '
     . $from . ($where ? ' WHERE ' . implode(' AND ', $where) : ''), $params);
@@ -42,14 +42,14 @@ require APP_ROOT . '/includes/header.php';
 
 <?= render_breadcrumb(['Reports' => url('pages/reports/index.php'), 'Credit Card Utilization' => null]) ?>
 <?= render_print_header($state, $result['total'], $result['pager']) ?>
-<?= render_list_header($state, 'Active cards only. Used = credit limit − available credit.', null) ?>
+<?= render_list_header($state, 'Active cards only. Used = purchases + cash loans + cash advances + interest/fees − payments − refunds.', null) ?>
 <?= render_list_toolbar($state) ?>
 
 <section class="figure-grid">
     <div class="figure"><p class="figure__label">Total limit</p><p class="figure__value"><?= e(format_money($totals['limit_total'])) ?></p></div>
     <div class="figure"><p class="figure__label">Used</p><p class="figure__value"><?= e(format_money($totals['used'])) ?></p></div>
     <div class="figure"><p class="figure__label">Available</p><p class="figure__value"><?= e(format_money($totals['available'])) ?></p></div>
-    <div class="figure"><p class="figure__label">Overall utilization</p><p class="figure__value"><?= e(number_format($overall, 1)) ?>%</p></div>
+    <div class="figure"><p class="figure__label">Overall utilization</p><p class="figure__value"><?= e(number_format($overall, 2)) ?>%</p></div>
 </section>
 
 <section class="panel panel--flush">
@@ -69,8 +69,8 @@ require APP_ROOT . '/includes/header.php';
                         <td data-label="Issuer"><?= e($row['issuer']) ?></td>
                         <td data-label="Limit" class="num"><?= e(format_money($row['credit_limit'])) ?></td>
                         <td data-label="Used" class="num"><?= e(format_money($row['outstanding'])) ?></td>
-                        <td data-label="Available" class="num"><?= e(format_money($row['available_credit'])) ?></td>
-                        <td data-label="Utilization"><?= e(number_format($pct, 1)) ?>% <progress class="meter" max="100" value="<?= e($pct) ?>"><?= e($pct) ?>%</progress></td>
+                        <td data-label="Available" class="num<?= (float) $row['available_credit'] < 0 ? ' text-danger' : '' ?>"><?= e(format_money($row['available_credit'])) ?></td>
+                        <td data-label="Utilization"><?= e(number_format((float) $row['utilization_percentage'], 2)) ?>% <progress class="meter" max="100" value="<?= e($pct) ?>"><?= e($pct) ?>%</progress></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>

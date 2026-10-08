@@ -24,11 +24,11 @@ if (is_post()) {
 
     if (!$errors) {
         try {
-            cash_loan_sync_hold($loan['id'], function () use ($loan, $data, $currentUser) {
+            card_usage_apply([$loan['credit_card_id'], $data['credit_card_id']], function () use ($loan, $data, $currentUser) {
                 db_update('cash_loans', $data + ['updated_by' => $currentUser['id']], $loan['id']);
-            });
+            }, true);
             log_activity('update', 'cash_loan', $loan['id'], 'Updated cash loan ' . $data['loan_reference'], array_intersect_key($loan, $data), $data);
-            flash('success', 'Cash loan ' . $data['loan_reference'] . ' was updated.');
+            flash('success', 'Cash loan ' . $data['loan_reference'] . ' was updated. ' . cash_loan_usage_message($data));
             redirect('pages/cash_loans/view.php', ['id' => $loan['id']]);
         } catch (DomainException $e) {
             $errors['_form'] = $e->getMessage();

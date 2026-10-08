@@ -43,6 +43,8 @@ $stats = [
     'borrowers_late'     => dashboard_value("SELECT COUNT(*) FROM borrowers WHERE status IN ('late', 'delinquent')"),
     'cards_active'       => dashboard_value("SELECT COUNT(*) FROM credit_cards WHERE status = 'active'"),
     'cards_total'        => dashboard_value('SELECT COUNT(*) FROM credit_cards'),
+    'cards_used'         => dashboard_value('SELECT COALESCE(SUM(outstanding), 0) FROM (' . card_utilization_sql() . ') v'),
+    'cards_limit'        => dashboard_value('SELECT COALESCE(SUM(credit_limit), 0) FROM (' . card_utilization_sql() . ') v'),
     'transactions'       => dashboard_value('SELECT COUNT(*) FROM transactions'),
     'transactions_month' => dashboard_value(
         "SELECT COUNT(*) FROM transactions
@@ -76,8 +78,8 @@ $overdueObligations = dashboard_rows(
 );
 
 $cardUtilization = dashboard_rows(
-    'SELECT card_nickname, issuer, last_four, credit_limit, outstanding, utilization_percentage
-       FROM vw_credit_card_utilization
+    'SELECT card_nickname, issuer, last_four, credit_limit, outstanding, available_credit, utilization_percentage
+       FROM (' . card_utilization_sql() . ') v
       ORDER BY utilization_percentage DESC
       LIMIT 5'
 );
@@ -121,7 +123,8 @@ require APP_ROOT . '/includes/header.php';
         <div>
             <p class="stat-card__label"><a href="<?= e(url('pages/credit_cards/index.php')) ?>">Active credit cards</a></p>
             <p class="stat-card__value"><?= e(stat_number($stats['cards_active'])) ?></p>
-            <p class="stat-card__meta"><?= e(stat_number($stats['cards_total'])) ?> cards on record</p>
+            <p class="stat-card__meta"><?= e(format_money($stats['cards_used'])) ?> used of <?= e(format_money($stats['cards_limit'])) ?>
+                (<?= e(number_format((float) $stats['cards_limit'] > 0 ? (float) $stats['cards_used'] / (float) $stats['cards_limit'] * 100 : 0, 2)) ?>%)</p>
         </div>
     </article>
 
@@ -256,10 +259,10 @@ require APP_ROOT . '/includes/header.php';
                     <li>
                         <div class="usage-list__head">
                             <span><strong><?= e($card['card_nickname']) ?></strong> · <?= e($card['issuer']) ?> •••• <?= e($card['last_four']) ?></span>
-                            <span><?= e(number_format($pct, 1)) ?>%</span>
+                            <span><?= e(number_format((float) $card['utilization_percentage'], 2)) ?>%</span>
                         </div>
                         <progress class="meter" max="100" value="<?= e($pct) ?>"><?= e($pct) ?>%</progress>
-                        <p class="usage-list__meta"><?= e(format_money($card['outstanding'])) ?> used of <?= e(format_money($card['credit_limit'])) ?></p>
+                        <p class="usage-list__meta"><?= e(format_money($card['outstanding'])) ?> used of <?= e(format_money($card['credit_limit'])) ?> · <?= e(format_money($card['available_credit'])) ?> available</p>
                     </li>
                 <?php endforeach; ?>
             </ul>

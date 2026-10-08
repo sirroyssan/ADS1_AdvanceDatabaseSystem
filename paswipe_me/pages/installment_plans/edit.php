@@ -35,7 +35,8 @@ if (is_post()) {
 
     if (!$errors) {
         try {
-            db_transaction(function () use ($plan, $data, $locked) {
+            $planCards = [$plan['credit_card_id'], isset($data['transaction_id']) ? db_value('SELECT credit_card_id FROM transactions WHERE id = :id', [':id' => $data['transaction_id']]) : null];
+            card_usage_apply($planCards, function () use ($plan, $data, $locked) {
                 db_update('installment_plans', $data, $plan['id']);
                 if (!$locked) {
                     plan_generate_schedule($plan['id'], $data);

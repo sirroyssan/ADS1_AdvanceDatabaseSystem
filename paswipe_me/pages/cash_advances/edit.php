@@ -26,7 +26,7 @@ if (is_post()) {
 
     if (!$errors) {
         try {
-            db_update('cash_advances', $data, $advance['id']);
+            card_usage_apply([$advance['credit_card_id'], $data['credit_card_id']], fn () => db_update('cash_advances', $data, $advance['id']));
             log_activity('update', 'cash_advance', $advance['id'], 'Updated cash advance', array_intersect_key($advance, $data), $data);
             flash('success', 'Cash advance was updated successfully.');
             redirect('pages/cash_advances/view.php', ['id' => $advance['id']]);
