@@ -36,5 +36,6 @@ require_once APP_ROOT . '/includes/db_helpers.php';
 require_once APP_ROOT . '/includes/form_fields.php';
 require_once APP_ROOT . '/includes/list_helpers.php';
 require_once APP_ROOT . '/includes/lookups.php';
+require_once APP_ROOT . '/includes/schedules.php';
 
 start_secure_session();

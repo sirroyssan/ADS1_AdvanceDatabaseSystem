@@ -1750,3 +1750,67 @@ body.modal-open {
     margin: 0;
     padding: 16px 18px 14px;
 }
+
+/* Schedule rows: inline "record payment" form */
+.schedule-pay {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    margin: 0 4px 0 0;
+}
+
+.schedule-pay input {
+    width: 110px;
+    min-height: 32px;
+    padding: 4px 8px;
+}
+
+/* Role checkboxes on the user form */
+.role-fieldset {
+    margin: 0;
+    padding: 0;
+    border: 0;
+}
+
+.role-fieldset legend {
+    margin-bottom: 8px;
+}
+
+.check-option {
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    font-weight: 400;
+    cursor: pointer;
+}
+
+.check-option:hover {
+    background: var(--surface-muted);
+}
+
+.check-option input {
+    margin-top: 3px;
+}
+
+.check-option span {
+    display: grid;
+}
+
+.check-option small {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+@media (max-width: 720px) {
+    .schedule-pay {
+        width: 100%;
+    }
+
+    .schedule-pay input {
+        flex: 1;
+    }
+}
