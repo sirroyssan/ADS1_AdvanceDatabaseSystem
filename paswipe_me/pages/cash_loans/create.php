@@ -21,10 +21,17 @@ if (is_post()) {
         try {
             $id = new_uuid();
             $data['loan_reference'] ??= generate_reference('CL', 'cash_loans', 'loan_reference');
-            db_insert('cash_loans', ['id' => $id] + $data + ['created_by' => $currentUser['id'], 'updated_by' => $currentUser['id']]);
+            // Accepted/disbursed/active loans use up the card's available credit.
+            cash_loan_sync_hold($id, function () use ($id, $data, $currentUser) {
+                db_insert('cash_loans', ['id' => $id] + $data + ['created_by' => $currentUser['id'], 'updated_by' => $currentUser['id']]);
+            });
             log_activity('create', 'cash_loan', $id, 'Recorded cash loan ' . $data['loan_reference'], null, $data);
-            flash('success', 'Cash loan ' . $data['loan_reference'] . ' was recorded.');
+            $held = cash_loan_hold($id)['amount'];
+            flash('success', 'Cash loan ' . $data['loan_reference'] . ' was recorded.'
+                . ($held > 0 ? ' ' . format_money($held) . ' was deducted from the card\'s available credit.' : ''));
             redirect('pages/cash_loans/view.php', ['id' => $id]);
+        } catch (DomainException $e) {
+            $errors['_form'] = $e->getMessage();
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
         }

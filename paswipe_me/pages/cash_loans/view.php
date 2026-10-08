@@ -21,6 +21,7 @@ $allocations = db_all(
     [':id' => $id]
 );
 $distributable = cash_loan_distributable($loan);
+$hold = cash_loan_hold($id);
 $isOpen = !in_array($loan['status'], ['cancelled', 'rejected', 'completed'], true);
 $canGenerate = !$schedule && $loan['term_months'] && $loan['first_due_date'] && (float) $loan['total_repayment'] > 0;
 $related = url('pages/cash_loans/related.php');
@@ -54,6 +55,7 @@ require APP_ROOT . '/includes/header.php';
     <div class="figure"><p class="figure__label">Accepted</p><p class="figure__value"><?= e(format_money($loan['accepted_amount'])) ?></p></div>
     <div class="figure"><p class="figure__label">Cash received</p><p class="figure__value"><?= e(format_money($loan['actual_cash_received'])) ?></p></div>
     <div class="figure"><p class="figure__label">Total repayment</p><p class="figure__value"><?= e(format_money($loan['total_repayment'])) ?></p></div>
+    <div class="figure"><p class="figure__label">Credit held on card</p><p class="figure__value"><?= e(format_money($hold['amount'])) ?></p></div>
     <div class="figure"><p class="figure__label">Allocated to borrowers</p><p class="figure__value"><?= e(format_money($loan['allocated'])) ?></p></div>
     <div class="figure"><p class="figure__label">Not yet allocated</p><p class="figure__value"><?= e(format_money(max(0, $distributable - (float) $loan['allocated']))) ?></p></div>
 </section>
@@ -74,6 +76,7 @@ require APP_ROOT . '/includes/header.php';
             'Other fees'           => e(format_money($loan['other_fees'])),
             'Interest rate'        => show($loan['interest_rate'] !== null ? $loan['interest_rate'] . '%' : null),
             'Total repayment'      => '<strong>' . e(format_money($loan['total_repayment'])) . '</strong>',
+            'Credit held on card'  => e(format_money($hold['amount'])) . ' <span class="text-muted">(principal ' . e(format_money($hold['principal'])) . ' − paid ' . e(format_money($hold['paid'])) . ')</span>',
             'Term'                 => show($loan['term_months'] ? $loan['term_months'] . ' month(s)' : null),
             'Monthly payment'      => show_money($loan['monthly_payment']),
             'Payment frequency'    => show($loan['payment_frequency'] ? humanize($loan['payment_frequency']) : null),

@@ -105,6 +105,12 @@ function db_update(string $table, array $data, string $id): void
 function db_transaction(callable $work): mixed
 {
     $pdo = db();
+
+    // Already inside a transaction: join it (the outer call commits or rolls back).
+    if ($pdo->inTransaction()) {
+        return $work($pdo);
+    }
+
     $pdo->beginTransaction();
 
     try {

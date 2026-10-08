@@ -19,7 +19,7 @@ function credit_card_fields(?array $current = null): array
         'last_four'         => ['label' => 'Last four digits', 'type' => 'text', 'max' => 4, 'required' => true, 'pattern' => '/^[0-9]{4}$/', 'pattern_message' => 'Enter exactly 4 digits.', 'help' => 'Never enter the full card number.'],
         'status'            => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_CARD_STATUS), 'required' => true, 'initial' => 'active'],
         'credit_limit'      => ['label' => 'Credit limit', 'type' => 'decimal', 'min' => 0, 'required' => true, 'section' => 'Limits and billing'],
-        'available_credit'  => ['label' => 'Available credit', 'type' => 'decimal', 'min' => 0, 'required' => true, 'help' => 'Cannot exceed the credit limit.'],
+        'available_credit'  => ['label' => 'Available credit', 'type' => 'decimal', 'min' => 0, 'required' => true, 'help' => 'Cannot exceed the credit limit. Cash loans update this automatically; correct it here to match your bank statement.'],
         'interest_rate'     => ['label' => 'Interest rate (%)', 'type' => 'decimal', 'scale' => 4, 'digits' => 8, 'min' => 0, 'placeholder' => '0.0000'],
         'billing_cycle_day' => ['label' => 'Billing cycle day', 'type' => 'int', 'min' => 1, 'max' => 31],
         'payment_due_day'   => ['label' => 'Payment due day', 'type' => 'int', 'min' => 1, 'max' => 31],

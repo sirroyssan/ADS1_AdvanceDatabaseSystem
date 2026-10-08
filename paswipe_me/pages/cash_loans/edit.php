@@ -24,10 +24,14 @@ if (is_post()) {
 
     if (!$errors) {
         try {
-            db_update('cash_loans', $data + ['updated_by' => $currentUser['id']], $loan['id']);
+            cash_loan_sync_hold($loan['id'], function () use ($loan, $data, $currentUser) {
+                db_update('cash_loans', $data + ['updated_by' => $currentUser['id']], $loan['id']);
+            });
             log_activity('update', 'cash_loan', $loan['id'], 'Updated cash loan ' . $data['loan_reference'], array_intersect_key($loan, $data), $data);
             flash('success', 'Cash loan ' . $data['loan_reference'] . ' was updated.');
             redirect('pages/cash_loans/view.php', ['id' => $loan['id']]);
+        } catch (DomainException $e) {
+            $errors['_form'] = $e->getMessage();
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
         }

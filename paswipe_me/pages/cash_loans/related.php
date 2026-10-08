@@ -35,7 +35,9 @@ try {
                 flash('error', 'Enter the term, first due date and total repayment first.');
                 break;
             }
-            $principal = min((float) $loan['total_repayment'], (float) $loan['accepted_amount'] ?: (float) $loan['total_repayment']);
+            // Same principal as the credit hold: accepted amount, else approved amount.
+            $loanPrincipal = (float) $loan['accepted_amount'] > 0 ? (float) $loan['accepted_amount'] : (float) $loan['approved_amount'];
+            $principal = $loanPrincipal > 0 ? min((float) $loan['total_repayment'], $loanPrincipal) : (float) $loan['total_repayment'];
             $charges = (float) $loan['total_repayment'] - $principal;
             $rows = build_schedule($principal, $charges, 0, (int) $loan['term_months'], $loan['first_due_date'], $loan['payment_frequency'] ?? 'monthly');
             db_transaction(function () use ($loan, $rows) {
@@ -51,24 +53,36 @@ try {
             break;
 
         case 'record_payment':
-            $error = apply_schedule_payment('cash_loan_schedules', 'cash_loan_id', $loan['id'], input_string($_POST, 'schedule_id'), input_string($_POST, 'amount'));
+            $heldBefore = cash_loan_hold($loan['id'])['amount'];
+            // Paying an installment releases its principal back to the card's available credit.
+            [$error, $completed] = cash_loan_sync_hold($loan['id'], function () use ($loan) {
+                $error = apply_schedule_payment('cash_loan_schedules', 'cash_loan_id', $loan['id'], input_string($_POST, 'schedule_id'), input_string($_POST, 'amount'));
+                if ($error !== null) {
+                    return [$error, false];
+                }
+                $open = (int) db_value("SELECT COUNT(*) FROM cash_loan_schedules WHERE cash_loan_id = :id AND status NOT IN ('paid', 'waived', 'cancelled')", [':id' => $loan['id']]);
+                if ($open === 0) {
+                    db_update('cash_loans', ['status' => 'completed'], $loan['id']);
+                }
+                return [null, $open === 0];
+            });
             if ($error !== null) {
                 flash('error', $error);
                 break;
             }
+            $released = $heldBefore - cash_loan_hold($loan['id'])['amount'];
             log_activity('schedule_payment', 'cash_loan', $loan['id'], 'Recorded ' . input_string($_POST, 'amount') . ' on a cash loan installment');
-            flash('success', 'Installment payment was recorded.');
-            if ((int) db_value("SELECT COUNT(*) FROM cash_loan_schedules WHERE cash_loan_id = :id AND status NOT IN ('paid', 'waived', 'cancelled')", [':id' => $loan['id']]) === 0) {
-                db_update('cash_loans', ['status' => 'completed'], $loan['id']);
+            flash('success', 'Installment payment was recorded.' . ($released > 0.004 ? ' ' . format_money($released) . ' of available credit was released on the card.' : ''));
+            if ($completed) {
                 flash('success', 'All installments are paid — the cash loan is now completed.');
             }
             break;
 
         case 'schedule_status':
-            $count = db_exec(
+            $count = cash_loan_sync_hold($loan['id'], fn () => db_exec(
                 "UPDATE cash_loan_schedules SET status = 'waived' WHERE id = :i AND cash_loan_id = :l AND status NOT IN ('paid', 'waived', 'cancelled')",
                 [':i' => input_string($_POST, 'schedule_id'), ':l' => $loan['id']]
-            );
+            ));
             flash($count ? 'success' : 'error', $count ? 'Installment was waived.' : 'Installment not found or already settled.');
             break;
 
@@ -123,6 +137,8 @@ try {
         default:
             flash('error', 'Unknown action.');
     }
+} catch (DomainException $e) {
+    flash('error', $e->getMessage());
 } catch (PDOException $e) {
     flash('error', db_error_message($e));
 }
