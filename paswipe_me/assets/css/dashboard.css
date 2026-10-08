@@ -1836,3 +1836,48 @@ input[type="file"] {
     border-radius: var(--radius-sm);
     background: var(--surface-muted);
 }
+
+/* Printable documents (agreements, demand letters) */
+.print-document {
+    display: grid;
+    gap: 18px;
+}
+
+.print-document__head {
+    text-align: center;
+}
+
+.print-document__head h2 {
+    margin: 4px 0;
+    font-size: 20px;
+}
+
+.signature-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 40px 32px;
+    padding-top: 36px;
+}
+
+.signature-line {
+    display: grid;
+    gap: 2px;
+    padding-top: 6px;
+    border-top: 1px solid var(--text);
+    text-align: center;
+}
+
+.signature-line small {
+    color: var(--text-muted);
+}
+
+@media print {
+    .print-document {
+        border: 0;
+        padding: 0;
+    }
+
+    .print-document .document-body {
+        font-size: 12pt;
+    }
+}

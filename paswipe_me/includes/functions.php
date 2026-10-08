@@ -314,3 +314,18 @@ function pagination_links(int $current, int $pages, int $window = 1): array
 
     return $links;
 }
+
+/* ------------------------------------------------------------------
+ * Templates
+ * ------------------------------------------------------------------ */
+
+/**
+ * Replace {{placeholders}} in agreement / demand letter templates.
+ * Unknown placeholders are left as they are so they are easy to spot.
+ */
+function fill_template(string $body, array $values): string
+{
+    return preg_replace_callback('/\{\{\s*([a-z_]+)\s*\}\}/', static function (array $m) use ($values) {
+        return array_key_exists($m[1], $values) ? (string) $values[$m[1]] : $m[0];
+    }, $body) ?? $body;
+}
