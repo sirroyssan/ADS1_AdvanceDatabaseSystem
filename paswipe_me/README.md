@@ -668,6 +668,15 @@ On a cash advance page, **Give to a borrower** turns all or part of the withdraw
 - **Same rules as one at a time:** owners and administrators only, reason of 10 or more characters, and a penalty with something paid can only be waived. Those are reported as skipped.
 - The button stays disabled until something is ticked, and deleting asks for confirmation.
 
+## Sweet alert dialogs (`assets/js/sweet.js`)
+
+- **Messages:** flash messages (saved, deleted, errors, notes) appear in one centred dialog with an animated icon: green check, red ✕, amber !, or blue i. Several messages are listed together, and the dialog takes the most serious type.
+  - Success messages close by themselves after 3.5 seconds; the timer pauses while the mouse is over them.
+  - Errors and notes wait for OK.
+- **Confirmations:** every confirmation (`data-confirm` forms and the bulk penalty action) uses `Sweet.confirm`. Delete-type confirmations show a red trash icon; others show a question or warning icon.
+- **Accessibility:** focus starts on Cancel for confirmations and stays inside the dialog. Esc and a click outside cancel, and focus returns afterwards. Reduced-motion settings are respected, and the dialog is hidden in print.
+- **No external library**, so it works offline. Without JavaScript the inline alerts are still shown.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |

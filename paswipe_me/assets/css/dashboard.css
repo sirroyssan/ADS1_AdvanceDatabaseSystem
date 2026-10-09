@@ -2033,3 +2033,204 @@ input[type="file"] {
 .bulk-panel__count {
     margin: 0 0 10px;
 }
+
+/* ---------- Sweet dialogs (assets/js/sweet.js) ---------- */
+.sweet {
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 16px;
+    background: rgba(10, 15, 30, 0);
+    transition: background 200ms ease;
+}
+
+.sweet.is-visible {
+    background: rgba(10, 15, 30, 0.5);
+}
+
+.sweet__panel {
+    position: relative;
+    width: 100%;
+    max-width: 440px;
+    max-height: calc(100vh - 32px);
+    overflow: auto;
+    padding: 30px 24px 22px;
+    display: grid;
+    justify-items: center;
+    gap: 10px;
+    background: var(--surface);
+    border-radius: var(--radius-lg, 14px);
+    box-shadow: 0 24px 60px rgba(10, 15, 30, 0.28);
+    text-align: center;
+    opacity: 0;
+    transform: scale(0.86);
+}
+
+.sweet.is-visible .sweet__panel {
+    animation: sweet-pop 320ms cubic-bezier(0.2, 1.4, 0.4, 1) forwards;
+}
+
+.sweet.is-leaving .sweet__panel {
+    animation: sweet-out 180ms ease-in forwards;
+}
+
+@keyframes sweet-pop {
+    0% { opacity: 0; transform: scale(0.86); }
+    100% { opacity: 1; transform: scale(1); }
+}
+
+@keyframes sweet-out {
+    from { opacity: 1; transform: scale(1); }
+    to { opacity: 0; transform: scale(0.94); }
+}
+
+.sweet__icon {
+    width: 76px;
+    height: 76px;
+    color: var(--primary);
+}
+
+.sweet__icon svg {
+    width: 100%;
+    height: 100%;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 3;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+}
+
+.sweet__icon .sweet-ring {
+    opacity: 0.25;
+    stroke-dasharray: 151;
+    stroke-dashoffset: 151;
+    animation: sweet-draw 450ms ease-out forwards;
+}
+
+.sweet__icon .sweet-mark {
+    stroke-dasharray: 60;
+    stroke-dashoffset: 60;
+    animation: sweet-draw 380ms 280ms ease-out forwards;
+}
+
+.sweet__icon .sweet-dot {
+    fill: currentColor;
+    stroke: none;
+    opacity: 0;
+    animation: sweet-fade 200ms 500ms ease-out forwards;
+}
+
+@keyframes sweet-draw { to { stroke-dashoffset: 0; } }
+@keyframes sweet-fade { to { opacity: 1; } }
+
+.sweet__icon--success { color: var(--success, #15803d); }
+.sweet__icon--error,
+.sweet__icon--danger { color: var(--danger, #dc2626); }
+.sweet__icon--warning { color: var(--warning, #d97706); }
+.sweet__icon--info,
+.sweet__icon--question { color: var(--primary, #2556d9); }
+
+.sweet__icon--error svg,
+.sweet__icon--danger svg {
+    animation: sweet-shake 420ms 650ms ease-in-out;
+}
+
+@keyframes sweet-shake {
+    20%, 60% { transform: translateX(-4px); }
+    40%, 80% { transform: translateX(4px); }
+}
+
+.sweet__title {
+    margin: 4px 0 0;
+    font-size: 21px;
+}
+
+.sweet__text {
+    width: 100%;
+    color: var(--text-muted);
+    font-size: 15px;
+    overflow-wrap: anywhere;
+}
+
+.sweet__text p {
+    margin: 0;
+}
+
+.sweet__list {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    display: grid;
+    gap: 6px;
+    text-align: left;
+}
+
+.sweet__item {
+    padding: 8px 10px 8px 12px;
+    border-left: 3px solid var(--border);
+    border-radius: 6px;
+    background: var(--surface-muted);
+}
+
+.sweet__item--success { border-left-color: var(--success, #15803d); }
+.sweet__item--error { border-left-color: var(--danger, #dc2626); }
+.sweet__item--warning { border-left-color: var(--warning, #d97706); }
+.sweet__item--info { border-left-color: var(--primary, #2556d9); }
+
+.sweet__actions {
+    display: flex;
+    justify-content: center;
+    gap: 10px;
+    width: 100%;
+    margin-top: 12px;
+}
+
+.sweet__actions .btn {
+    min-width: 120px;
+}
+
+.sweet__timer {
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    height: 4px;
+    width: 100%;
+    background: var(--success, #15803d);
+    opacity: 0.6;
+    transform-origin: left;
+    animation: sweet-timer linear forwards;
+}
+
+@keyframes sweet-timer {
+    from { transform: scaleX(1); }
+    to { transform: scaleX(0); }
+}
+
+@media (max-width: 480px) {
+    .sweet__actions {
+        flex-direction: column-reverse;
+    }
+
+    .sweet__actions .btn {
+        width: 100%;
+    }
+}
+
+@media (prefers-reduced-motion: reduce) {
+    .sweet.is-visible .sweet__panel,
+    .sweet.is-leaving .sweet__panel,
+    .sweet__icon *,
+    .sweet__icon svg {
+        animation-duration: 1ms !important;
+        animation-delay: 0ms !important;
+    }
+}
+
+@media print {
+    .sweet {
+        display: none !important;
+    }
+}

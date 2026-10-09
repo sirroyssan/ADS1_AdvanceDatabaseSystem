@@ -165,70 +165,29 @@
     /* ------------------------------------------------------------------
      * Confirmation modal: any <form data-confirm="message">
      * ------------------------------------------------------------------ */
-    var modal = document.getElementById('confirm-modal');
-    var modalMessage = document.getElementById('confirm-message');
-    var modalAccept = document.getElementById('confirm-accept');
-    var pendingForm = null;
-    var lastFocus = null;
+    // Shown with Sweet.confirm (assets/js/sweet.js). Delete-style confirmations get
+    // the red trash icon; others (cancel, approve, change status...) a question icon.
+    document.addEventListener('submit', function (event) {
+        var form = event.target;
+        if (!form.hasAttribute('data-confirm') || form.dataset.confirmed === '1' || !window.Sweet) return;
+        event.preventDefault();
 
-    function openModal(form) {
-        pendingForm = form;
-        lastFocus = document.activeElement;
-        modalMessage.textContent = form.getAttribute('data-confirm');
-        // Optional wording for non-delete confirmations (cancel, approve, ...).
-        document.getElementById('confirm-title').textContent = form.getAttribute('data-confirm-title') || 'Delete record?';
-        modalAccept.querySelector('.btn__label').textContent = form.getAttribute('data-confirm-button') || 'Delete';
-        modal.hidden = false;
-        body.classList.add('modal-open');
-        modal.querySelector('[data-modal-close].btn').focus();
-    }
-
-    function closeModal() {
-        modal.hidden = true;
-        body.classList.remove('modal-open');
-        resetLoading(modalAccept);
-        pendingForm = null;
-        if (lastFocus) lastFocus.focus();
-    }
-
-    if (modal) {
-        document.addEventListener('submit', function (event) {
-            var form = event.target;
-            if (!form.hasAttribute('data-confirm') || form.dataset.confirmed === '1') return;
-            event.preventDefault();
-            openModal(form);
+        var button = form.getAttribute('data-confirm-button') || 'Delete';
+        var isDelete = /delete|remove/i.test(button) || !form.hasAttribute('data-confirm-title');
+        window.Sweet.confirm({
+            type: isDelete ? 'danger' : 'question',
+            title: form.getAttribute('data-confirm-title') || 'Delete record?',
+            text: form.getAttribute('data-confirm'),
+            confirmText: button,
+            cancelText: 'Cancel'
+        }).then(function (accepted) {
+            if (!accepted) return;
+            form.dataset.confirmed = '1';
+            var submit = form.querySelector('button[type="submit"]');
+            if (submit && submit.hasAttribute('data-loading-text')) setLoading(submit);
+            form.submit();
         });
-
-        modal.querySelectorAll('[data-modal-close]').forEach(function (el) {
-            el.addEventListener('click', closeModal);
-        });
-
-        modalAccept.addEventListener('click', function () {
-            if (!pendingForm) return;
-            setLoading(modalAccept);
-            pendingForm.dataset.confirmed = '1';
-            pendingForm.submit();
-        });
-
-        modal.addEventListener('keydown', function (event) {
-            if (event.key === 'Escape') {
-                closeModal();
-            }
-            // Keep keyboard focus inside the dialog.
-            if (event.key === 'Tab') {
-                var focusable = modal.querySelectorAll('button:not([disabled])');
-                var first = focusable[0];
-                var last = focusable[focusable.length - 1];
-                if (event.shiftKey && document.activeElement === first) {
-                    event.preventDefault();
-                    last.focus();
-                } else if (!event.shiftKey && document.activeElement === last) {
-                    event.preventDefault();
-                    first.focus();
-                }
-            }
-        });
-    }
+    });
 
     /* ------------------------------------------------------------------
      * Escape closes the mobile drawer

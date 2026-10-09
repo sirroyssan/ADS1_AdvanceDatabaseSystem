@@ -172,11 +172,22 @@
         }
         items.forEach(function (box) { box.addEventListener('change', refresh); });
         form.addEventListener('submit', function (event) {
+            if (form.dataset.confirmed === '1' || !window.Sweet) return;
+            event.preventDefault();
             var mode = form.querySelector('[name="mode"]');
+            var del = mode && mode.value === 'delete';
             var n = items.filter(function (box) { return box.checked; }).length;
-            if (mode && mode.value === 'delete' && !window.confirm('Delete ' + n + ' penalt' + (n === 1 ? 'y' : 'ies') + '? This cannot be undone.')) {
-                event.preventDefault();
-            }
+            var what = n + ' penalt' + (n === 1 ? 'y' : 'ies');
+            window.Sweet.confirm({
+                type: del ? 'danger' : 'warning',
+                title: del ? 'Delete ' + what + '?' : 'Waive ' + what + '?',
+                text: del ? 'They will be removed. This cannot be undone.' : 'What is unpaid on them will be set to zero. The records are kept.',
+                confirmText: del ? 'Delete' : 'Waive'
+            }).then(function (ok) {
+                if (!ok) return;
+                form.dataset.confirmed = '1';
+                form.submit();
+            });
         });
         refresh();
     });

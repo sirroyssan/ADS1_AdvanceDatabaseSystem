@@ -17,23 +17,8 @@ $pageScripts = $pageScripts ?? [];
     </div>
 </div>
 
-<!-- Shared confirmation dialog (used for delete). -->
-<div class="modal" id="confirm-modal" role="dialog" aria-modal="true" aria-labelledby="confirm-title"
-     aria-describedby="confirm-message" hidden>
-    <div class="modal__backdrop" data-modal-close></div>
-    <div class="modal__panel" role="document">
-        <div class="modal__icon"><?= icon('trash') ?></div>
-        <h2 class="modal__title" id="confirm-title">Delete record?</h2>
-        <p class="modal__message" id="confirm-message">Are you sure you want to delete this record?</p>
-        <div class="modal__actions">
-            <button type="button" class="btn btn--outline" data-modal-close>Cancel</button>
-            <button type="button" class="btn btn--danger" id="confirm-accept" data-loading-text="Deleting…">
-                <span class="btn__label">Delete</span>
-            </button>
-        </div>
-    </div>
-</div>
-
+<!-- Confirmations and messages are shown as sweet dialogs (assets/js/sweet.js). -->
+<script src="<?= e(asset('assets/js/sweet.js')) ?>"></script>
 <script src="<?= e(asset('assets/js/dashboard.js')) ?>"></script>
 <script src="<?= e(asset('assets/js/modules.js')) ?>"></script>
 <?php foreach ($pageScripts as $script): ?>
