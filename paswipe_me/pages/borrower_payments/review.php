@@ -74,8 +74,12 @@ try {
 
     log_activity('review', 'borrower_payment', $payment['id'], $payment['payment_number'] . ' ' . $decision . ($reason ? ': ' . $reason : ''),
         ['status' => $payment['status']], ['status' => $decision] + $checks);
+    // An approved payment is applied at once: penalties, interest, principal, installments oldest first.
+    $applied = $decision === 'approved' ? payment_auto_allocate($payment['id'], $currentUser['id']) : 0.0;
     flash('success', 'Payment ' . $payment['payment_number'] . ' is now ' . humanize($decision) . '.'
-        . ($decision === 'approved' ? ' You can now allocate it to obligations.' : ''));
+        . ($decision === 'approved'
+            ? ($applied > 0 ? ' ' . format_money($applied) . ' was applied automatically to the borrower\'s balance.' : ' The borrower has nothing open to apply it to.')
+            : ''));
 } catch (DomainException $e) {
     flash('error', $e->getMessage());
 } catch (PDOException $e) {

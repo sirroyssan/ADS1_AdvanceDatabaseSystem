@@ -71,11 +71,42 @@ function schedule_status_after_payment(float $amountDue, float $amountPaid, stri
     if ($amountPaid >= $amountDue - 0.004) {
         return 'paid';
     }
+    $today = date('Y-m-d');
+    if ($dueDate < $today) {
+        return 'overdue';            // past due and not fully paid (Paid column shows any part payment)
+    }
     if ($amountPaid > 0) {
         return 'partially_paid';
     }
 
-    return $dueDate < date('Y-m-d') ? 'overdue' : 'upcoming';
+    return $dueDate === $today ? 'due' : 'upcoming';
+}
+
+/**
+ * Keep every installment and obligation status in line with today's date:
+ * unpaid past-due rows become overdue, rows due today become due, and an
+ * obligation is overdue while it (or one of its installments) is past due.
+ * Cheap UPDATEs; runs on every signed-in page load (penalty_run_if_due).
+ */
+function schedule_refresh_statuses(): void
+{
+    foreach (['installment_schedules', 'cash_loan_schedules'] as $table) {
+        db_exec("UPDATE $table SET status = 'overdue'
+                  WHERE status IN ('upcoming', 'due', 'partially_paid') AND remaining_amount > 0 AND due_date < CURDATE()");
+        db_exec("UPDATE $table SET status = 'due'
+                  WHERE status = 'upcoming' AND remaining_amount > 0 AND due_date = CURDATE()");
+        db_exec("UPDATE $table SET status = IF(amount_paid > 0, 'partially_paid', IF(due_date = CURDATE(), 'due', 'upcoming'))
+                  WHERE status = 'overdue' AND remaining_amount > 0 AND due_date >= CURDATE()");
+    }
+
+    $pastDue = "(o.due_date < CURDATE() OR EXISTS (
+                    SELECT 1 FROM installment_plans p JOIN installment_schedules s ON s.installment_plan_id = p.id
+                     WHERE p.transaction_id = o.transaction_id AND p.status <> 'cancelled' AND s.status = 'overdue'
+                       AND (SELECT COUNT(*) FROM borrower_obligations x WHERE x.transaction_id = o.transaction_id AND x.status <> 'cancelled') = 1))";
+    db_exec("UPDATE borrower_obligations o SET o.status = 'overdue'
+              WHERE o.status IN ('pending', 'active', 'partially_paid') AND o.outstanding_amount > 0 AND $pastDue");
+    db_exec("UPDATE borrower_obligations o SET o.status = IF(o.total_paid > 0, 'partially_paid', 'active')
+              WHERE o.status = 'overdue' AND o.outstanding_amount > 0 AND NOT $pastDue");
 }
 
 /**

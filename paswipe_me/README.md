@@ -693,6 +693,20 @@ Shared SQL in `includes/penalties.php`: `penalty_totals_join()`, `borrower_total
 - **Borrower page:** Unpaid penalties and Total to pay figures, plus penalties per obligation.
 - **Borrower Balances report:** Penalties and Total-to-collect columns, figures and sorting.
 
+## Automatic payment application and date-based statuses
+
+- **Approving a borrower payment applies it at once** (`payment_auto_allocate`).
+  - It goes to the oldest-due open obligations first.
+  - Within each obligation: penalties → interest/fees → principal.
+  - The balance part pays the obligation's installments oldest first, with one allocation row per installment, so an owner override reverses it exactly.
+  - The *Auto-allocate* button uses the same logic.
+  - The daily run also applies any approved payment that still has an unallocated amount.
+- **Statuses follow today's date** (`schedule_refresh_statuses`, on every signed-in page load):
+  - an unpaid installment (bank plan or cash loan) past its due date is **Overdue**; one due today is **Due**;
+  - an obligation is **Overdue** while it, or one of its installments, is past due, and goes back to Active / Partially paid once caught up.
+- **The installment plan's Pay button** is now only for amounts that were not recorded as a borrower payment.
+- **Card payments** (paying the bank) are still recorded separately.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |

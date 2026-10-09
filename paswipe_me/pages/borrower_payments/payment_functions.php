@@ -76,6 +76,52 @@ function payment_find(string $id): ?array
     );
 }
 
+/**
+ * Apply an approved payment's unallocated amount to the borrower's open
+ * obligations, oldest due first (each: penalties, interest, principal,
+ * installments oldest first). Returns the amount applied.
+ */
+function payment_auto_allocate(string $paymentId, string $userId): float
+{
+    $payment = payment_find($paymentId);
+    if (!$payment || $payment['status'] !== 'approved') {
+        return 0.0;
+    }
+    $remaining = round((float) $payment['amount'] - (float) $payment['allocated'], 2);
+    if ($remaining <= 0.004) {
+        return 0.0;
+    }
+
+    $open = db_all(
+        "SELECT o.id, o.outstanding_amount + COALESCE(pen.unpaid, 0) AS owed FROM borrower_obligations o
+           LEFT JOIN (SELECT obligation_id, SUM(remaining_amount) AS unpaid FROM applied_penalties GROUP BY obligation_id) pen ON pen.obligation_id = o.id
+          WHERE o.borrower_id = :b AND o.status NOT IN ('cancelled', 'written_off') AND (o.outstanding_amount > 0 OR pen.unpaid > 0)
+          ORDER BY o.due_date IS NULL, o.due_date, o.obligation_date",
+        [':b' => $payment['borrower_id']]
+    );
+
+    $applied = 0.0;
+    foreach ($open as $o) {
+        if ($remaining <= 0.004) {
+            break;
+        }
+        $part = round(min($remaining, (float) $o['owed']), 2);
+        if ($part <= 0.004 || payment_allocate($payment, $o['id'], null, $part, 'auto', $userId) !== null) {
+            continue;
+        }
+        $remaining -= $part;
+        $applied += $part;
+    }
+
+    if ($applied > 0) {
+        log_activity('allocate', 'borrower_payment', $payment['id'], 'Automatically applied ' . format_money($applied) . ' of ' . $payment['payment_number'], null, null, $userId);
+        notify_borrower($payment['borrower_id'], 'payment_applied', 'Payment ' . $payment['payment_number'] . ' applied',
+            format_money($applied) . ' of your payment was applied to your balance (late charges first, then interest, then principal).', 'borrower_payment', $payment['id']);
+    }
+
+    return round($applied, 2);
+}
+
 function allocation_status_for(float $amount, float $allocated): string
 {
     if ($allocated <= 0.004) {
@@ -144,6 +190,35 @@ function payment_log(array $payment, string $toStatus, string $action, ?string $
  * installment, if any); the penalty part reduces applied_penalties.
  * $type is kept for compatibility and ignored. Returns an error or null.
  */
+/**
+ * Unpaid installments an obligation's payments go to: its transaction's
+ * installment plan, when this obligation is the only one on that transaction
+ * (a shared purchase's bank schedule is not the borrower's). The chosen
+ * installment comes first, then oldest first. Rows are locked.
+ */
+function obligation_open_schedules(array $obligation, ?string $firstId = null): array
+{
+    if (!$obligation['transaction_id']) {
+        return [];
+    }
+    $shared = (int) db_value("SELECT COUNT(*) FROM borrower_obligations WHERE transaction_id = :t AND status <> 'cancelled'", [':t' => $obligation['transaction_id']]) > 1;
+    if ($shared && $firstId === null) {
+        return [];
+    }
+
+    $rows = db_all(
+        "SELECT s.* FROM installment_schedules s JOIN installment_plans p ON p.id = s.installment_plan_id
+          WHERE p.transaction_id = :t AND p.status <> 'cancelled' AND s.status NOT IN ('paid', 'waived', 'cancelled') AND s.remaining_amount > 0
+          ORDER BY (s.id = :first) DESC, s.installment_number FOR UPDATE",
+        [':t' => $obligation['transaction_id'], ':first' => $firstId ?? '']
+    );
+    if ($firstId !== null && (!$rows || $rows[0]['id'] !== $firstId)) {
+        throw new DomainException('The installment must be an unpaid installment of the obligation\'s transaction.');
+    }
+
+    return $shared ? array_slice($rows, 0, 1) : $rows;
+}
+
 function payment_allocate(array $payment, string $obligationId, ?string $scheduleId, float $amount, string $type, string $userId): ?string
 {
     try {
@@ -208,30 +283,43 @@ function payment_allocate_locked(array $payment, string $obligationId, ?string $
             $left -= $part;
         }
 
-        // The installment (if chosen) receives the balance part only.
-        if ($scheduleId !== null && $toBalance > 0.004) {
-            $schedule = db_row(
-                'SELECT s.* FROM installment_schedules s JOIN installment_plans p ON p.id = s.installment_plan_id
-                  WHERE s.id = :s AND p.transaction_id <=> :t FOR UPDATE',
-                [':s' => $scheduleId, ':t' => $obligation['transaction_id']]
-            );
-            if (!$schedule) {
-                throw new DomainException('The installment must belong to the obligation\'s transaction.');
+        // The balance part (interest, then principal) pays the obligation's installments
+        // automatically, oldest first (the chosen one first, if any). One allocation row
+        // per installment and type, so an override can take it back exactly.
+        $schedules = obligation_open_schedules($obligation, $scheduleId);
+        $interestLeft = $toInterest;
+        $principalLeft = $toPrincipal;
+        $rows = [];
+        foreach ($schedules as $schedule) {
+            $room = (float) $schedule['remaining_amount'];
+            if ($room <= 0.004 || $interestLeft + $principalLeft <= 0.004) {
+                continue;
             }
-            $paid = (float) $schedule['amount_paid'] + $toBalance;
+            $i = min($interestLeft, $room);
+            $pr = min($principalLeft, $room - $i);
+            $chunk = $i + $pr;
+            $interestLeft -= $i;
+            $principalLeft -= $pr;
+
+            $paid = (float) $schedule['amount_paid'] + $chunk;
             db_update('installment_schedules', [
                 'amount_paid'      => number_format($paid, 2, '.', ''),
                 'remaining_amount' => number_format(max(0, (float) $schedule['amount_due'] - $paid), 2, '.', ''),
                 'status'           => schedule_status_after_payment((float) $schedule['amount_due'], $paid, $schedule['due_date']),
                 'paid_at'          => $paid >= (float) $schedule['amount_due'] - 0.004 ? date('Y-m-d H:i:s') : null,
             ], $schedule['id']);
+            $rows[] = ['interest', $i, $schedule['id']];
+            $rows[] = ['principal', $pr, $schedule['id']];
         }
+        $rows[] = ['penalty', $toPenalty, null];
+        $rows[] = ['interest', $interestLeft, null];   // no installment left to receive it
+        $rows[] = ['principal', $principalLeft, null];
 
-        foreach (['penalty' => $toPenalty, 'interest' => $toInterest, 'principal' => $toPrincipal] as $kind => $part) {
+        foreach ($rows as [$kind, $part, $sid]) {
             if ($part > 0.004) {
                 db_insert('borrower_payment_allocations', [
                     'id' => new_uuid(), 'borrower_payment_id' => $payment['id'], 'obligation_id' => $obligation['id'],
-                    'installment_schedule_id' => $kind === 'penalty' ? null : $scheduleId,
+                    'installment_schedule_id' => $sid,
                     'allocated_amount' => number_format($part, 2, '.', ''), 'allocation_type' => $kind,
                 ]);
             }

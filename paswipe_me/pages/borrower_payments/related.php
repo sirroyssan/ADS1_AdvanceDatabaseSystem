@@ -41,38 +41,10 @@ try {
             break;
 
         case 'auto_allocate':
-            // Apply the unallocated amount to the oldest open obligations first.
-            $remaining = (float) $payment['amount'] - (float) $payment['allocated'];
-            // Each obligation receives penalties first, then interest, then principal (payment_allocate).
-            $open = db_all(
-                "SELECT o.id, o.outstanding_amount + COALESCE(pen.unpaid, 0) AS outstanding_amount FROM borrower_obligations o
-                   LEFT JOIN (SELECT obligation_id, SUM(remaining_amount) AS unpaid FROM applied_penalties GROUP BY obligation_id) pen ON pen.obligation_id = o.id
-                  WHERE o.borrower_id = :b AND o.status NOT IN ('cancelled', 'written_off') AND (o.outstanding_amount > 0 OR pen.unpaid > 0)
-                  ORDER BY o.due_date IS NULL, o.due_date, o.obligation_date",
-                [':b' => $payment['borrower_id']]
-            );
-            $applied = 0.0;
-            foreach ($open as $obligation) {
-                if ($remaining <= 0.004) {
-                    break;
-                }
-                $part = round(min($remaining, (float) $obligation['outstanding_amount']), 2);
-                $error = payment_allocate($payment, $obligation['id'], null, $part, 'installment', $currentUser['id']);
-                if ($error !== null) {
-                    flash('error', $error);
-                    break;
-                }
-                $remaining -= $part;
-                $applied += $part;
-            }
-            if ($applied > 0) {
-                log_activity('allocate', 'borrower_payment', $payment['id'], 'Auto-allocated ' . format_money($applied) . ' of ' . $payment['payment_number']);
-                notify_borrower($payment['borrower_id'], 'payment_applied', 'Payment ' . $payment['payment_number'] . ' applied',
-                    format_money($applied) . ' of your payment was applied to your balance.', 'borrower_payment', $payment['id']);
-                flash('success', format_money($applied) . ' was applied to the oldest open obligations.');
-            } elseif (!$open) {
-                flash('error', 'This borrower has no open obligations.');
-            }
+            $applied = payment_auto_allocate($payment['id'], $currentUser['id']);
+            flash($applied > 0 ? 'success' : 'error', $applied > 0
+                ? format_money($applied) . ' was applied to the oldest open obligations (penalties, interest, principal; installments oldest first).'
+                : 'Nothing could be applied: this borrower has no open obligations.');
             break;
 
         case 'attach_document':
