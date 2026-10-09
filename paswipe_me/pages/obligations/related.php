@@ -31,9 +31,6 @@ try {
                 break;
             }
             $update = ['status' => $status, 'updated_by' => $currentUser['id']];
-            if ($status === 'overdue' && (float) $obligation['overdue_amount'] == 0.0) {
-                $update['overdue_amount'] = $obligation['outstanding_amount'];
-            }
             if (in_array($status, ['cancelled', 'written_off'], true)) {
                 $update['completed_at'] = date('Y-m-d H:i:s');
             }

@@ -33,7 +33,8 @@ function obligation_fields(bool $isNew, ?array $current = null): array
         'original_amount'   => ['label' => 'Original amount', 'type' => 'decimal', 'required' => true, 'min' => 0, 'section' => 'Amounts'],
         'agreed_interest'   => ['label' => 'Agreed interest', 'type' => 'decimal', 'min' => 0, 'default' => '0.00'],
         'agreed_fees'       => ['label' => 'Agreed fees', 'type' => 'decimal', 'min' => 0, 'default' => '0.00'],
-        'overdue_amount'    => ['label' => 'Overdue amount', 'type' => 'decimal', 'min' => 0, 'default' => '0.00', 'help' => 'Part of the outstanding balance that is past due.'],
+        'overdue_amount'    => ['label' => 'Overdue amount', 'type' => 'decimal', 'min' => 0, 'default' => '0.00', 'readonly' => true,
+                                'help' => 'Calculated automatically: what was due by today minus what the borrower has paid.'],
         'notes'             => ['label' => 'Notes', 'type' => 'textarea', 'rows' => 3],
     ];
 
@@ -68,9 +69,6 @@ function obligation_validate(array $fields, array $input, ?string $id, float $to
             $errors['original_amount'] = 'The total due cannot be less than what was already paid (' . format_money($totalPaid) . ').';
         }
         $outstanding = max(0, $total - $totalPaid);
-        if ((float) $data['overdue_amount'] > $outstanding + 0.004) {
-            $errors['overdue_amount'] = 'Overdue amount cannot be more than the outstanding ' . format_money($outstanding) . '.';
-        }
         $data['total_amount_due'] = number_format($total, 2, '.', '');
         $data['outstanding_amount'] = number_format($outstanding, 2, '.', '');
     }

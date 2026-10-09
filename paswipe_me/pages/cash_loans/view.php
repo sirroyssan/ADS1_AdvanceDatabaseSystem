@@ -189,7 +189,7 @@ require APP_ROOT . '/includes/header.php';
     <?php if (!$schedule && !$canGenerate): ?>
         <p class="field-help">Enter the term (months), first due date and total repayment on the loan to generate its schedule.</p>
     <?php endif; ?>
-    <?= render_schedule_table($schedule, $related, ['id' => $id], $isOpen, true) ?>
+    <?= render_schedule_table($schedule, '', [], false) ?>
 </section>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

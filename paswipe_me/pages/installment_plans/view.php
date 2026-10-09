@@ -88,8 +88,8 @@ require APP_ROOT . '/includes/header.php';
 
 <section class="panel subpanel">
     <header class="panel__header"><h3><?= icon('calendar') ?> Payment schedule</h3></header>
-    <p class="field-help no-print">Statuses follow today's date (unpaid and past due = Overdue). A borrower's approved payment is applied here automatically, oldest installment first — use Pay only for an amount nobody recorded as a borrower payment.</p>
-    <?= render_schedule_table($schedule, url('pages/installment_plans/related.php'), ['id' => $plan['id']], $plan['status'] === 'active', true) ?>
+    <p class="field-help no-print">Updated automatically from the borrower's approved payments (oldest installment first); statuses follow today's date. The amount paid toward the bank installments is recorded as a card payment automatically.</p>
+    <?= render_schedule_table($schedule, '', [], false) ?>
 </section>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

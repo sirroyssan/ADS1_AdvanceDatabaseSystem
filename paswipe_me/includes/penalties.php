@@ -258,8 +258,7 @@ function penalty_run_obligation(array $o, ?string $today = null): int
     }
 
     // Keep the obligation's overdue amount current.
-    $overdue = $o['due_date'] && $o['due_date'] < $today ? (float) $o['outstanding_amount'] : array_sum(array_column($targets, 'outstanding'));
-    db_update('borrower_obligations', ['overdue_amount' => number_format(min($overdue, (float) $o['outstanding_amount']), 2, '.', '')], $o['id']);
+    db_update('borrower_obligations', ['overdue_amount' => number_format(obligation_overdue_amount($o, $today), 2, '.', '')], $o['id']);
 
     if ($created > 0) {
         log_activity('auto_penalty', 'obligation', $o['id'], 'Charged ' . $created . ' automatic penalt' . ($created === 1 ? 'y' : 'ies') . ' on ' . $o['obligation_number']);
@@ -298,7 +297,9 @@ function penalty_run_if_due(): void
 {
     penalty_schema_upgrade();
     try {
+        schedule_sync_upgrade();
         schedule_refresh_statuses();
+        obligation_refresh_overdue();
     } catch (PDOException $e) {
         error_log('[' . APP_NAME . '] Status refresh failed: ' . $e->getMessage());
     }

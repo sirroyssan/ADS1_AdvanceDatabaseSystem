@@ -190,35 +190,6 @@ function payment_log(array $payment, string $toStatus, string $action, ?string $
  * installment, if any); the penalty part reduces applied_penalties.
  * $type is kept for compatibility and ignored. Returns an error or null.
  */
-/**
- * Unpaid installments an obligation's payments go to: its transaction's
- * installment plan, when this obligation is the only one on that transaction
- * (a shared purchase's bank schedule is not the borrower's). The chosen
- * installment comes first, then oldest first. Rows are locked.
- */
-function obligation_open_schedules(array $obligation, ?string $firstId = null): array
-{
-    if (!$obligation['transaction_id']) {
-        return [];
-    }
-    $shared = (int) db_value("SELECT COUNT(*) FROM borrower_obligations WHERE transaction_id = :t AND status <> 'cancelled'", [':t' => $obligation['transaction_id']]) > 1;
-    if ($shared && $firstId === null) {
-        return [];
-    }
-
-    $rows = db_all(
-        "SELECT s.* FROM installment_schedules s JOIN installment_plans p ON p.id = s.installment_plan_id
-          WHERE p.transaction_id = :t AND p.status <> 'cancelled' AND s.status NOT IN ('paid', 'waived', 'cancelled') AND s.remaining_amount > 0
-          ORDER BY (s.id = :first) DESC, s.installment_number FOR UPDATE",
-        [':t' => $obligation['transaction_id'], ':first' => $firstId ?? '']
-    );
-    if ($firstId !== null && (!$rows || $rows[0]['id'] !== $firstId)) {
-        throw new DomainException('The installment must be an unpaid installment of the obligation\'s transaction.');
-    }
-
-    return $shared ? array_slice($rows, 0, 1) : $rows;
-}
-
 function payment_allocate(array $payment, string $obligationId, ?string $scheduleId, float $amount, string $type, string $userId): ?string
 {
     try {
@@ -283,43 +254,11 @@ function payment_allocate_locked(array $payment, string $obligationId, ?string $
             $left -= $part;
         }
 
-        // The balance part (interest, then principal) pays the obligation's installments
-        // automatically, oldest first (the chosen one first, if any). One allocation row
-        // per installment and type, so an override can take it back exactly.
-        $schedules = obligation_open_schedules($obligation, $scheduleId);
-        $interestLeft = $toInterest;
-        $principalLeft = $toPrincipal;
-        $rows = [];
-        foreach ($schedules as $schedule) {
-            $room = (float) $schedule['remaining_amount'];
-            if ($room <= 0.004 || $interestLeft + $principalLeft <= 0.004) {
-                continue;
-            }
-            $i = min($interestLeft, $room);
-            $pr = min($principalLeft, $room - $i);
-            $chunk = $i + $pr;
-            $interestLeft -= $i;
-            $principalLeft -= $pr;
-
-            $paid = (float) $schedule['amount_paid'] + $chunk;
-            db_update('installment_schedules', [
-                'amount_paid'      => number_format($paid, 2, '.', ''),
-                'remaining_amount' => number_format(max(0, (float) $schedule['amount_due'] - $paid), 2, '.', ''),
-                'status'           => schedule_status_after_payment((float) $schedule['amount_due'], $paid, $schedule['due_date']),
-                'paid_at'          => $paid >= (float) $schedule['amount_due'] - 0.004 ? date('Y-m-d H:i:s') : null,
-            ], $schedule['id']);
-            $rows[] = ['interest', $i, $schedule['id']];
-            $rows[] = ['principal', $pr, $schedule['id']];
-        }
-        $rows[] = ['penalty', $toPenalty, null];
-        $rows[] = ['interest', $interestLeft, null];   // no installment left to receive it
-        $rows[] = ['principal', $principalLeft, null];
-
-        foreach ($rows as [$kind, $part, $sid]) {
+        foreach (['penalty' => $toPenalty, 'interest' => $toInterest, 'principal' => $toPrincipal] as $kind => $part) {
             if ($part > 0.004) {
                 db_insert('borrower_payment_allocations', [
                     'id' => new_uuid(), 'borrower_payment_id' => $payment['id'], 'obligation_id' => $obligation['id'],
-                    'installment_schedule_id' => $sid,
+                    'installment_schedule_id' => $kind === 'penalty' ? null : $scheduleId,
                     'allocated_amount' => number_format($part, 2, '.', ''), 'allocation_type' => $kind,
                 ]);
             }
@@ -338,6 +277,9 @@ function payment_allocate_locked(array $payment, string $obligationId, ?string $
         ], $obligation['id']);
 
         db_update('borrower_payments', ['allocation_status' => allocation_status_for((float) $fresh['amount'], $allocated + $amount)], $payment['id']);
+
+        // The installment schedule (purchase plan or cash loan) follows the payment automatically.
+        schedule_sync_obligation($obligation['id'], payment_find($payment['id']));
 
         return null;
     });
@@ -491,18 +433,6 @@ function payment_reverse_allocation(array $a, float $take): void
             'outstanding_amount' => number_format(max(0, (float) $o['total_amount_due'] - $totalPaid), 2, '.', ''),
         ], $o['id']);
 
-        if ($a['installment_schedule_id']) {
-            $s = db_row('SELECT * FROM installment_schedules WHERE id = :id FOR UPDATE', [':id' => $a['installment_schedule_id']]);
-            if ($s) {
-                $paid = max(0, (float) $s['amount_paid'] - $take);
-                db_update('installment_schedules', [
-                    'amount_paid'      => number_format($paid, 2, '.', ''),
-                    'remaining_amount' => number_format(max(0, (float) $s['amount_due'] - $paid), 2, '.', ''),
-                    'status'           => schedule_status_after_payment((float) $s['amount_due'], $paid, $s['due_date']),
-                    'paid_at'          => $paid >= (float) $s['amount_due'] - 0.004 ? $s['paid_at'] : null,
-                ], $s['id']);
-            }
-        }
     }
 
     // Shrink or remove the allocation row (allocations are working data; the
@@ -513,6 +443,9 @@ function payment_reverse_allocation(array $a, float $take): void
     } else {
         db_update('borrower_payment_allocations', ['allocated_amount' => number_format($remaining, 2, '.', '')], $a['id']);
     }
+
+    // The schedule (and the automatic card payment) follow the payments.
+    schedule_sync_obligation($o['id'], payment_find($a['borrower_payment_id']));
 
     // Re-open the obligation if something is owed again.
     $o = db_row('SELECT * FROM borrower_obligations WHERE id = :id', [':id' => $o['id']]);

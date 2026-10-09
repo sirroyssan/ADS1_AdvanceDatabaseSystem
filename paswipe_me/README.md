@@ -707,6 +707,17 @@ Shared SQL in `includes/penalties.php`: `penalty_totals_join()`, `borrower_total
 - **The installment plan's Pay button** is now only for amounts that were not recorded as a borrower payment.
 - **Card payments** (paying the bank) are still recorded separately.
 
+## Schedules follow borrower payments (no Pay button) — `includes/schedule_sync.php`
+
+- **No more Pay button.** The Pay and Waive buttons were removed from installment plan and cash loan schedules, and the old actions now return a message.
+- **Which schedule a payment fills.** Each obligation's schedule is either:
+  - its transaction's installment plan (installment purchase, or a cash advance given to the borrower), when it is the only obligation on the transaction; or
+  - its cash loan's repayment schedule, which is shared by all of that loan's borrowers.
+- **How the paid amounts are worked out.** They are always derived from the borrowers' applied payments, spread oldest installment first, and recalculated whenever a payment is applied or taken back (owner override). The plan or loan completes automatically when everything is paid.
+- **Card payments.** The amount that reaches a bank installment (card installment purchase or cash loan) is recorded automatically as a card payment of type *Borrower payment (auto)*, referenced by the borrower payment number. The card's used credit goes down with it, and an override takes it back.
+- **Overdue.** It is calculated, never typed: *what was due by today − what the borrower paid* (a cash loan uses the borrower's share). It is updated immediately when payments change and on every page load. The field is read-only on the obligation form.
+- **One-time upgrade.** Existing schedules were re-derived from borrower payments, replacing amounts entered with the old Pay button (marker `storage/upgrade_schedule_sync.done`). Card payments recorded earlier were kept.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |

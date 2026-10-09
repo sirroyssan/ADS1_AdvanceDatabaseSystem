@@ -53,46 +53,9 @@ try {
             break;
 
         case 'record_payment':
-            $amount = input_string($_POST, 'amount');
-            $asCardPayment = input_string($_POST, 'card_payment') === '1';
-            // Only payments to the bank lower the card's used credit; "Also a card payment" records one.
-            [$error, $completed] = card_usage_apply([$loan['credit_card_id']], function () use ($loan, $amount, $asCardPayment) {
-                $scheduleId = input_string($_POST, 'schedule_id');
-                $error = apply_schedule_payment('cash_loan_schedules', 'cash_loan_id', $loan['id'], $scheduleId, $amount);
-                if ($error !== null) {
-                    return [$error, false];
-                }
-                if ($asCardPayment) {
-                    $number = db_value('SELECT installment_number FROM cash_loan_schedules WHERE id = :id', [':id' => $scheduleId]);
-                    record_installment_card_payment($loan['credit_card_id'], str_replace([',', ' ', '₱'], '', $amount),
-                        $loan['loan_reference'] . ' #' . $number, 'Cash loan installment', 'Installment ' . $number . ' of cash loan ' . $loan['loan_reference']);
-                }
-                $open = (int) db_value("SELECT COUNT(*) FROM cash_loan_schedules WHERE cash_loan_id = :id AND status NOT IN ('paid', 'waived', 'cancelled')", [':id' => $loan['id']]);
-                if ($open === 0) {
-                    db_update('cash_loans', ['status' => 'completed'], $loan['id']);
-                }
-                return [null, $open === 0];
-            });
-            if ($error !== null) {
-                flash('error', $error);
-                break;
-            }
-            log_activity('schedule_payment', 'cash_loan', $loan['id'], 'Recorded ' . $amount . ' on a cash loan installment' . ($asCardPayment ? ' (also a card payment)' : ''));
-            flash('success', 'Installment payment was recorded.' . ($asCardPayment
-                ? ' It was also saved as a card payment, so the card\'s used credit went down.'
-                : ' It was not saved as a card payment, so the card\'s used credit did not change.'));
-            if ($completed) {
-                flash('success', 'All installments are paid — the cash loan is now completed.');
-            }
-            break;
-
         case 'schedule_status':
-            // A waived installment is a credit: the bank no longer charges it.
-            $count = card_usage_apply([$loan['credit_card_id']], fn () => db_exec(
-                "UPDATE cash_loan_schedules SET status = 'waived' WHERE id = :i AND cash_loan_id = :l AND status NOT IN ('paid', 'waived', 'cancelled')",
-                [':i' => input_string($_POST, 'schedule_id'), ':l' => $loan['id']]
-            ));
-            flash($count ? 'success' : 'error', $count ? 'Installment was waived.' : 'Installment not found or already settled.');
+            // Installments are paid only through borrower payments (applied automatically).
+            flash('error', 'Installments are updated automatically from approved borrower payments. Record the payment under Borrower Payments.');
             break;
 
         case 'add_allocation':
