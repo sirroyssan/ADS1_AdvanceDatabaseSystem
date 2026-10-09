@@ -11,7 +11,7 @@ $currentUser = require_admin();
 
 $rule = find_or_redirect(penalty_rule_find(request_id()), 'pages/penalty_rules/index.php', 'Penalty rule');
 $fields = penalty_rule_fields($rule);
-$data = form_data_from_row($fields, $rule);
+$data = form_data_from_row($fields, ['applies_to_issuer' => bank_canonical($rule['applies_to_issuer'])] + $rule);
 $errors = [];
 
 if (is_post()) {

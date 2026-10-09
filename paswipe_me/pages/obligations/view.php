@@ -182,48 +182,53 @@ require APP_ROOT . '/includes/header.php';
     <?php if (!$penalties): ?>
         <p class="empty-inline">No penalties applied.</p>
     <?php else: ?>
-        <div class="table-wrap">
-            <table class="table table--cards table--compact">
-                <thead><tr><th scope="col">Date</th><th scope="col">Rule</th><th scope="col" class="num">Days late</th><th scope="col" class="num">Base</th><th scope="col" class="num">Amount</th><th scope="col" class="num">Paid</th><th scope="col" class="num">Remaining</th><th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th></tr></thead>
-                <tbody>
-                <?php foreach ($penalties as $p): ?>
-                    <tr>
-                        <td data-label="Date"><?= e(format_date($p['applied_date'])) ?></td>
-                        <td data-label="Rule"><?= e($p['rule_name']) ?><?= $p['notes'] ? '<br><span class="text-muted">' . nl2br(e($p['notes'])) . '</span>' : '' ?></td>
-                        <td data-label="Days late" class="num"><?= e($p['overdue_days']) ?></td>
-                        <td data-label="Base" class="num"><?= e(format_money($p['calculation_base'])) ?></td>
-                        <td data-label="Amount" class="num"><?= e(format_money($p['amount'])) ?></td>
-                        <td data-label="Paid" class="num"><?= e(format_money($p['paid_amount'])) ?></td>
-                        <td data-label="Remaining" class="num"><?= e(format_money($p['remaining_amount'])) ?></td>
-                        <td class="actions no-print"><div class="row-actions">
-                            <?php if (isset($terminateOptions[$p['id']])): ?>
-                                <?= icon_link(url('pages/obligations/view.php', ['id' => $id, 'penalty' => $p['id']]) . '#terminate-penalty', 'x', 'Waive or delete this penalty', true) ?>
-                            <?php endif; ?>
-                        </div></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    <?php endif; ?>
-    <?php if ($terminateOptions): ?>
-        <form method="post" action="<?= e($related) ?>" class="inline-panel no-print" id="terminate-penalty" <?= isset($terminateOptions[$selectedPenalty]) ? '' : 'hidden' ?> novalidate data-validate>
+        <form method="post" action="<?= e($related) ?>" id="terminate-penalty" data-bulk-form novalidate>
             <?= csrf_field() ?>
             <input type="hidden" name="id" value="<?= e($id) ?>">
-            <input type="hidden" name="action" value="terminate_penalty">
-            <?= render_fields([
-                'item_id' => ['label' => 'Penalty', 'type' => 'select', 'options' => $terminateOptions, 'required' => true, 'empty_label' => 'Select penalty'],
-                'mode'    => ['label' => 'Action', 'type' => 'select', 'options' => ['waive' => 'Waive — keep the record, set the unpaid amount to zero', 'delete' => 'Delete — remove the penalty (only if nothing was paid on it)'], 'required' => true],
-                'reason'  => ['label' => 'Reason', 'type' => 'textarea', 'rows' => 2, 'required' => true, 'max' => 1000,
-                              'placeholder' => 'e.g. Cash payment received offline but not yet recorded in the system',
-                              'help' => 'Required (at least ' . PENALTY_REASON_MIN . ' characters). Saved with the penalty and in the activity log.'],
-            ], ['item_id' => $selectedPenalty, 'mode' => 'waive'], []) ?>
-            <div class="inline-panel__actions">
-                <a href="<?= e(url('pages/obligations/view.php', ['id' => $id])) ?>" class="btn btn--outline">Cancel</a>
-                <button type="submit" class="btn btn--danger" data-loading-text="Saving…"><?= icon('check') ?> <span class="btn__label">Confirm</span></button>
+            <input type="hidden" name="action" value="terminate_penalties">
+            <div class="table-wrap">
+                <table class="table table--cards table--compact">
+                    <thead><tr>
+                        <th scope="col" class="col-check no-print"><?php if ($terminateOptions): ?><input type="checkbox" data-check-all aria-label="Select all penalties that can be waived or deleted"><?php endif; ?></th>
+                        <th scope="col">Date</th><th scope="col">Rule</th><th scope="col" class="num">Days late</th><th scope="col" class="num">Base</th><th scope="col" class="num">Amount</th><th scope="col" class="num">Paid</th><th scope="col" class="num">Remaining</th>
+                    </tr></thead>
+                    <tbody>
+                    <?php foreach ($penalties as $p): ?>
+                        <tr>
+                            <td class="col-check no-print">
+                                <?php if (isset($terminateOptions[$p['id']])): ?>
+                                    <input type="checkbox" name="item_ids[]" value="<?= e($p['id']) ?>" data-check-item <?= $selectedPenalty === $p['id'] ? 'checked' : '' ?>
+                                           aria-label="Select penalty of <?= e(format_date($p['applied_date'])) ?>, <?= e($p['rule_name']) ?>">
+                                <?php endif; ?>
+                            </td>
+                            <td data-label="Date"><?= e(format_date($p['applied_date'])) ?></td>
+                            <td data-label="Rule"><?= e($p['rule_name']) ?><?= $p['notes'] ? '<br><span class="text-muted">' . nl2br(e($p['notes'])) . '</span>' : '' ?></td>
+                            <td data-label="Days late" class="num"><?= e($p['overdue_days']) ?></td>
+                            <td data-label="Base" class="num"><?= e(format_money($p['calculation_base'])) ?></td>
+                            <td data-label="Amount" class="num"><?= e(format_money($p['amount'])) ?></td>
+                            <td data-label="Paid" class="num"><?= e(format_money($p['paid_amount'])) ?></td>
+                            <td data-label="Remaining" class="num"><?= e(format_money($p['remaining_amount'])) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
             </div>
+            <?php if ($terminateOptions): ?>
+                <div class="inline-panel bulk-panel no-print">
+                    <p class="bulk-panel__count"><strong data-check-count>0</strong> selected · tick the penalties above (or the box in the header for all), then:</p>
+                    <?= render_fields([
+                        'mode'   => ['label' => 'Action', 'type' => 'select', 'options' => ['waive' => 'Waive selected', 'delete' => 'Delete selected'], 'required' => true,
+                                     'help' => 'Waive keeps the records and sets what is unpaid to zero. Delete removes penalties that have nothing paid.'],
+                        'reason' => ['label' => 'Reason (applies to all selected)', 'type' => 'textarea', 'rows' => 2, 'required' => true, 'max' => 1000,
+                                     'placeholder' => 'e.g. Cash payment received offline but not yet recorded in the system',
+                                     'help' => 'Required (at least ' . PENALTY_REASON_MIN . ' characters). Saved with each penalty and in the activity log. Owners and administrators only.'],
+                    ], ['mode' => 'waive'], []) ?>
+                    <div class="inline-panel__actions">
+                        <button type="submit" class="btn btn--danger" data-check-submit data-loading-text="Saving…" disabled><?= icon('check') ?> <span class="btn__label">Apply to selected</span></button>
+                    </div>
+                </div>
+            <?php endif; ?>
         </form>
-        <p class="field-help no-print"><button type="button" class="link-button" data-toggle-panel="terminate-penalty">Waive or delete a penalty…</button> Owners and administrators only; a reason is required.</p>
     <?php endif; ?>
     <p class="field-help">Penalties are charged automatically every month while the obligation is overdue. Payments pay penalties first (oldest first), then interest and fees, then principal.</p>
 </section>

@@ -30,6 +30,10 @@ $statements = db_all(
     [':id' => $id]
 );
 $usage = credit_card_usage($id);
+$bankRules = array_values(array_filter(
+    db_all("SELECT * FROM penalty_rules WHERE is_active = 1 AND applies_to_issuer IS NOT NULL ORDER BY name"),
+    static fn ($r) => same_bank($r['applies_to_issuer'], $card['issuer'])
+));
 $related = url('pages/credit_cards/related.php');
 
 $pageTitle = 'Credit Card Details';
@@ -114,6 +118,22 @@ require APP_ROOT . '/includes/header.php';
                         <?php $charge = cash_loan_card_charge($l); ?>
                         <li><a href="<?= e(url('pages/cash_loans/view.php', ['id' => $l['id']])) ?>"><?= e($l['loan_reference']) ?></a>
                             <span><?= $charge['counts'] ? e(format_money($charge['total'])) . ' charged' : 'Not charged' ?> <?= badge($l['status']) ?></span></li>
+                    <?php endforeach; ?>
+                </ul>
+            <?php endif; ?>
+        </section>
+
+        <section class="panel">
+            <header class="panel__header">
+                <h3>Penalty rules for <?= e(bank_canonical($card['issuer'])) ?></h3>
+                <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/penalty_rules/index.php')) ?>"><span>Manage</span></a>
+            </header>
+            <?php if (!$bankRules): ?>
+                <p class="empty-inline">No active penalty rule for this bank. Borrowers' items from this card are not charged automatically.</p>
+            <?php else: ?>
+                <ul class="child-list">
+                    <?php foreach ($bankRules as $r): ?>
+                        <li><a href="<?= e(url('pages/penalty_rules/view.php', ['id' => $r['id']])) ?>"><?= e($r['name']) ?></a><span><?= e(penalty_rule_summary($r)) ?></span></li>
                     <?php endforeach; ?>
                 </ul>
             <?php endif; ?>

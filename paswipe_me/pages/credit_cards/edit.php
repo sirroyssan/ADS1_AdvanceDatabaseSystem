@@ -10,7 +10,7 @@ $currentUser = require_admin();
 
 $card = find_or_redirect(credit_card_find(request_id()), 'pages/credit_cards/index.php', 'Credit card');
 $fields = credit_card_fields($card);
-$data = form_data_from_row($fields, $card + ['opening_balance' => card_opening_balance($card['id'])['amount'] ?? '0.00']);
+$data = form_data_from_row($fields, ['issuer' => bank_canonical($card['issuer'])] + $card + ['opening_balance' => card_opening_balance($card['id'])['amount'] ?? '0.00']);
 $errors = [];
 
 if (is_post()) {

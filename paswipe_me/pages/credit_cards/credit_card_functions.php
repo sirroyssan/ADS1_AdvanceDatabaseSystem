@@ -12,7 +12,8 @@ function credit_card_fields(?array $current = null): array
 {
     return [
         'card_nickname'     => ['label' => 'Card nickname', 'type' => 'text', 'max' => 100, 'required' => true],
-        'issuer'            => ['label' => 'Issuer (bank)', 'type' => 'text', 'max' => 150, 'required' => true],
+        'issuer'            => ['label' => 'Issuer (bank)', 'type' => 'select', 'options' => bank_options(bank_canonical($current['issuer'] ?? null)), 'required' => true, 'empty_label' => 'Select bank',
+                                'help' => 'Penalty rules are set per bank, so this decides which penalty rules apply to this card\'s transactions, cash advances and cash loans.'],
         'owner_user_id'     => ['label' => 'Card owner', 'type' => 'select', 'options' => admin_user_options($current['owner_user_id'] ?? null), 'required' => true, 'empty_label' => 'Select owner'],
         'card_type'         => ['label' => 'Card type', 'type' => 'select', 'options' => enum_options(ENUM_CARD_TYPE), 'required' => true, 'initial' => 'credit'],
         'network'           => ['label' => 'Network', 'type' => 'select', 'options' => array_combine(ENUM_CARD_NETWORK, ['Visa', 'Mastercard', 'American Express', 'JCB', 'UnionPay', 'Other']), 'empty_label' => '— Not set —'],

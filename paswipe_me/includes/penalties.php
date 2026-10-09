@@ -77,14 +77,15 @@ function penalty_rules_for_obligation(array $o): array
         return [];
     }
 
-    return db_all(
+    $rules = db_all(
         'SELECT r.*, GREATEST(COALESCE(r.effective_from, DATE(r.updated_at)), DATE(r.updated_at)) AS charges_from
            FROM penalty_rules r
           WHERE r.is_active = 1 AND r.applies_to_issuer IS NOT NULL
-            AND LOWER(TRIM(r.applies_to_issuer)) = LOWER(TRIM(:issuer))
-          ORDER BY r.name',
-        [':issuer' => $issuer]
+          ORDER BY r.name'
     );
+
+    // Same bank list as the card's Issuer field; aliases match ("Unionbank" = "UnionBank").
+    return array_values(array_filter($rules, static fn ($r) => same_bank($r['applies_to_issuer'], $issuer)));
 }
 
 /**
@@ -482,7 +483,7 @@ function penalty_schema_upgrade(): void
                 $issuer = obligation_card_issuer($p);
                 if ($p['applies_to_issuer'] === null) {
                     $why = 'rule "' . $p['rule_name'] . '" has no bank set';
-                } elseif ($issuer === null || mb_strtolower(trim($issuer)) !== mb_strtolower(trim($p['applies_to_issuer']))) {
+                } elseif ($issuer === null || !same_bank($issuer, $p['applies_to_issuer'])) {
                     $why = 'rule "' . $p['rule_name'] . '" is for ' . $p['applies_to_issuer'] . ', but ' . $p['obligation_number'] . ' is ' . ($issuer ? 'from ' . $issuer : 'not linked to a card');
                 } elseif ($p['applied_date'] < $p['charges_from']) {
                     $why = 'charged for ' . format_date($p['applied_date']) . ', before the rule took effect';

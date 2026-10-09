@@ -145,4 +145,39 @@
             }
         });
     });
+
+    // Bulk selection: [data-check-all] ticks every [data-check-item] in the same form,
+    // [data-check-count] shows how many are ticked, [data-check-submit] needs at least one.
+    document.querySelectorAll('[data-bulk-form]').forEach(function (form) {
+        var all = form.querySelector('[data-check-all]');
+        var items = Array.prototype.slice.call(form.querySelectorAll('[data-check-item]'));
+        var count = form.querySelector('[data-check-count]');
+        var submit = form.querySelector('[data-check-submit]');
+
+        function refresh() {
+            var n = items.filter(function (box) { return box.checked; }).length;
+            if (count) { count.textContent = String(n); }
+            if (submit) { submit.disabled = n === 0; }
+            if (all) {
+                all.checked = n > 0 && n === items.length;
+                all.indeterminate = n > 0 && n < items.length;
+            }
+        }
+
+        if (all) {
+            all.addEventListener('change', function () {
+                items.forEach(function (box) { box.checked = all.checked; });
+                refresh();
+            });
+        }
+        items.forEach(function (box) { box.addEventListener('change', refresh); });
+        form.addEventListener('submit', function (event) {
+            var mode = form.querySelector('[name="mode"]');
+            var n = items.filter(function (box) { return box.checked; }).length;
+            if (mode && mode.value === 'delete' && !window.confirm('Delete ' + n + ' penalt' + (n === 1 ? 'y' : 'ies') + '? This cannot be undone.')) {
+                event.preventDefault();
+            }
+        });
+        refresh();
+    });
 })();

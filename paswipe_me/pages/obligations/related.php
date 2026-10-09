@@ -63,6 +63,34 @@ try {
             flash('success', 'Penalty of ' . format_money($amount) . ' was applied.');
             break;
 
+        case 'terminate_penalties':
+            // Several at once: same rules as one (owners/administrators, reason required).
+            $ids = array_values(array_unique(array_filter((array) ($_POST['item_ids'] ?? []), static fn ($v) => is_string($v) && is_valid_uuid($v))));
+            $mode = input_string($_POST, 'mode');
+            $reason = input_string($_POST, 'reason');
+            if (!$ids) {
+                flash('error', 'Tick at least one penalty first.');
+                break;
+            }
+            if (mb_strlen(trim($reason)) < PENALTY_REASON_MIN) {
+                flash('error', 'Enter a reason of at least ' . PENALTY_REASON_MIN . ' characters (e.g. "Cash payment received offline but not yet recorded").');
+                break;
+            }
+            $done = 0;
+            $skipped = [];
+            foreach ($ids as $penaltyId) {
+                $error = penalty_terminate($penaltyId, $obligation['id'], $mode, $reason, $currentUser);
+                $error === null ? $done++ : $skipped[$error] = ($skipped[$error] ?? 0) + 1;
+            }
+            if ($done) {
+                flash('success', $done . ' penalt' . ($done === 1 ? 'y was' : 'ies were') . ' ' . ($mode === 'waive' ? 'waived' : 'deleted') . '. The reason was recorded.');
+            }
+            foreach ($skipped as $why => $count) {
+                // Already-waived rows are harmless when "select all" is used.
+                flash(str_contains($why, 'nothing left to waive') ? 'info' : 'error', $count . ' skipped: ' . $why);
+            }
+            break;
+
         case 'terminate_penalty':
             // Waive or delete: owners/administrators only (require_admin above + check inside), reason required.
             $mode = input_string($_POST, 'mode');

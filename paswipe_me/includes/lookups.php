@@ -344,3 +344,88 @@ function relationship_is_family(?string $relationship): bool
         $value
     );
 }
+
+/* ------------------------------------------------------------------
+ * Banks (card issuers). credit_cards.issuer and penalty_rules.applies_to_issuer
+ * are chosen from this one list, so a rule's bank always matches its cards.
+ * Aliases let older typed-in values match, e.g. "Bank of the Philippine
+ * Islands" = "BPI".
+ * ------------------------------------------------------------------ */
+
+const BANKS = [
+    'AUB'                => ['asia united bank'],
+    'BDO'                => ['bdo unibank', 'banco de oro'],
+    'BPI'                => ['bank of the philippine islands'],
+    'Chinabank'          => ['china bank', 'china banking corporation'],
+    'CIMB'               => ['cimb bank'],
+    'Citibank'           => ['citi'],
+    'EastWest'           => ['eastwest bank', 'east west bank', 'eastwest banking corporation'],
+    'GoTyme'             => ['gotyme bank'],
+    'HSBC'               => ['hongkong and shanghai banking corporation'],
+    'Landbank'           => ['land bank', 'land bank of the philippines'],
+    'Maybank'            => ['maybank philippines'],
+    'Maya'               => ['maya bank', 'paymaya'],
+    'Metrobank'          => ['metropolitan bank', 'metropolitan bank and trust company'],
+    'PNB'                => ['philippine national bank'],
+    'PSBank'             => ['philippine savings bank'],
+    'RCBC'               => ['rizal commercial banking corporation'],
+    'Robinsons Bank'     => ['robinsons'],
+    'Security Bank'      => ['securitybank', 'security bank corporation'],
+    'Sterling Bank'      => ['sterling bank of asia'],
+    'UnionBank'          => ['union bank', 'union bank of the philippines', 'ubp'],
+];
+
+/**
+ * Canonical bank name for a typed or stored value ("unionbank" -> "UnionBank").
+ * Unknown names are returned trimmed, so they still match themselves.
+ */
+function bank_canonical(?string $name): ?string
+{
+    $key = mb_strtolower(trim(preg_replace('/\s+/', ' ', (string) $name)));
+    if ($key === '') {
+        return null;
+    }
+    foreach (BANKS as $bank => $aliases) {
+        if ($key === mb_strtolower($bank) || in_array($key, $aliases, true) || str_replace(' ', '', $key) === str_replace(' ', '', mb_strtolower($bank))) {
+            return $bank;
+        }
+    }
+
+    return trim((string) $name);
+}
+
+function same_bank(?string $a, ?string $b): bool
+{
+    $a = bank_canonical($a);
+
+    return $a !== null && mb_strtolower($a) === mb_strtolower((string) bank_canonical($b));
+}
+
+/**
+ * Bank dropdown: every listed bank, plus any other bank already used on a
+ * card, plus the current value. Banks you have cards with are marked.
+ */
+function bank_options(?string $current = null): array
+{
+    $mine = [];
+    foreach (db_all("SELECT DISTINCT issuer FROM credit_cards WHERE TRIM(issuer) <> ''") as $row) {
+        $mine[(string) bank_canonical($row['issuer'])] = true;
+    }
+
+    $names = array_keys(BANKS);
+    foreach (array_keys($mine) as $bank) {
+        $names[] = $bank;
+    }
+    if ($current !== null && trim($current) !== '') {
+        $names[] = trim($current);
+    }
+    $names = array_unique($names);
+    natcasesort($names);
+
+    $options = [];
+    foreach ($names as $name) {
+        $options[$name] = $name . (isset($mine[$name]) ? ' — you have a card' : '');
+    }
+
+    return $options;
+}

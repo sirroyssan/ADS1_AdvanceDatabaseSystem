@@ -2012,3 +2012,24 @@ input[type="file"] {
     text-decoration: underline;
     cursor: pointer;
 }
+
+/* Bulk selection of penalties */
+.col-check {
+    width: 36px;
+    text-align: center;
+}
+
+.col-check input {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+    cursor: pointer;
+}
+
+.bulk-panel {
+    margin-top: 12px;
+}
+
+.bulk-panel__count {
+    margin: 0 0 10px;
+}

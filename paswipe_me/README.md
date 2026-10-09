@@ -652,6 +652,22 @@ On a cash advance page, **Give to a borrower** turns all or part of the withdraw
 - Automatic penalties with nothing paid on them were removed if they were for another bank, for a rule without a bank, or for a date before the rule took effect.
 - Each removal is in the activity log (`delete_penalty`) with its reason and is never re-charged. Partly paid and manual penalties were kept.
 
+## One bank list for cards and penalty rules; bulk waive/delete
+
+**Bank list** (`BANKS` in `includes/lookups.php`):
+- The credit card's **Issuer (bank)** and the penalty rule's **Bank** are dropdowns from the same list.
+- The list holds the Philippine card issuers plus any bank already used on a card. Banks you have a card with are marked.
+- **Matching:** a rule matches a card through `same_bank()`, which also understands older typed-in names ("Bank of the Philippine Islands" = BPI, "Unionbank"/"union bank" = UnionBank).
+- **Visibility:** the card page lists the penalty rules for its bank.
+- **Validation:** a value outside the list is refused.
+- **Adding a bank:** add it to `BANKS`.
+
+**Bulk waive/delete** (obligation page):
+- Each penalty has a checkbox, and the header box selects all.
+- Choose *Waive selected* or *Delete selected* and give one reason; it is saved on every penalty and in the activity log.
+- **Same rules as one at a time:** owners and administrators only, reason of 10 or more characters, and a penalty with something paid can only be waived. Those are reported as skipped.
+- The button stays disabled until something is ticked, and deleting asks for confirmation.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |
