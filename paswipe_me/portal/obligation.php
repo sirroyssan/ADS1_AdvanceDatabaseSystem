@@ -83,7 +83,8 @@ require APP_ROOT . '/includes/header.php';
     <div class="figure"><p class="figure__label">Amount due</p><p class="figure__value"><?= e(format_money($o['total_amount_due'])) ?></p></div>
     <div class="figure"><p class="figure__label">Paid</p><p class="figure__value"><?= e(format_money($o['total_paid'])) ?></p></div>
     <div class="figure"><p class="figure__label">Remaining</p><p class="figure__value"><?= e(format_money($o['outstanding_amount'])) ?></p></div>
-    <div class="figure"><p class="figure__label">Late charges unpaid</p><p class="figure__value"><?= e(format_money(array_sum(array_column($penalties, 'remaining_amount')))) ?></p></div>
+    <div class="figure"><p class="figure__label">+ Penalties unpaid</p><p class="figure__value"><?= e(format_money(array_sum(array_column($penalties, 'remaining_amount')))) ?></p></div>
+    <div class="figure figure--total"><p class="figure__label">= Total to pay</p><p class="figure__value"><?= e(format_money(in_array($o['status'], ['written_off'], true) ? 0 : (float) $o['outstanding_amount'] + array_sum(array_column($penalties, 'remaining_amount')))) ?></p></div>
     <div class="figure"><p class="figure__label">Due date</p><p class="figure__value"><?= $o['due_date'] ? e(format_date($o['due_date'])) : '—' ?></p></div>
 </section>
 

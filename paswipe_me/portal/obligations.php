@@ -27,18 +27,20 @@ $where = ["o.status <> 'cancelled'", 'o.borrower_id = :b'];
 $params = [':b' => $borrower['id']];
 add_search_condition($state, ['o.obligation_number', 'o.description'], $where, $params);
 if ($state['filters']['open'] === 'open') {
-    $where[] = "o.outstanding_amount > 0 AND o.status NOT IN ('paid', 'written_off')";
+    $where[] = "(o.outstanding_amount > 0 OR COALESCE(pen.penalties_unpaid, 0) > 0) AND o.status NOT IN ('written_off')";
 } elseif ($state['filters']['open'] === 'closed') {
-    $where[] = "(o.outstanding_amount = 0 OR o.status IN ('paid', 'written_off'))";
+    $where[] = "((o.outstanding_amount = 0 AND COALESCE(pen.penalties_unpaid, 0) = 0) OR o.status IN ('paid', 'written_off'))";
 }
 if ($state['filters']['status'] !== '') {
     $where[] = 'o.status = :status';
     $params[':status'] = $state['filters']['status'];
 }
 
-$result = run_list($state, 'o.*', 'borrower_obligations o', $where, $params);
-$totals = db_row('SELECT COALESCE(SUM(o.total_amount_due), 0) AS due, COALESCE(SUM(o.total_paid), 0) AS paid, COALESCE(SUM(o.outstanding_amount), 0) AS remaining
-                    FROM borrower_obligations o WHERE ' . implode(' AND ', $where), $params);
+$from = 'borrower_obligations o ' . penalty_totals_join();
+$result = run_list($state, 'o.*, COALESCE(pen.penalties_unpaid, 0) AS penalties_unpaid, o.outstanding_amount + COALESCE(pen.penalties_unpaid, 0) AS total_due', $from, $where, $params);
+$totals = db_row('SELECT COALESCE(SUM(o.total_amount_due), 0) AS due, COALESCE(SUM(o.total_paid), 0) AS paid, COALESCE(SUM(o.outstanding_amount), 0) AS remaining,
+                         COALESCE(SUM(pen.penalties_unpaid), 0) AS penalties
+                    FROM ' . $from . ' WHERE ' . implode(' AND ', $where), $params);
 
 $pageTitle = 'What I Owe';
 $activeNav = 'portal_obligations';
@@ -53,7 +55,9 @@ require APP_ROOT . '/includes/header.php';
 <section class="figure-grid">
     <div class="figure"><p class="figure__label">Total amount due</p><p class="figure__value"><?= e(format_money($totals['due'])) ?></p></div>
     <div class="figure"><p class="figure__label">Paid</p><p class="figure__value"><?= e(format_money($totals['paid'])) ?></p></div>
-    <div class="figure"><p class="figure__label">Remaining</p><p class="figure__value"><?= e(format_money($totals['remaining'])) ?></p></div>
+    <div class="figure"><p class="figure__label">Outstanding</p><p class="figure__value"><?= e(format_money($totals['remaining'])) ?></p></div>
+    <div class="figure"><p class="figure__label">+ Penalties</p><p class="figure__value<?= (float) $totals['penalties'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($totals['penalties'])) ?></p></div>
+    <div class="figure figure--total"><p class="figure__label">= Total to pay</p><p class="figure__value"><?= e(format_money((float) $totals['remaining'] + (float) $totals['penalties'])) ?></p></div>
 </section>
 
 <section class="panel panel--flush" aria-label="My obligations">
@@ -64,7 +68,7 @@ require APP_ROOT . '/includes/header.php';
             <table class="table table--cards">
                 <thead><tr>
                     <th scope="col" class="col-num">#</th><th scope="col">Item</th><th scope="col">Date</th><th scope="col">Due date</th>
-                    <th scope="col" class="num">Amount due</th><th scope="col" class="num">Paid</th><th scope="col" class="num">Remaining</th><th scope="col">Status</th>
+                    <th scope="col" class="num">Amount due</th><th scope="col" class="num">Paid</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th><th scope="col" class="num">Total</th><th scope="col">Status</th>
                 </tr></thead>
                 <tbody>
                 <?php foreach ($result['rows'] as $i => $o): ?>
@@ -76,7 +80,9 @@ require APP_ROOT . '/includes/header.php';
                         <td data-label="Due date"><?= $o['due_date'] ? e(format_date($o['due_date'])) : '<span class="text-muted">—</span>' ?></td>
                         <td data-label="Amount due" class="num"><?= e(format_money($o['total_amount_due'])) ?></td>
                         <td data-label="Paid" class="num"><?= e(format_money($o['total_paid'])) ?></td>
-                        <td data-label="Remaining" class="num"><strong><?= e(format_money($o['outstanding_amount'])) ?></strong></td>
+                        <td data-label="Outstanding" class="num"><?= e(format_money($o['outstanding_amount'])) ?></td>
+                        <td data-label="Penalties" class="num<?= (float) $o['penalties_unpaid'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($o['penalties_unpaid'])) ?></td>
+                        <td data-label="Total" class="num"><strong><?= e(format_money($o['status'] === 'written_off' ? 0 : $o['total_due'])) ?></strong></td>
                         <td data-label="Status"><?= badge($o['status']) ?></td>
                     </tr>
                 <?php endforeach; ?>

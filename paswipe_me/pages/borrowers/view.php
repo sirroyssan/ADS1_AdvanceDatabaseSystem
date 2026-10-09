@@ -22,10 +22,12 @@ $account = db_row(
     [':id' => $id]
 );
 $obligations = db_all(
-    'SELECT id, obligation_number, obligation_date, due_date, total_amount_due, outstanding_amount, status
-       FROM borrower_obligations WHERE borrower_id = :id ORDER BY obligation_date DESC LIMIT 10',
+    'SELECT o.id, o.obligation_number, o.obligation_date, o.due_date, o.total_amount_due, o.outstanding_amount, o.status,
+            COALESCE(pen.penalties_unpaid, 0) AS penalties_unpaid
+       FROM borrower_obligations o ' . penalty_totals_join() . ' WHERE o.borrower_id = :id ORDER BY o.obligation_date DESC LIMIT 10',
     [':id' => $id]
 );
+$collect = collection_totals($id);
 $payments = db_all(
     'SELECT id, payment_number, payment_date, amount, status FROM borrower_payments WHERE borrower_id = :id ORDER BY payment_date DESC LIMIT 10',
     [':id' => $id]
@@ -66,6 +68,9 @@ require APP_ROOT . '/includes/header.php';
     <div class="figure"><p class="figure__label">Total paid</p><p class="figure__value"><?= e(format_money($balance['total_paid'])) ?></p></div>
     <div class="figure"><p class="figure__label">Outstanding</p><p class="figure__value"><?= e(format_money($balance['outstanding'])) ?></p></div>
     <div class="figure"><p class="figure__label">Overdue</p><p class="figure__value<?= (float) $balance['overdue'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($balance['overdue'])) ?></p></div>
+    <div class="figure"><p class="figure__label">Unpaid penalties</p><p class="figure__value<?= (float) $collect['penalties'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($collect['penalties'])) ?></p></div>
+    <div class="figure figure--total"><p class="figure__label">Total to pay</p><p class="figure__value"><?= e(format_money($collect['total_due'])) ?></p>
+        <p class="figure__note text-muted">Outstanding + penalties</p></div>
 </section>
 
 <div class="detail-layout">
@@ -247,13 +252,14 @@ require APP_ROOT . '/includes/header.php';
         <?php else: ?>
             <div class="table-wrap">
                 <table class="table table--compact">
-                    <thead><tr><th scope="col">Obligation #</th><th scope="col">Due</th><th scope="col" class="num">Outstanding</th><th scope="col">Status</th></tr></thead>
+                    <thead><tr><th scope="col">Obligation #</th><th scope="col">Due</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th><th scope="col">Status</th></tr></thead>
                     <tbody>
                     <?php foreach ($obligations as $o): ?>
                         <tr>
                             <td><a href="<?= e(url('pages/obligations/view.php', ['id' => $o['id']])) ?>"><?= e($o['obligation_number']) ?></a></td>
                             <td><?= e(format_date($o['due_date'])) ?></td>
                             <td class="num"><?= e(format_money($o['outstanding_amount'])) ?></td>
+                            <td class="num<?= (float) $o['penalties_unpaid'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($o['penalties_unpaid'])) ?></td>
                             <td><?= badge($o['status']) ?></td>
                         </tr>
                     <?php endforeach; ?>

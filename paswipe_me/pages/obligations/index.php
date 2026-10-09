@@ -23,6 +23,7 @@ $state = list_state([
         'due'         => ['Due date', 'o.due_date IS NULL, o.due_date ASC'],
         'newest'      => ['Newest first', 'o.obligation_date DESC'],
         'outstanding' => ['Highest outstanding', 'o.outstanding_amount DESC'],
+        'total'       => ['Highest total (with penalties)', 'total_due DESC'],
     ],
 ]);
 
@@ -36,7 +37,7 @@ foreach (['borrower' => 'o.borrower_id', 'status' => 'o.status'] as $key => $col
     }
 }
 if ($state['filters']['open'] === 'open') {
-    $where[] = "o.outstanding_amount > 0 AND o.status NOT IN ('cancelled', 'written_off')";
+    $where[] = "(o.outstanding_amount > 0 OR COALESCE(pen.penalties_unpaid, 0) > 0) AND o.status NOT IN ('cancelled', 'written_off')";
 } elseif ($state['filters']['open'] === 'overdue') {
     $where[] = "o.outstanding_amount > 0 AND o.due_date < CURRENT_DATE AND o.status NOT IN ('cancelled', 'paid', 'written_off')";
 }
@@ -49,17 +50,19 @@ if ($state['filters']['to'] !== '') {
     $params[':to'] = $state['filters']['to'];
 }
 
-$from = 'borrower_obligations o JOIN borrowers b ON b.id = o.borrower_id';
+$from = 'borrower_obligations o JOIN borrowers b ON b.id = o.borrower_id ' . penalty_totals_join();
 $result = run_list(
     $state,
     'o.id, o.obligation_number, o.description, o.obligation_date, o.due_date, o.total_amount_due, o.total_paid, o.outstanding_amount, o.overdue_amount, o.status,
+     COALESCE(pen.penalties_unpaid, 0) AS penalties_unpaid, o.outstanding_amount + COALESCE(pen.penalties_unpaid, 0) AS total_due,
      b.first_name, b.last_name, b.borrower_number',
     $from,
     $where,
     $params
 );
 $totals = db_row("SELECT COALESCE(SUM(IF(o.status <> 'cancelled', o.total_amount_due, 0)), 0) AS due, COALESCE(SUM(IF(o.status <> 'cancelled', o.total_paid, 0)), 0) AS paid,
-                         COALESCE(SUM(IF(o.status NOT IN ('cancelled', 'written_off'), o.outstanding_amount, 0)), 0) AS outstanding FROM "
+                         COALESCE(SUM(IF(o.status NOT IN ('cancelled', 'written_off'), o.outstanding_amount, 0)), 0) AS outstanding,
+                         COALESCE(SUM(IF(o.status NOT IN ('cancelled', 'written_off'), pen.penalties_unpaid, 0)), 0) AS penalties FROM "
     . $from . ($where ? ' WHERE ' . implode(' AND ', $where) : ''), $params);
 
 $pageTitle = 'Obligations';
@@ -82,11 +85,12 @@ require APP_ROOT . '/includes/header.php';
                     <th scope="col" class="col-num">#</th>
                     <th scope="col">Obligation #</th>
                     <th scope="col">Borrower</th>
-                    <th scope="col">Description</th>
                     <th scope="col">Due date</th>
                     <th scope="col" class="num">Total due</th>
                     <th scope="col" class="num">Paid</th>
                     <th scope="col" class="num">Outstanding</th>
+                    <th scope="col" class="num">Penalties</th>
+                    <th scope="col" class="num">Total to pay</th>
                     <th scope="col">Status</th>
                     <th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th>
                 </tr>
@@ -97,12 +101,13 @@ require APP_ROOT . '/includes/header.php';
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
                         <td data-label="Obligation #"><a class="table-link" href="<?= e(url('pages/obligations/view.php', ['id' => $row['id']])) ?>"><?= e($row['obligation_number']) ?></a></td>
-                        <td data-label="Borrower"><?= e(borrower_name($row)) ?></td>
-                        <td data-label="Description"><?= show(excerpt($row['description'], 50)) ?></td>
+                        <td data-label="Borrower"><?= e(borrower_name($row)) ?><?= $row['description'] ? '<br><span class="text-muted">' . e(excerpt($row['description'], 40)) . '</span>' : '' ?></td>
                         <td data-label="Due date" class="<?= $late ? 'text-danger' : '' ?>"><?= e(format_date($row['due_date'])) ?><?= $late ? ' (past due)' : '' ?></td>
                         <td data-label="Total due" class="num"><?= e(format_money($row['total_amount_due'])) ?></td>
                         <td data-label="Paid" class="num"><?= e(format_money($row['total_paid'])) ?></td>
                         <td data-label="Outstanding" class="num"><?= e(format_money($row['outstanding_amount'])) ?></td>
+                        <td data-label="Penalties" class="num<?= (float) $row['penalties_unpaid'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($row['penalties_unpaid'])) ?></td>
+                        <td data-label="Total to pay" class="num"><strong><?= e(format_money(in_array($row['status'], ['cancelled', 'written_off'], true) ? 0 : $row['total_due'])) ?></strong></td>
                         <td data-label="Status"><?= badge($row['status']) ?></td>
                         <td class="actions no-print">
                             <div class="row-actions">
@@ -115,7 +120,8 @@ require APP_ROOT . '/includes/header.php';
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
-                <tfoot><tr><td colspan="5">Total excluding cancelled</td><td class="num"><?= e(format_money($totals['due'])) ?></td><td class="num"><?= e(format_money($totals['paid'])) ?></td><td class="num"><?= e(format_money($totals['outstanding'])) ?></td><td colspan="2"></td></tr></tfoot>
+                <tfoot><tr><td colspan="4">Total excluding cancelled</td><td class="num"><?= e(format_money($totals['due'])) ?></td><td class="num"><?= e(format_money($totals['paid'])) ?></td><td class="num"><?= e(format_money($totals['outstanding'])) ?></td>
+                    <td class="num"><?= e(format_money($totals['penalties'])) ?></td><td class="num"><strong><?= e(format_money((float) $totals['outstanding'] + (float) $totals['penalties'])) ?></strong></td><td colspan="2"></td></tr></tfoot>
             </table>
         </div>
         <?= render_list_footer($state, $result) ?>

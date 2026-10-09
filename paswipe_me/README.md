@@ -677,6 +677,22 @@ On a cash advance page, **Give to a borrower** turns all or part of the withdraw
 - **Accessibility:** focus starts on Cancel for confirmations and stays inside the dialog. Esc and a click outside cancel, and focus returns afterwards. Reduced-motion settings are respected, and the dialog is hidden in print.
 - **No external library**, so it works offline. Without JavaScript the inline alerts are still shown.
 
+## Outstanding + penalties = total to pay (everywhere)
+
+Shared SQL in `includes/penalties.php`: `penalty_totals_join()`, `borrower_totals_sql()` and `collection_totals()`. Cancelled and written-off items are not counted.
+
+- **Borrower portal home:**
+  - an *Outstanding + Penalties = Total to pay* banner
+  - *What I owe* with Outstanding / Penalties / Total per item and a total row
+  - *My penalties to pay*: every unpaid penalty with date, item, charge, days late, amount, paid and to pay
+- **Borrower portal pages:**
+  - *Late Charges* (`portal/penalties.php`, in the sidebar): all penalties (still to pay / paid / waived) with search, date filters and print
+  - *What I Owe* list and item page: the same three figures
+- **Admin dashboard:** a *Total to collect* card (outstanding + penalties) and a *What borrowers owe* panel per borrower with an all-borrowers total.
+- **Obligations list:** Penalties and Total-to-pay columns, sort by total, and footer totals. *With outstanding balance* also lists items that only have penalties left.
+- **Borrower page:** Unpaid penalties and Total to pay figures, plus penalties per obligation.
+- **Borrower Balances report:** Penalties and Total-to-collect columns, figures and sorting.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |

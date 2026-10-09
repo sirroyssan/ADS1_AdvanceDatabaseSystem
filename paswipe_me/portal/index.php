@@ -15,10 +15,24 @@ $nextDue = db_row(
       ORDER BY due_date IS NULL, due_date LIMIT 1",
     [':b' => $bid]
 );
+$collect = collection_totals($bid);
 $openObligations = db_all(
-    "SELECT id, obligation_number, description, total_amount_due, total_paid, outstanding_amount, due_date, status FROM borrower_obligations
-      WHERE borrower_id = :b AND outstanding_amount > 0 AND status NOT IN ('cancelled', 'written_off', 'paid')
-      ORDER BY due_date IS NULL, due_date LIMIT 5",
+    "SELECT o.id, o.obligation_number, o.description, o.outstanding_amount, o.due_date, o.status,
+            COALESCE(pen.penalties_unpaid, 0) AS penalties_unpaid, o.outstanding_amount + COALESCE(pen.penalties_unpaid, 0) AS total_due
+       FROM borrower_obligations o " . penalty_totals_join() . "
+      WHERE o.borrower_id = :b AND o.status NOT IN ('cancelled', 'written_off')
+        AND (o.outstanding_amount > 0 OR COALESCE(pen.penalties_unpaid, 0) > 0)
+      ORDER BY o.due_date IS NULL, o.due_date LIMIT 10",
+    [':b' => $bid]
+);
+$unpaidPenalties = db_all(
+    "SELECT ap.id, ap.applied_date, ap.overdue_days, ap.amount, ap.paid_amount, ap.remaining_amount, r.name AS rule_name,
+            o.id AS obligation_id, o.obligation_number
+       FROM applied_penalties ap
+       JOIN borrower_obligations o ON o.id = ap.obligation_id
+       JOIN penalty_rules r ON r.id = ap.penalty_rule_id
+      WHERE o.borrower_id = :b AND o.status NOT IN ('cancelled', 'written_off') AND ap.remaining_amount > 0
+      ORDER BY ap.applied_date, o.obligation_number",
     [':b' => $bid]
 );
 $recentPayments = db_all(
@@ -57,15 +71,24 @@ require APP_ROOT . '/includes/header.php';
         <span>You have <?= e($newLetters) ?> new notice(s) from the owner. <a href="<?= e(url('portal/letters.php')) ?>">Read them</a>.</span></div>
 <?php endif; ?>
 
+<section class="balance-equation" aria-label="Total to pay">
+    <div class="balance-equation__part">
+        <p class="balance-equation__label"><a href="<?= e(url('portal/obligations.php')) ?>">Outstanding</a></p>
+        <p class="balance-equation__value"><?= e(format_money($collect['outstanding'])) ?></p>
+    </div>
+    <span class="balance-equation__op" aria-hidden="true">+</span>
+    <div class="balance-equation__part">
+        <p class="balance-equation__label"><a href="<?= e(url('portal/penalties.php')) ?>">Penalties (late charges)</a></p>
+        <p class="balance-equation__value<?= (float) $collect['penalties'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($collect['penalties'])) ?></p>
+    </div>
+    <span class="balance-equation__op" aria-hidden="true">=</span>
+    <div class="balance-equation__part balance-equation__part--total">
+        <p class="balance-equation__label">Total to pay</p>
+        <p class="balance-equation__value"><?= e(format_money($collect['total_due'])) ?></p>
+    </div>
+</section>
+
 <section class="stat-grid" aria-label="My balance">
-    <article class="stat-card">
-        <div class="stat-card__icon stat-card__icon--warning"><?= icon('wallet') ?></div>
-        <div>
-            <p class="stat-card__label"><a href="<?= e(url('portal/obligations.php')) ?>">Remaining balance</a></p>
-            <p class="stat-card__value stat-card__value--money"><?= e(format_money((float) $summary['outstanding'] + (float) $summary['penalties'])) ?></p>
-            <p class="stat-card__meta"><?= (float) $summary['penalties'] > 0 ? 'Includes ' . e(format_money($summary['penalties'])) . ' late charges · ' : '' ?><?= e((int) $summary['open_count']) ?> open item(s)</p>
-        </div>
-    </article>
     <article class="stat-card">
         <div class="stat-card__icon stat-card__icon--danger"><?= icon('alert') ?></div>
         <div>
@@ -92,34 +115,69 @@ require APP_ROOT . '/includes/header.php';
     </article>
 </section>
 
-<div class="panel-grid">
-    <section class="panel" aria-labelledby="open-title">
-        <header class="panel__header">
-            <h3 id="open-title"><?= icon('file-text') ?> What I owe</h3>
-            <a class="btn btn--sm btn--outline" href="<?= e(url('portal/obligations.php')) ?>">View all</a>
-        </header>
-        <?php if (!$openObligations): ?>
-            <p class="empty-inline">You have no open balance. Thank you!</p>
-        <?php else: ?>
-            <div class="table-wrap">
-                <table class="table table--cards table--compact">
-                    <thead><tr><th scope="col">Item</th><th scope="col">Due date</th><th scope="col" class="num">Remaining</th><th scope="col">Status</th></tr></thead>
-                    <tbody>
-                    <?php foreach ($openObligations as $o): ?>
-                        <tr>
-                            <td data-label="Item"><a class="table-link" href="<?= e(url('portal/obligation.php', ['id' => $o['id']])) ?>"><?= e($o['obligation_number']) ?></a>
-                                <?php if ($o['description']): ?><br><span class="text-muted"><?= e($o['description']) ?></span><?php endif; ?></td>
-                            <td data-label="Due date"><?= $o['due_date'] ? e(format_date($o['due_date'])) : '<span class="text-muted">—</span>' ?></td>
-                            <td data-label="Remaining" class="num"><?= e(format_money($o['outstanding_amount'])) ?></td>
-                            <td data-label="Status"><?= badge($o['status']) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php endif; ?>
-    </section>
+<section class="panel balance-panel" aria-labelledby="open-title">
+    <header class="panel__header">
+        <h3 id="open-title"><?= icon('file-text') ?> What I owe</h3>
+        <a class="btn btn--sm btn--outline" href="<?= e(url('portal/obligations.php')) ?>">View all</a>
+    </header>
+    <?php if (!$openObligations): ?>
+        <p class="empty-inline">You have no open balance. Thank you!</p>
+    <?php else: ?>
+        <div class="table-wrap">
+            <table class="table table--cards table--compact">
+                <thead><tr><th scope="col">Item</th><th scope="col">Due date</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th><th scope="col" class="num">Total</th><th scope="col">Status</th></tr></thead>
+                <tbody>
+                <?php foreach ($openObligations as $o): ?>
+                    <tr>
+                        <td data-label="Item"><a class="table-link" href="<?= e(url('portal/obligation.php', ['id' => $o['id']])) ?>"><?= e($o['obligation_number']) ?></a>
+                            <?php if ($o['description']): ?><br><span class="text-muted"><?= e($o['description']) ?></span><?php endif; ?></td>
+                        <td data-label="Due date"><?= $o['due_date'] ? e(format_date($o['due_date'])) : '<span class="text-muted">—</span>' ?></td>
+                        <td data-label="Outstanding" class="num"><?= e(format_money($o['outstanding_amount'])) ?></td>
+                        <td data-label="Penalties" class="num<?= (float) $o['penalties_unpaid'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($o['penalties_unpaid'])) ?></td>
+                        <td data-label="Total" class="num"><strong><?= e(format_money($o['total_due'])) ?></strong></td>
+                        <td data-label="Status"><?= badge($o['status']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+                <tfoot><tr><td colspan="2">Total</td><td class="num"><?= e(format_money($collect['outstanding'])) ?></td><td class="num"><?= e(format_money($collect['penalties'])) ?></td>
+                    <td class="num"><strong><?= e(format_money($collect['total_due'])) ?></strong></td><td></td></tr></tfoot>
+            </table>
+        </div>
+    <?php endif; ?>
+</section>
 
+<section class="panel balance-panel" aria-labelledby="pen-title">
+    <header class="panel__header">
+        <h3 id="pen-title"><?= icon('alert') ?> My penalties (late charges) to pay</h3>
+        <a class="btn btn--sm btn--outline" href="<?= e(url('portal/penalties.php')) ?>">All penalties</a>
+    </header>
+    <?php if (!$unpaidPenalties): ?>
+        <p class="empty-inline">No unpaid penalties. Keep paying on time!</p>
+    <?php else: ?>
+        <div class="table-wrap">
+            <table class="table table--cards table--compact">
+                <thead><tr><th scope="col">Date charged</th><th scope="col">Item</th><th scope="col">Charge</th><th scope="col" class="num">Days late</th><th scope="col" class="num">Amount</th><th scope="col" class="num">Paid</th><th scope="col" class="num">To pay</th></tr></thead>
+                <tbody>
+                <?php foreach ($unpaidPenalties as $p): ?>
+                    <tr>
+                        <td data-label="Date charged"><?= e(format_date($p['applied_date'])) ?></td>
+                        <td data-label="Item"><a class="table-link" href="<?= e(url('portal/obligation.php', ['id' => $p['obligation_id']])) ?>"><?= e($p['obligation_number']) ?></a></td>
+                        <td data-label="Charge"><?= e($p['rule_name']) ?></td>
+                        <td data-label="Days late" class="num"><?= e($p['overdue_days']) ?></td>
+                        <td data-label="Amount" class="num"><?= e(format_money($p['amount'])) ?></td>
+                        <td data-label="Paid" class="num"><?= e(format_money($p['paid_amount'])) ?></td>
+                        <td data-label="To pay" class="num text-danger"><strong><?= e(format_money($p['remaining_amount'])) ?></strong></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+                <tfoot><tr><td colspan="6"><?= count($unpaidPenalties) ?> unpaid penalt<?= count($unpaidPenalties) === 1 ? 'y' : 'ies' ?></td><td class="num"><strong><?= e(format_money($collect['penalties'])) ?></strong></td></tr></tfoot>
+            </table>
+        </div>
+        <p class="field-help">Your payments pay penalties first (oldest first), then interest and fees, then the principal. Penalties are added every month while an item is overdue.</p>
+    <?php endif; ?>
+</section>
+
+<div class="panel-grid">
     <section class="panel" aria-labelledby="pay-title">
         <header class="panel__header">
             <h3 id="pay-title"><?= icon('receipt') ?> My recent payments</h3>

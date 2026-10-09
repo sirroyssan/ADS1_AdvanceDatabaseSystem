@@ -503,3 +503,54 @@ function penalty_schema_upgrade(): void
         error_log('[' . APP_NAME . '] Cannot write ' . PENALTY_UPGRADE_MARKER . '; the upgrade check runs on every request.');
     }
 }
+
+/* ------------------------------------------------------------------
+ * Totals with penalties: Outstanding + unpaid penalties = Total to pay.
+ * Used by the dashboard, obligations, borrowers, reports and the portal.
+ * ------------------------------------------------------------------ */
+
+/**
+ * LEFT JOIN adding pen.penalties_unpaid / pen.penalties_charged / pen.penalties_paid
+ * for obligation alias $o.
+ */
+function penalty_totals_join(string $o = 'o', string $alias = 'pen'): string
+{
+    return "LEFT JOIN (SELECT obligation_id, SUM(remaining_amount) AS penalties_unpaid, SUM(amount) AS penalties_charged, SUM(paid_amount) AS penalties_paid
+                         FROM applied_penalties GROUP BY obligation_id) $alias ON $alias.obligation_id = $o.id";
+}
+
+/**
+ * One row per borrower: outstanding, penalties (unpaid), total_due, overdue, open_items.
+ * Cancelled and written-off obligations are not counted.
+ */
+function borrower_totals_sql(): string
+{
+    return "SELECT o.borrower_id,
+                   COALESCE(SUM(o.outstanding_amount), 0) AS outstanding,
+                   COALESCE(SUM(pen.penalties_unpaid), 0) AS penalties,
+                   COALESCE(SUM(o.outstanding_amount), 0) + COALESCE(SUM(pen.penalties_unpaid), 0) AS total_due,
+                   COALESCE(SUM(o.overdue_amount), 0) AS overdue,
+                   SUM(o.outstanding_amount > 0 OR COALESCE(pen.penalties_unpaid, 0) > 0) AS open_items
+              FROM borrower_obligations o " . penalty_totals_join() . "
+             WHERE o.status NOT IN ('cancelled', 'written_off')
+             GROUP BY o.borrower_id";
+}
+
+/**
+ * Grand totals across all borrowers (or one): outstanding, penalties, total_due.
+ */
+function collection_totals(?string $borrowerId = null): array
+{
+    $row = db_row(
+        "SELECT COALESCE(SUM(o.outstanding_amount), 0) AS outstanding,
+                COALESCE(SUM(pen.penalties_unpaid), 0) AS penalties,
+                COALESCE(SUM(pen.penalties_charged), 0) AS penalties_charged,
+                COALESCE(SUM(pen.penalties_paid), 0) AS penalties_paid
+           FROM borrower_obligations o " . penalty_totals_join() . "
+          WHERE o.status NOT IN ('cancelled', 'written_off')" . ($borrowerId ? ' AND o.borrower_id = :b' : ''),
+        $borrowerId ? [':b' => $borrowerId] : []
+    );
+    $row['total_due'] = round((float) $row['outstanding'] + (float) $row['penalties'], 2);
+
+    return $row;
+}

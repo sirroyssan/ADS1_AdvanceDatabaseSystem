@@ -90,6 +90,7 @@ if (($layout ?? 'admin') === 'portal') {
             'label' => 'My Balance',
             'items' => [
                 ['key' => 'portal_obligations', 'label' => 'What I Owe',     'icon' => 'file-text', 'path' => 'portal/obligations.php'],
+                ['key' => 'portal_penalties',   'label' => 'Late Charges',   'icon' => 'alert',     'path' => 'portal/penalties.php'],
                 ['key' => 'portal_payments',    'label' => 'My Payments',    'icon' => 'receipt',   'path' => 'portal/payments.php'],
                 ['key' => 'portal_pay',         'label' => 'Submit Payment', 'icon' => 'wallet',    'path' => 'portal/pay.php'],
             ],

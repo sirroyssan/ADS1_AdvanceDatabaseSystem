@@ -70,6 +70,20 @@ $pendingPayments = dashboard_rows(
       LIMIT 5'
 );
 
+// Outstanding + unpaid penalties = total to collect (includes/penalties.php).
+try {
+    $collect = collection_totals();
+} catch (PDOException $e) {
+    $collect = ['outstanding' => null, 'penalties' => null, 'total_due' => null];
+}
+$borrowerBalances = dashboard_rows(
+    'SELECT b.id, b.borrower_number, b.first_name, b.last_name, bt.outstanding, bt.penalties, bt.total_due
+       FROM (' . borrower_totals_sql() . ') bt JOIN borrowers b ON b.id = bt.borrower_id
+      WHERE bt.total_due > 0
+      ORDER BY bt.total_due DESC
+      LIMIT 8'
+);
+
 $overdueObligations = dashboard_rows(
     'SELECT id, obligation_number, first_name, last_name, outstanding_amount, due_date, overdue_days
        FROM vw_overdue_obligations
@@ -140,9 +154,9 @@ require APP_ROOT . '/includes/header.php';
     <article class="stat-card">
         <div class="stat-card__icon stat-card__icon--warning"><?= icon('wallet') ?></div>
         <div>
-            <p class="stat-card__label"><a href="<?= e(url('pages/obligations/index.php', ['open' => 'open'])) ?>">Outstanding balance</a></p>
-            <p class="stat-card__value stat-card__value--money"><?= $stats['outstanding'] === null ? '—' : e(format_money($stats['outstanding'])) ?></p>
-            <p class="stat-card__meta">Open borrower obligations</p>
+            <p class="stat-card__label"><a href="<?= e(url('pages/reports/borrower_balances.php')) ?>">Total to collect</a></p>
+            <p class="stat-card__value stat-card__value--money"><?= $collect['total_due'] === null ? '—' : e(format_money($collect['total_due'])) ?></p>
+            <p class="stat-card__meta"><?= $collect['total_due'] === null ? '' : e(format_money($collect['outstanding'])) . ' outstanding + ' . e(format_money($collect['penalties'])) . ' penalties' ?></p>
         </div>
     </article>
 
@@ -184,6 +198,34 @@ require APP_ROOT . '/includes/header.php';
                 <a href="<?= e(url('pages/categories/index.php')) ?>">Manage</a></p>
         </div>
     </article>
+</section>
+
+<section class="panel balance-panel" aria-labelledby="balances-title">
+    <header class="panel__header">
+        <h3 id="balances-title"><?= icon('users') ?> What borrowers owe (outstanding + penalties)</h3>
+        <a class="btn btn--sm btn--outline" href="<?= e(url('pages/reports/borrower_balances.php')) ?>">View all</a>
+    </header>
+    <?php if (!$borrowerBalances): ?>
+        <p class="empty-inline">No borrower owes anything right now.</p>
+    <?php else: ?>
+        <div class="table-wrap">
+            <table class="table table--cards table--compact">
+                <thead><tr><th scope="col">Borrower</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th><th scope="col" class="num">Total to collect</th></tr></thead>
+                <tbody>
+                <?php foreach ($borrowerBalances as $row): ?>
+                    <tr>
+                        <td data-label="Borrower"><a class="table-link" href="<?= e(url('pages/borrowers/view.php', ['id' => $row['id']])) ?>"><?= e(borrower_name($row)) ?></a>
+                            <span class="text-muted"><?= e($row['borrower_number']) ?></span></td>
+                        <td data-label="Outstanding" class="num"><?= e(format_money($row['outstanding'])) ?></td>
+                        <td data-label="Penalties" class="num<?= (float) $row['penalties'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($row['penalties'])) ?></td>
+                        <td data-label="Total to collect" class="num"><strong><?= e(format_money($row['total_due'])) ?></strong></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+                <tfoot><tr><td>All borrowers</td><td class="num"><?= e(format_money($collect['outstanding'])) ?></td><td class="num"><?= e(format_money($collect['penalties'])) ?></td><td class="num"><strong><?= e(format_money($collect['total_due'])) ?></strong></td></tr></tfoot>
+            </table>
+        </div>
+    <?php endif; ?>
 </section>
 
 <div class="panel-grid">
