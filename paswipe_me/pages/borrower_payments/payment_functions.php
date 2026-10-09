@@ -294,3 +294,142 @@ function payment_allocation_choices(string $borrowerId): array
 
     return [$obligations, $scheduleOptions, $scheduleData];
 }
+
+/**
+ * OWNER-ONLY amount override, allowed in any status except cancelled -
+ * also after approval and allocation. Payments are never deleted.
+ *
+ * Raising the amount leaves the difference unallocated (allocate it as
+ * usual). Lowering it below what is already applied takes the excess back
+ * from the newest allocations first, in reverse payment order (principal,
+ * then interest, then penalties), restoring the obligation balance, the
+ * installment and the penalties it had paid. Everything is recorded in
+ * payment_verification_logs and activity_logs with the reason, and the
+ * borrower is notified. Returns an error message or null.
+ */
+function payment_override_amount(array $payment, string $rawAmount, string $reason, array $user): ?string
+{
+    if (!user_is_owner($user)) {
+        return 'Only the owner can override a payment amount.';
+    }
+    $reason = trim($reason);
+    if (mb_strlen($reason) < PENALTY_REASON_MIN) {
+        return 'Enter a reason of at least ' . PENALTY_REASON_MIN . ' characters.';
+    }
+    $raw = str_replace([',', ' ', '₱'], '', $rawAmount);
+    if (!preg_match('/^\d{1,13}(\.\d{1,2})?$/', $raw) || (float) $raw <= 0) {
+        return 'Enter a new amount greater than zero.';
+    }
+    $new = round((float) $raw, 2);
+
+    try {
+        return db_transaction(function () use ($payment, $new, $reason, $user) {
+            $fresh = db_row('SELECT * FROM borrower_payments WHERE id = :id FOR UPDATE', [':id' => $payment['id']]);
+            if ($fresh['status'] === 'cancelled') {
+                return 'A cancelled payment cannot be changed.';
+            }
+            $old = (float) $fresh['amount'];
+            if (abs($old - $new) < 0.005) {
+                return 'The new amount is the same as the current amount.';
+            }
+
+            $allocations = db_all(
+                "SELECT * FROM borrower_payment_allocations WHERE borrower_payment_id = :p
+                  ORDER BY created_at DESC, FIELD(allocation_type, 'principal', 'interest', 'installment', 'penalty'), id DESC FOR UPDATE",
+                [':p' => $fresh['id']]
+            );
+            $allocated = array_sum(array_map(static fn ($a) => (float) $a['allocated_amount'], $allocations));
+            $excess = round($allocated - $new, 2);
+            $reversed = 0.0;
+
+            foreach ($allocations as $a) {
+                if ($excess <= 0.004) {
+                    break;
+                }
+                $take = min($excess, (float) $a['allocated_amount']);
+                payment_reverse_allocation($a, $take);
+                $excess -= $take;
+                $reversed += $take;
+            }
+
+            db_update('borrower_payments', [
+                'amount'            => number_format($new, 2, '.', ''),
+                'allocation_status' => allocation_status_for($new, $allocated - $reversed),
+            ], $fresh['id']);
+
+            $note = 'Amount overridden by the owner from ' . format_money($old) . ' to ' . format_money($new)
+                . ($reversed > 0 ? ' (' . format_money($reversed) . ' taken back from allocations)' : '') . '. Reason: ' . $reason;
+            payment_log($fresh, $fresh['status'], 'amount_override', $note, $user['id']);
+            log_activity('amount_override', 'borrower_payment', $fresh['id'], $fresh['payment_number'] . ': ' . $note,
+                ['amount' => $fresh['amount']], ['amount' => number_format($new, 2, '.', ''), 'reversed' => $reversed, 'reason' => $reason]);
+            notify_borrower($fresh['borrower_id'], 'payment_override', 'Payment ' . $fresh['payment_number'] . ' amount changed',
+                'The owner changed the amount of your payment from ' . format_money($old) . ' to ' . format_money($new) . '. Reason: ' . $reason,
+                'borrower_payment', $fresh['id']);
+
+            return null;
+        });
+    } catch (PDOException $e) {
+        return db_error_message($e);
+    }
+}
+
+/**
+ * Take $take back from one allocation row and undo its effect.
+ * Must run inside the caller's transaction.
+ */
+function payment_reverse_allocation(array $a, float $take): void
+{
+    $o = db_row('SELECT * FROM borrower_obligations WHERE id = :id FOR UPDATE', [':id' => $a['obligation_id']]);
+
+    if ($a['allocation_type'] === 'penalty') {
+        // Give back to the penalties it paid, newest first (they were paid oldest first).
+        $left = $take;
+        foreach (db_all('SELECT * FROM applied_penalties WHERE obligation_id = :o AND paid_amount > 0 ORDER BY applied_date DESC, created_at DESC FOR UPDATE', [':o' => $o['id']]) as $p) {
+            if ($left <= 0.004) {
+                break;
+            }
+            $part = min($left, (float) $p['paid_amount']);
+            db_update('applied_penalties', [
+                'paid_amount'      => number_format((float) $p['paid_amount'] - $part, 2, '.', ''),
+                'remaining_amount' => number_format((float) $p['remaining_amount'] + $part, 2, '.', ''),
+            ], $p['id']);
+            $left -= $part;
+        }
+    } else {
+        // Interest / principal (or older "installment" rows) were part of the obligation balance.
+        $totalPaid = max(0, (float) $o['total_paid'] - $take);
+        db_update('borrower_obligations', [
+            'total_paid'         => number_format($totalPaid, 2, '.', ''),
+            'outstanding_amount' => number_format(max(0, (float) $o['total_amount_due'] - $totalPaid), 2, '.', ''),
+        ], $o['id']);
+
+        if ($a['installment_schedule_id']) {
+            $s = db_row('SELECT * FROM installment_schedules WHERE id = :id FOR UPDATE', [':id' => $a['installment_schedule_id']]);
+            if ($s) {
+                $paid = max(0, (float) $s['amount_paid'] - $take);
+                db_update('installment_schedules', [
+                    'amount_paid'      => number_format($paid, 2, '.', ''),
+                    'remaining_amount' => number_format(max(0, (float) $s['amount_due'] - $paid), 2, '.', ''),
+                    'status'           => schedule_status_after_payment((float) $s['amount_due'], $paid, $s['due_date']),
+                    'paid_at'          => $paid >= (float) $s['amount_due'] - 0.004 ? $s['paid_at'] : null,
+                ], $s['id']);
+            }
+        }
+    }
+
+    // Shrink or remove the allocation row (allocations are working data; the
+    // payment itself and its history stay).
+    $remaining = round((float) $a['allocated_amount'] - $take, 2);
+    if ($remaining <= 0.004) {
+        db_exec('DELETE FROM borrower_payment_allocations WHERE id = :id', [':id' => $a['id']]);
+    } else {
+        db_update('borrower_payment_allocations', ['allocated_amount' => number_format($remaining, 2, '.', '')], $a['id']);
+    }
+
+    // Re-open the obligation if something is owed again.
+    $o = db_row('SELECT * FROM borrower_obligations WHERE id = :id', [':id' => $o['id']]);
+    $owed = (float) $o['outstanding_amount'] + penalty_unpaid_total($o['id']);
+    if ($owed > 0.004 && in_array($o['status'], ['paid', 'partially_paid'], true)) {
+        db_update('borrower_obligations', ['status' => (float) $o['total_paid'] > 0.004 ? 'partially_paid' : 'active', 'completed_at' => null], $o['id']);
+    }
+}

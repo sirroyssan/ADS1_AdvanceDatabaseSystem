@@ -608,6 +608,18 @@ No schema change.
   - **Not related:** friend, colleague, neighbor, other, or not set. Proof is **mandatory**.
 - Older typed-in values are classified by keyword (`relationship_is_family()`).
 
+## Payment amount override (owner only) — payments are never deleted
+
+- There is no delete for borrower payments (no page and no `DELETE` statement). A wrong payment is cancelled or rejected, or its amount is overridden.
+- **Override amount** (`pages/borrower_payments/override.php`, button on the payment page):
+  - Only users with the **Owner** role can use it (`require_role(['owner'])` plus a check in `payment_override_amount`). Administrators can't.
+  - It works in any status except cancelled, including after approval and allocation. A reason of at least 10 characters is required.
+- **Raising the amount** leaves the difference unallocated, ready to apply.
+- **Lowering it below what is already applied** takes the excess back from the newest allocations: principal first, then interest, then penalties (the reverse of the payment order). The obligation balance, the installment and the penalties are restored, and a paid obligation is re-opened.
+- **Records:** every override is written to the payment history (`payment_verification_logs`, action `amount_override`) and to `activity_logs` with the old amount, new amount and reason. The borrower gets a notification.
+- **Regular Edit form:** the amount is read-only for non-owners.
+- **Owner role:** only an owner can give or remove it (an administrator may appoint the first owner), and the last owner cannot be removed.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |

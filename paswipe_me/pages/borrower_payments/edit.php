@@ -18,6 +18,11 @@ if (!in_array($payment['status'], PAYMENT_EDITABLE_STATUSES, true)) {
 
 $fields = payment_fields($payment);
 $fields['borrower_id']['readonly'] = true;
+if (!user_is_owner($currentUser)) {
+    // Only the owner may change an amount (see override.php).
+    $fields['amount']['readonly'] = true;
+    $fields['amount']['help'] = 'Only the owner can change the amount.';
+}
 $data = form_data_from_row($fields, $payment);
 $errors = [];
 

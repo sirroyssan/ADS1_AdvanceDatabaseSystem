@@ -69,6 +69,19 @@ function user_validate(array $input, ?array $existing, string $currentUserId): a
         }
     }
 
+    // Only an owner may give or take away the Owner role (an administrator may
+    // appoint the first owner), and the last owner cannot be removed.
+    $hadOwner = in_array('owner', $existing['roles'] ?? (isset($existing['id']) ? fetch_user_roles($existing['id']) : []), true);
+    $wantsOwner = in_array('owner', $roles, true);
+    if ($hadOwner !== $wantsOwner && !isset($errors['roles'])) {
+        $owners = (int) db_value("SELECT COUNT(DISTINCT user_id) FROM user_roles WHERE role = 'owner'");
+        if ($owners > 0 && !in_array('owner', fetch_user_roles($currentUserId), true)) {
+            $errors['roles'] = 'Only an owner can give or remove the Owner role.';
+        } elseif ($hadOwner && $owners <= 1) {
+            $errors['roles'] = 'This is the only owner. Make someone else an owner first.';
+        }
+    }
+
     return [$data, $errors, $roles, $password !== '' ? $password : null];
 }
 

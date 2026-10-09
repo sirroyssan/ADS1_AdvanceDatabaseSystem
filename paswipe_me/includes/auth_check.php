@@ -193,6 +193,15 @@ function require_admin(): array
     return $user;
 }
 
+/**
+ * The Owner role (the card owner). Some actions, like overriding a payment
+ * amount, are reserved for owners - administrators cannot do them.
+ */
+function user_is_owner(?array $user): bool
+{
+    return $user !== null && in_array('owner', $user['roles'], true);
+}
+
 function user_is_admin(?array $user): bool
 {
     return $user !== null && (bool) array_intersect(ADMIN_ROLES, $user['roles']);
