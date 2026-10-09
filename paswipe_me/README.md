@@ -577,7 +577,7 @@ No schema change.
 **Rule assignment:**
 - When an obligation is created (manually, or from a cash loan allocation), every **active** penalty rule in effect on the obligation date is assigned at once. The assignment is logged (`assign_penalty_rules`) and shown on the obligation page.
 - Anything already overdue (a back-dated obligation) is charged immediately.
-- DATABASE LIMITATION: the schema has no column that ties a rule to an obligation; it only records charges in `applied_penalties`. The assignment is therefore resolved from each rule's active flag and effective dates rather than stored. To pin a specific rule per obligation, add the nullable column `borrower_obligations.penalty_rule_id` (proposal; not applied).
+- Superseded: rules are now assigned by bank. See *Penalty rules by bank* below.
 
 **Automatic monthly penalties:**
 - **Which items:** every open obligation past its due date. An installment purchase with one obligation is charged per overdue installment.
@@ -633,6 +633,24 @@ On a cash advance page, **Give to a borrower** turns all or part of the withdraw
 - **Penalties:** the rules are assigned immediately and late charges apply per overdue monthly payment. Payments follow the normal order (penalties → interest/fees → principal).
 - **Limits:** you can't give more than was withdrawn. An advance given to borrowers who still owe cannot be cancelled. Its card and reference number are locked, and the withdrawn amount can't be lowered below what was given.
 - **Notifications:** the borrower is notified and sees the item as "Cash advance" with its payment schedule in the portal.
+
+## Penalty rules by bank, changes apply from the day they are made
+
+**Approved schema change:** one nullable column, `penalty_rules.applies_to_issuer VARCHAR(150)` (the rule's bank).
+- It is added automatically on the first page load after updating (`penalty_schema_upgrade`, marker `storage/upgrade_penalty_rule_bank.done`). The same SQL is in `db/upgrade_penalty_rule_bank.sql`.
+- During the upgrade, each existing rule's bank is guessed from its name (e.g. "BPI Late Payment" → BPI) when a card with that issuer exists.
+
+**Which items a rule charges:**
+- Obligations that come from a card of the rule's bank (`credit_cards.issuer`): that bank's purchases, installments, cash advances and cash loans.
+- A rule with no bank, or an obligation without a card, is never charged automatically. *Apply penalty* still works by hand.
+
+**When charges start:**
+- A rule charges only from the later of *effective from* and the day it was last saved.
+- Earlier months are never back-filled, and changing a rate does not recalculate past charges. The next monthly charge simply uses the new rate.
+
+**One-time cleanup:**
+- Automatic penalties with nothing paid on them were removed if they were for another bank, for a rule without a bank, or for a date before the rule took effect.
+- Each removal is in the activity log (`delete_penalty`) with its reason and is never re-charged. Partly paid and manual penalties were kept.
 
 ## DATABASE LIMITATIONS (no schema changes were made)
 

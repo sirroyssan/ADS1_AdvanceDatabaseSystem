@@ -31,6 +31,20 @@ const PENALTY_FREQUENCY_OPTIONS = [
     'once'    => 'Once (first time it becomes overdue)',
 ];
 
+/** Banks = the issuers of your credit cards. */
+function penalty_issuer_options(?string $current = null): array
+{
+    $options = [];
+    foreach (db_all("SELECT DISTINCT TRIM(issuer) AS issuer FROM credit_cards WHERE TRIM(issuer) <> '' ORDER BY issuer") as $row) {
+        $options[$row['issuer']] = $row['issuer'];
+    }
+    if ($current !== null && $current !== '' && !isset($options[$current])) {
+        $options[$current] = $current;
+    }
+
+    return $options;
+}
+
 /** Keep an older free-text value selectable when editing. */
 function penalty_keep_option(array $options, ?string $current): array
 {
@@ -45,6 +59,9 @@ function penalty_rule_fields(?array $current = null): array
 {
     return [
         'name'              => ['label' => 'Rule name', 'type' => 'text', 'max' => 150, 'required' => true],
+        'applies_to_issuer' => ['label' => 'Bank', 'type' => 'select', 'options' => penalty_issuer_options($current['applies_to_issuer'] ?? null),
+                                'empty_label' => '— No bank: never charged automatically —',
+                                'help' => 'Charged automatically only on this bank\'s purchases, installments, cash advances and cash loans. Changes take effect from the day you save; past charges are not recalculated.'],
         'calculation_type'  => ['label' => 'Calculation type', 'type' => 'select', 'options' => penalty_calculation_types($current['calculation_type'] ?? null), 'required' => true, 'empty_label' => 'Select type'],
         'basis'             => ['label' => 'Basis', 'type' => 'select', 'options' => penalty_keep_option(PENALTY_BASIS_OPTIONS, $current['basis'] ?? null), 'required' => true, 'initial' => 'outstanding_amount',
                                 'help' => 'What a percentage is computed from. For an installment purchase it is the overdue installment.'],

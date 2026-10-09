@@ -23,7 +23,8 @@ $penalties = db_all(
     [':id' => $id]
 );
 $unpaidPenalties = array_sum(array_column($penalties, 'remaining_amount'));
-$assignedRules = penalty_rules_on($obligation['obligation_date']);
+$assignedRules = penalty_rules_for_obligation($obligation);
+$obligationIssuer = obligation_card_issuer($obligation);
 $selectedPenalty = input_string($_GET, 'penalty');
 $terminable = array_filter($penalties, static fn ($p) => (float) $p['remaining_amount'] > 0.004 || (float) $p['paid_amount'] <= 0.004);
 $terminateOptions = [];
@@ -151,13 +152,13 @@ require APP_ROOT . '/includes/header.php';
         <?php endif; ?>
     </header>
     <div class="penalty-rules-note">
-        <strong>Penalty rules assigned</strong> (active and in effect on <?= e(format_date($obligation['obligation_date'])) ?>):
+        <strong>Penalty rules assigned</strong> (<?= $obligationIssuer ? 'active rules for ' . e($obligationIssuer) : 'this obligation is not linked to a card' ?>):
         <?php if (!$assignedRules): ?>
-            <span class="text-muted">none — <a href="<?= e(url('pages/penalty_rules/index.php')) ?>">set up a penalty rule</a>.</span>
+            <span class="text-muted">none<?= $obligationIssuer ? ' — <a href="' . e(url('pages/penalty_rules/index.php')) . '">set a rule\'s Bank to ' . e($obligationIssuer) . '</a>' : '' ?>.</span>
         <?php else: ?>
             <ul>
                 <?php foreach ($assignedRules as $r): ?>
-                    <li><?= e($r['name']) ?> — <?= e(penalty_rule_summary($r)) ?></li>
+                    <li><?= e($r['name']) ?> — <?= e(penalty_rule_summary($r)) ?> · charges from <?= e(format_date($r['charges_from'])) ?></li>
                 <?php endforeach; ?>
             </ul>
         <?php endif; ?>

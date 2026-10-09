@@ -3,12 +3,19 @@
  * Penalty engine - rule assignment, automatic monthly penalties, payment
  * allocation order, waiver and deletion.
  *
- * RULE ASSIGNMENT
- *   The schema links a rule to an obligation only through applied_penalties,
- *   so an obligation's rules are the ACTIVE rules that are in effect on the
- *   obligation date (effective_from / effective_until). They are resolved and
- *   logged the moment an obligation is created from a transaction, cash loan
- *   or installment (penalty_assign_on_create) and shown on the obligation.
+ * RULE ASSIGNMENT (by bank)
+ *   A rule applies automatically only to obligations that come from a card of
+ *   the rule's bank (penalty_rules.applies_to_issuer = credit_cards.issuer):
+ *   that bank's purchases, installments, cash advances and cash loans. A rule
+ *   with no bank is never applied automatically (manual "Apply penalty" only).
+ *   Rules are resolved and logged when an obligation is created
+ *   (penalty_assign_on_create) and shown on the obligation.
+ *
+ * CHANGES APPLY FROM THE DAY THEY ARE MADE
+ *   A rule charges only on dates from its start: the later of effective_from
+ *   and the day the rule was last saved (penalty_rules.updated_at). Earlier
+ *   months are never back-filled, and charges already made keep the amount
+ *   that was in effect when they were charged.
  *
  * AUTOMATIC MONTHLY PENALTIES
  *   For every open obligation that is past due (plus the rule's grace days),
@@ -42,17 +49,41 @@ const PENALTY_MAX_PERIODS = 120;
 const PENALTY_RUN_MARKER = 'storage/penalty_last_run.txt';
 
 /**
- * Active rules in effect on a date.
+ * Bank (card issuer) an obligation comes from: its transaction's card or its
+ * cash loan's card. Null for obligations entered without a card.
  */
-function penalty_rules_on(string $date): array
+function obligation_card_issuer(array $o): ?string
 {
+    if ($o['transaction_id']) {
+        return db_value('SELECT c.issuer FROM transactions t JOIN credit_cards c ON c.id = t.credit_card_id WHERE t.id = :t', [':t' => $o['transaction_id']]) ?: null;
+    }
+    if ($o['cash_loan_allocation_id']) {
+        return db_value(
+            'SELECT c.issuer FROM cash_loan_allocations a JOIN cash_loans l ON l.id = a.cash_loan_id JOIN credit_cards c ON c.id = l.credit_card_id WHERE a.id = :a',
+            [':a' => $o['cash_loan_allocation_id']]
+        ) ?: null;
+    }
+
+    return null;
+}
+
+/**
+ * Active rules of the obligation's bank (issuer compared without case/spaces).
+ */
+function penalty_rules_for_obligation(array $o): array
+{
+    $issuer = obligation_card_issuer($o);
+    if ($issuer === null) {
+        return [];
+    }
+
     return db_all(
-        'SELECT * FROM penalty_rules
-          WHERE is_active = 1
-            AND (effective_from IS NULL OR effective_from <= :d1)
-            AND (effective_until IS NULL OR effective_until >= :d2)
-          ORDER BY name',
-        [':d1' => $date, ':d2' => $date]
+        'SELECT r.*, GREATEST(COALESCE(r.effective_from, DATE(r.updated_at)), DATE(r.updated_at)) AS charges_from
+           FROM penalty_rules r
+          WHERE r.is_active = 1 AND r.applies_to_issuer IS NOT NULL
+            AND LOWER(TRIM(r.applies_to_issuer)) = LOWER(TRIM(:issuer))
+          ORDER BY r.name',
+        [':issuer' => $issuer]
     );
 }
 
@@ -78,10 +109,9 @@ function penalty_rule_summary(array $rule): string
  */
 function penalty_charge_dates(string $dueDate, array $rule, string $today): array
 {
+    // Monthly cycle: first day after the grace period, then the same day every month.
     $first = (new DateTimeImmutable($dueDate))->modify('+' . ((int) $rule['grace_period_days'] + 1) . ' days')->format('Y-m-d');
-    if ($rule['effective_from'] && $first < $rule['effective_from']) {
-        $first = $rule['effective_from'];
-    }
+    $from = $rule['charges_from'] ?? $rule['effective_from'] ?? $first;
 
     $dates = [];
     $once = strtolower((string) $rule['frequency']) === 'once';
@@ -89,6 +119,13 @@ function penalty_charge_dates(string $dueDate, array $rule, string $today): arra
         $date = schedule_due_date($first, $i, 'monthly');
         if ($date > $today || ($rule['effective_until'] && $date > $rule['effective_until'])) {
             break;
+        }
+        if ($date < $from) {
+            // Before the rule (or its latest change) took effect: never back-filled.
+            if ($once) {
+                break;
+            }
+            continue;
         }
         $dates[] = $date;
         if ($once) {
@@ -166,7 +203,7 @@ function penalty_run_obligation(array $o, ?string $today = null): int
         return 0;
     }
 
-    $rules = penalty_rules_on($o['obligation_date']);
+    $rules = penalty_rules_for_obligation($o);
     $targets = penalty_targets($o, $today);
     if (!$rules || !$targets) {
         return 0;
@@ -258,6 +295,7 @@ function penalty_run_all(?string $today = null): array
  */
 function penalty_run_if_due(): void
 {
+    penalty_schema_upgrade();
     $marker = APP_ROOT . '/' . PENALTY_RUN_MARKER;
     $today = date('Y-m-d');
     if (is_file($marker) && trim((string) @file_get_contents($marker)) === $today) {
@@ -289,10 +327,11 @@ function penalty_assign_on_create(string $obligationId): void
     if (!$o) {
         return;
     }
-    $rules = penalty_rules_on($o['obligation_date']);
+    $rules = penalty_rules_for_obligation($o);
+    $issuer = obligation_card_issuer($o);
     log_activity('assign_penalty_rules', 'obligation', $o['id'],
-        $rules ? 'Penalty rules assigned: ' . implode('; ', array_map(static fn ($r) => $r['name'] . ' (' . penalty_rule_summary($r) . ')', $rules))
-               : 'No active penalty rule in effect on ' . format_date($o['obligation_date']));
+        $rules ? 'Penalty rules assigned (' . $issuer . '): ' . implode('; ', array_map(static fn ($r) => $r['name'] . ' (' . penalty_rule_summary($r) . ')', $rules))
+               : ($issuer ? 'No active penalty rule for ' . $issuer : 'No card linked, so no automatic penalty rule applies'));
     penalty_run_obligation($o);
 }
 
@@ -384,4 +423,82 @@ function penalty_terminate(string $penaltyId, string $obligationId, string $mode
 
         return null;
     });
+}
+
+/* ------------------------------------------------------------------
+ * One-time upgrade (approved schema change): penalty_rules.applies_to_issuer
+ * ------------------------------------------------------------------ */
+
+const PENALTY_UPGRADE_MARKER = 'storage/upgrade_penalty_rule_bank.done';
+
+/**
+ * Add the rule's bank column if missing, guess each existing rule's bank from
+ * its name (e.g. "BPI Late Payment" -> issuer "BPI"), then remove automatic
+ * penalties that were charged wrongly (other bank, or before the rule took
+ * effect) and have nothing paid. Each removal is logged with its reason.
+ * Same change as db/upgrade_penalty_rule_bank.sql.
+ */
+function penalty_schema_upgrade(): void
+{
+    $marker = APP_ROOT . '/' . PENALTY_UPGRADE_MARKER;
+    if (is_file($marker)) {
+        return;
+    }
+    $hasColumn = (int) db_value(
+        "SELECT COUNT(*) FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'penalty_rules' AND COLUMN_NAME = 'applies_to_issuer'"
+    ) > 0;
+
+    if (!$hasColumn) {
+        // DDL commits on its own; it must run outside a transaction.
+        db()->exec('ALTER TABLE penalty_rules ADD COLUMN applies_to_issuer VARCHAR(150) NULL AFTER name');
+
+        // Guess the bank from the rule name: the longest card issuer contained in it.
+        $issuers = array_column(db_all("SELECT DISTINCT TRIM(issuer) AS issuer FROM credit_cards WHERE TRIM(issuer) <> ''"), 'issuer');
+        usort($issuers, static fn ($a, $b) => mb_strlen($b) <=> mb_strlen($a));
+        foreach (db_all('SELECT id, name FROM penalty_rules') as $rule) {
+            foreach ($issuers as $issuer) {
+                if (preg_match('/\b' . preg_quote(mb_strtolower($issuer), '/') . '\b/u', mb_strtolower($rule['name']))) {
+                    db_update('penalty_rules', ['applies_to_issuer' => $issuer], $rule['id']);
+                    log_activity('update', 'penalty_rule', $rule['id'], 'Bank set to ' . $issuer . ' from the rule name (upgrade)', null, ['applies_to_issuer' => $issuer]);
+                    break;
+                }
+            }
+        }
+
+        // Remove wrong automatic charges that nothing was paid on.
+        db_transaction(static function () {
+            $rows = db_all(
+                "SELECT ap.*, r.name AS rule_name, r.applies_to_issuer,
+                        GREATEST(COALESCE(r.effective_from, DATE(r.updated_at)), DATE(r.updated_at)) AS charges_from,
+                        o.obligation_number, o.transaction_id, o.cash_loan_allocation_id
+                   FROM applied_penalties ap
+                   JOIN penalty_rules r ON r.id = ap.penalty_rule_id
+                   JOIN borrower_obligations o ON o.id = ap.obligation_id
+                  WHERE ap.notes LIKE 'Automatic %' AND ap.paid_amount = 0
+                  FOR UPDATE"
+            );
+            foreach ($rows as $p) {
+                $issuer = obligation_card_issuer($p);
+                if ($p['applies_to_issuer'] === null) {
+                    $why = 'rule "' . $p['rule_name'] . '" has no bank set';
+                } elseif ($issuer === null || mb_strtolower(trim($issuer)) !== mb_strtolower(trim($p['applies_to_issuer']))) {
+                    $why = 'rule "' . $p['rule_name'] . '" is for ' . $p['applies_to_issuer'] . ', but ' . $p['obligation_number'] . ' is ' . ($issuer ? 'from ' . $issuer : 'not linked to a card');
+                } elseif ($p['applied_date'] < $p['charges_from']) {
+                    $why = 'charged for ' . format_date($p['applied_date']) . ', before the rule took effect';
+                } else {
+                    continue;
+                }
+                db_exec('DELETE FROM applied_penalties WHERE id = :id', [':id' => $p['id']]);
+                log_activity('delete_penalty', 'obligation', $p['obligation_id'],
+                    'Removed automatic penalty "' . $p['rule_name'] . '" of ' . format_money($p['amount']) . ' (' . format_date($p['applied_date']) . '): ' . $why . ' (upgrade)',
+                    $p + ['penalty_key' => penalty_key($p['obligation_id'], $p['penalty_rule_id'], $p['installment_schedule_id'], $p['applied_date'])],
+                    ['reason' => 'Upgrade: penalties apply only to the rule\'s bank and only from the day the rule takes effect']);
+            }
+        });
+    }
+
+    if (@file_put_contents($marker, date('c'), LOCK_EX) === false) {
+        error_log('[' . APP_NAME . '] Cannot write ' . PENALTY_UPGRADE_MARKER . '; the upgrade check runs on every request.');
+    }
 }

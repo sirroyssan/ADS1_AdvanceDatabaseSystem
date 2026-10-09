@@ -35,7 +35,7 @@ if ($state['filters']['type'] !== '') {
 
 $result = run_list(
     $state,
-    'id, name, calculation_type, basis, rate, fixed_amount, maximum_charge, frequency, grace_period_days, is_active, effective_from, effective_until,
+    'id, name, applies_to_issuer, calculation_type, basis, rate, fixed_amount, maximum_charge, frequency, grace_period_days, is_active, effective_from, effective_until,
      (SELECT COUNT(*) FROM applied_penalties ap WHERE ap.penalty_rule_id = penalty_rules.id) AS usage_count',
     'penalty_rules',
     $where,
@@ -62,6 +62,7 @@ require APP_ROOT . '/includes/header.php';
                 <tr>
                     <th scope="col" class="col-num">#</th>
                     <th scope="col">Rule</th>
+                    <th scope="col">Bank</th>
                     <th scope="col">Computation</th>
                     <th scope="col">Frequency</th>
                     <th scope="col" class="num">Grace days</th>
@@ -76,6 +77,7 @@ require APP_ROOT . '/includes/header.php';
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
                         <td data-label="Rule"><a class="table-link" href="<?= e(url('pages/penalty_rules/view.php', ['id' => $row['id']])) ?>"><?= e($row['name']) ?></a></td>
+                        <td data-label="Bank"><?= $row['applies_to_issuer'] ? e($row['applies_to_issuer']) : '<span class="text-muted">None (manual only)</span>' ?></td>
                         <td data-label="Computation"><?= e(penalty_rule_summary($row)) ?></td>
                         <td data-label="Frequency"><?= show($row['frequency']) ?></td>
                         <td data-label="Grace days" class="num"><?= e($row['grace_period_days']) ?></td>
