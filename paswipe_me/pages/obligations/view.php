@@ -23,6 +23,13 @@ $penalties = db_all(
     [':id' => $id]
 );
 $unpaidPenalties = array_sum(array_column($penalties, 'remaining_amount'));
+$assignedRules = penalty_rules_on($obligation['obligation_date']);
+$selectedPenalty = input_string($_GET, 'penalty');
+$terminable = array_filter($penalties, static fn ($p) => (float) $p['remaining_amount'] > 0.004 || (float) $p['paid_amount'] <= 0.004);
+$terminateOptions = [];
+foreach ($terminable as $p) {
+    $terminateOptions[$p['id']] = format_date($p['applied_date']) . ' — ' . $p['rule_name'] . ' — ' . format_money($p['remaining_amount']) . ' unpaid';
+}
 $isClosed = in_array($obligation['status'], ['cancelled', 'written_off', 'paid'], true);
 $daysLate = $obligation['due_date'] && $obligation['due_date'] < date('Y-m-d') ? (int) ((strtotime(date('Y-m-d')) - strtotime($obligation['due_date'])) / 86400) : 0;
 
@@ -68,6 +75,7 @@ require APP_ROOT . '/includes/header.php';
     <div class="figure"><p class="figure__label">Outstanding</p><p class="figure__value"><?= e(format_money($obligation['outstanding_amount'])) ?></p></div>
     <div class="figure"><p class="figure__label">Overdue</p><p class="figure__value<?= (float) $obligation['overdue_amount'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($obligation['overdue_amount'])) ?></p></div>
     <div class="figure"><p class="figure__label">Unpaid penalties</p><p class="figure__value"><?= e(format_money($unpaidPenalties)) ?></p></div>
+    <div class="figure"><p class="figure__label">Total to collect</p><p class="figure__value"><?= e(format_money((float) $obligation['outstanding_amount'] + $unpaidPenalties)) ?></p></div>
 </section>
 
 <div class="detail-layout">
@@ -136,9 +144,24 @@ require APP_ROOT . '/includes/header.php';
     <header class="panel__header">
         <h3><?= icon('scale') ?> Penalties</h3>
         <?php if (!$isClosed): ?>
-            <button type="button" class="btn btn--sm btn--outline no-print" data-toggle-panel="add-penalty"><?= icon('plus') ?> <span>Apply penalty</span></button>
+            <div class="action-bar no-print">
+                <?= post_button($related, ['id' => $id, 'action' => 'run_penalties'], 'Check penalties now', 'repeat', 'btn btn--sm btn--outline') ?>
+                <button type="button" class="btn btn--sm btn--outline" data-toggle-panel="add-penalty"><?= icon('plus') ?> <span>Apply penalty</span></button>
+            </div>
         <?php endif; ?>
     </header>
+    <div class="penalty-rules-note">
+        <strong>Penalty rules assigned</strong> (active and in effect on <?= e(format_date($obligation['obligation_date'])) ?>):
+        <?php if (!$assignedRules): ?>
+            <span class="text-muted">none — <a href="<?= e(url('pages/penalty_rules/index.php')) ?>">set up a penalty rule</a>.</span>
+        <?php else: ?>
+            <ul>
+                <?php foreach ($assignedRules as $r): ?>
+                    <li><?= e($r['name']) ?> — <?= e(penalty_rule_summary($r)) ?></li>
+                <?php endforeach; ?>
+            </ul>
+        <?php endif; ?>
+    </div>
     <?php if (!$isClosed): ?>
         <form method="post" action="<?= e($related) ?>" class="inline-panel no-print" id="add-penalty" hidden novalidate data-validate>
             <?= csrf_field() ?>
@@ -165,16 +188,15 @@ require APP_ROOT . '/includes/header.php';
                 <?php foreach ($penalties as $p): ?>
                     <tr>
                         <td data-label="Date"><?= e(format_date($p['applied_date'])) ?></td>
-                        <td data-label="Rule"><?= e($p['rule_name']) ?><?= $p['notes'] ? '<br><span class="text-muted">' . e(excerpt($p['notes'], 50)) . '</span>' : '' ?></td>
+                        <td data-label="Rule"><?= e($p['rule_name']) ?><?= $p['notes'] ? '<br><span class="text-muted">' . nl2br(e($p['notes'])) . '</span>' : '' ?></td>
                         <td data-label="Days late" class="num"><?= e($p['overdue_days']) ?></td>
                         <td data-label="Base" class="num"><?= e(format_money($p['calculation_base'])) ?></td>
                         <td data-label="Amount" class="num"><?= e(format_money($p['amount'])) ?></td>
                         <td data-label="Paid" class="num"><?= e(format_money($p['paid_amount'])) ?></td>
                         <td data-label="Remaining" class="num"><?= e(format_money($p['remaining_amount'])) ?></td>
                         <td class="actions no-print"><div class="row-actions">
-                            <?php if ((float) $p['remaining_amount'] > 0): ?>
-                                <?= post_button($related, ['id' => $id, 'action' => 'penalty_paid', 'item_id' => $p['id']], 'Mark penalty paid', 'check', 'icon-button',
-                                    'Mark the remaining ' . format_money($p['remaining_amount']) . ' of this penalty as paid?', true, 'Mark penalty paid?') ?>
+                            <?php if (isset($terminateOptions[$p['id']])): ?>
+                                <?= icon_link(url('pages/obligations/view.php', ['id' => $id, 'penalty' => $p['id']]) . '#terminate-penalty', 'x', 'Waive or delete this penalty', true) ?>
                             <?php endif; ?>
                         </div></td>
                     </tr>
@@ -183,7 +205,26 @@ require APP_ROOT . '/includes/header.php';
             </table>
         </div>
     <?php endif; ?>
-    <p class="field-help">Penalties are tracked separately from the obligation balance (applied_penalties keeps its own paid and remaining amounts).</p>
+    <?php if ($terminateOptions): ?>
+        <form method="post" action="<?= e($related) ?>" class="inline-panel no-print" id="terminate-penalty" <?= isset($terminateOptions[$selectedPenalty]) ? '' : 'hidden' ?> novalidate data-validate>
+            <?= csrf_field() ?>
+            <input type="hidden" name="id" value="<?= e($id) ?>">
+            <input type="hidden" name="action" value="terminate_penalty">
+            <?= render_fields([
+                'item_id' => ['label' => 'Penalty', 'type' => 'select', 'options' => $terminateOptions, 'required' => true, 'empty_label' => 'Select penalty'],
+                'mode'    => ['label' => 'Action', 'type' => 'select', 'options' => ['waive' => 'Waive — keep the record, set the unpaid amount to zero', 'delete' => 'Delete — remove the penalty (only if nothing was paid on it)'], 'required' => true],
+                'reason'  => ['label' => 'Reason', 'type' => 'textarea', 'rows' => 2, 'required' => true, 'max' => 1000,
+                              'placeholder' => 'e.g. Cash payment received offline but not yet recorded in the system',
+                              'help' => 'Required (at least ' . PENALTY_REASON_MIN . ' characters). Saved with the penalty and in the activity log.'],
+            ], ['item_id' => $selectedPenalty, 'mode' => 'waive'], []) ?>
+            <div class="inline-panel__actions">
+                <a href="<?= e(url('pages/obligations/view.php', ['id' => $id])) ?>" class="btn btn--outline">Cancel</a>
+                <button type="submit" class="btn btn--danger" data-loading-text="Saving…"><?= icon('check') ?> <span class="btn__label">Confirm</span></button>
+            </div>
+        </form>
+        <p class="field-help no-print"><button type="button" class="link-button" data-toggle-panel="terminate-penalty">Waive or delete a penalty…</button> Owners and administrators only; a reason is required.</p>
+    <?php endif; ?>
+    <p class="field-help">Penalties are charged automatically every month while the obligation is overdue. Payments pay penalties first (oldest first), then interest and fees, then principal.</p>
 </section>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

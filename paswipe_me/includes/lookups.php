@@ -282,3 +282,65 @@ function belongs_to(string $table, string $id, string $column, ?string $parentId
         [':id' => $id, ':parent' => $parentId]
     ) === 1;
 }
+
+/* ------------------------------------------------------------------
+ * Borrower relationship (borrowers.relationship is VARCHAR(100)).
+ * Family members may submit payments without proof; everyone else must
+ * attach proof of payment.
+ * ------------------------------------------------------------------ */
+
+const RELATIONSHIP_FAMILY = [
+    'sister'   => 'Sister',
+    'brother'  => 'Brother',
+    'parent'   => 'Parent',
+    'child'    => 'Son / daughter',
+    'spouse'   => 'Spouse / partner',
+    'cousin'   => 'Cousin',
+    'relative' => 'Other relative',
+];
+const RELATIONSHIP_OTHERS = [
+    'friend'    => 'Friend',
+    'colleague' => 'Colleague / co-worker',
+    'neighbor'  => 'Neighbor',
+    'other'     => 'Other (not related)',
+];
+
+/**
+ * Options for the relationship select, keeping an older typed-in value.
+ */
+function relationship_options(?string $current = null): array
+{
+    $options = [];
+    foreach (RELATIONSHIP_FAMILY as $value => $label) {
+        $options[$value] = 'Family — ' . $label;
+    }
+    foreach (RELATIONSHIP_OTHERS as $value => $label) {
+        $options[$value] = 'Not related — ' . $label;
+    }
+    if ($current !== null && $current !== '' && !isset($options[$current])) {
+        $options[$current] = $current . ' (' . (relationship_is_family($current) ? 'family' : 'not related') . ')';
+    }
+
+    return $options;
+}
+
+/**
+ * Is this relationship immediate family / a relative? Also understands
+ * older free-text values such as "sibling", "tita", "mother-in-law".
+ */
+function relationship_is_family(?string $relationship): bool
+{
+    $value = strtolower(trim((string) $relationship));
+    if ($value === '') {
+        return false;
+    }
+    if (isset(RELATIONSHIP_FAMILY[$value])) {
+        return true;
+    }
+
+    return (bool) preg_match(
+        '/\b(sisters?|brothers?|siblings?|relatives?|family|mother|father|mom|mum|dad|parents?|sons?|daughters?|child(ren)?|spouse|wife|husband|partner|'
+        . 'cousins?|aunt|auntie|uncle|tita|tito|niece|nephew|grand\w*|lola|lolo|ate|kuya|in-law|inlaw|step\w*)\b/u',
+        $value
+    );
+}

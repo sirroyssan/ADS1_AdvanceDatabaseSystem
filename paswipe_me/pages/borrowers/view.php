@@ -75,7 +75,10 @@ require APP_ROOT . '/includes/header.php';
             'Borrower number'  => e($borrower['borrower_number']),
             'Full name'        => e(borrower_full_name($borrower)),
             'Nickname'         => show($borrower['nickname']),
-            'Relationship'     => show($borrower['relationship']),
+            'Relationship'     => $borrower['relationship']
+                ? e(RELATIONSHIP_FAMILY[$borrower['relationship']] ?? RELATIONSHIP_OTHERS[$borrower['relationship']] ?? $borrower['relationship'])
+                  . ' <span class="text-muted">(' . (relationship_is_family($borrower['relationship']) ? 'family — proof of payment optional' : 'not related — proof of payment required') . ')</span>'
+                : '<span class="text-muted">Not set — proof of payment required</span>',
             'Primary mobile'   => show($borrower['primary_mobile']),
             'Primary email'    => show($borrower['primary_email']),
             'Status'           => badge($borrower['status']),

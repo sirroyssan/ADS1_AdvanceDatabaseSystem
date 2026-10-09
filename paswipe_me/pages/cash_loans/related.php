@@ -140,6 +140,7 @@ try {
                 break;
             }
             log_activity('create', 'obligation', $result[0], 'Created obligation ' . $result[1] . ' from cash loan ' . $loan['loan_reference']);
+            penalty_assign_on_create($result[0]);
             flash('success', 'Obligation ' . $result[1] . ' was created. Adjust interest or due date there if agreed.');
             break;
 

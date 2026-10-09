@@ -39,5 +39,6 @@ require_once APP_ROOT . '/includes/lookups.php';
 require_once APP_ROOT . '/includes/schedules.php';
 require_once APP_ROOT . '/includes/card_usage.php';
 require_once APP_ROOT . '/includes/portal.php';
+require_once APP_ROOT . '/includes/penalties.php';
 
 start_secure_session();

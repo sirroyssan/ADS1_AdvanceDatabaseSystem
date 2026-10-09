@@ -42,6 +42,7 @@ function require_borrower(): array
     if ($borrower['status'] === 'inactive') {
         force_logout('Your borrower record is inactive. Please contact the owner.');
     }
+    penalty_run_if_due();
 
     return [$user, $borrower];
 }
@@ -163,9 +164,11 @@ function portal_balance_summary(string $borrowerId): array
                 COALESCE(SUM(total_paid), 0) AS total_paid,
                 COALESCE(SUM(outstanding_amount), 0) AS outstanding,
                 COALESCE(SUM(CASE WHEN outstanding_amount > 0 AND due_date < CURDATE() THEN outstanding_amount ELSE 0 END), 0) AS overdue,
-                COALESCE(SUM(outstanding_amount > 0), 0) AS open_count
+                COALESCE(SUM(outstanding_amount > 0), 0) AS open_count,
+                (SELECT COALESCE(SUM(ap.remaining_amount), 0) FROM applied_penalties ap JOIN borrower_obligations o2 ON o2.id = ap.obligation_id
+                  WHERE o2.borrower_id = :b2 AND o2.status NOT IN ('cancelled', 'written_off')) AS penalties
            FROM borrower_obligations
           WHERE borrower_id = :b AND status NOT IN ('cancelled', 'written_off')",
-        [':b' => $borrowerId]
+        [':b' => $borrowerId, ':b2' => $borrowerId]
     );
 }

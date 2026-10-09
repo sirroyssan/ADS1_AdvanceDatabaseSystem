@@ -63,15 +63,20 @@ try {
             flash('success', 'Penalty of ' . format_money($amount) . ' was applied.');
             break;
 
-        case 'penalty_paid':
-            $count = db_exec(
-                'UPDATE applied_penalties SET paid_amount = amount, remaining_amount = 0 WHERE id = :i AND obligation_id = :o AND remaining_amount > 0',
-                [':i' => input_string($_POST, 'item_id'), ':o' => $obligation['id']]
-            );
-            if ($count) {
-                log_activity('penalty_paid', 'obligation', $obligation['id'], 'Marked a penalty as paid');
+        case 'terminate_penalty':
+            // Waive or delete: owners/administrators only (require_admin above + check inside), reason required.
+            $mode = input_string($_POST, 'mode');
+            $error = penalty_terminate(input_string($_POST, 'item_id'), $obligation['id'], $mode, input_string($_POST, 'reason'), $currentUser);
+            if ($error !== null) {
+                flash('error', $error);
+                redirect('pages/obligations/view.php?id=' . $obligation['id'] . '&penalty=' . rawurlencode(input_string($_POST, 'item_id')) . '#terminate-penalty');
             }
-            flash($count ? 'success' : 'error', $count ? 'Penalty marked as paid.' : 'Penalty not found or already paid.');
+            flash('success', $mode === 'waive' ? 'Penalty was waived. The reason was recorded.' : 'Penalty was deleted. The reason was recorded in the activity log.');
+            break;
+
+        case 'run_penalties':
+            $created = db_transaction(fn () => penalty_run_obligation(db_row('SELECT * FROM borrower_obligations WHERE id = :id FOR UPDATE', [':id' => $obligation['id']])));
+            flash('success', $created ? $created . ' new penalt' . ($created === 1 ? 'y was' : 'ies were') . ' charged.' : 'No new penalty is due. Penalties are already up to date.');
             break;
 
         default:

@@ -48,7 +48,8 @@ require APP_ROOT . '/includes/header.php';
 ?>
 
 <?= render_print_header($state, $result['total'], $result['pager']) ?>
-<?= render_list_header($state, 'Late-payment charges that can be applied to borrower obligations.', url('pages/penalty_rules/create.php')) ?>
+<?= render_list_header($state, 'Active rules in effect on an obligation\'s date are assigned to it and charged automatically every month while it is overdue.', url('pages/penalty_rules/create.php'), 'Add New',
+    post_button(url('pages/penalty_rules/run.php'), [], 'Run penalty check now', 'repeat', 'btn btn--outline', 'Charge every penalty that is due now on all overdue obligations?', false, 'Run penalty check?')) ?>
 <?= render_list_toolbar($state) ?>
 
 <section class="panel panel--flush" aria-label="Penalty rule list">

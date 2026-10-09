@@ -8,7 +8,7 @@
 
 defined('APP_ROOT') or exit('No direct access.');
 
-function borrower_fields(): array
+function borrower_fields(?array $current = null): array
 {
     return [
         'borrower_number' => ['label' => 'Borrower number', 'type' => 'text', 'max' => 50,
@@ -20,7 +20,9 @@ function borrower_fields(): array
         'last_name'       => ['label' => 'Last name', 'type' => 'text', 'max' => 100, 'required' => true],
         'suffix'          => ['label' => 'Suffix', 'type' => 'text', 'max' => 30, 'placeholder' => 'Jr., Sr., III'],
         'nickname'        => ['label' => 'Nickname', 'type' => 'text', 'max' => 100],
-        'relationship'    => ['label' => 'Relationship to owner', 'type' => 'text', 'max' => 100, 'placeholder' => 'e.g. sibling, friend, co-worker'],
+        'relationship'    => ['label' => 'Relationship to owner', 'type' => 'select', 'options' => relationship_options($current['relationship'] ?? null),
+                              'empty_label' => '— Not set (treated as not related) —',
+                              'help' => 'Family members may submit payments in the portal without proof; everyone else must attach proof of payment.'],
         'primary_mobile'  => ['label' => 'Primary mobile', 'type' => 'tel', 'max' => 30, 'pattern' => '/^[0-9+()\-\s]{7,30}$/', 'pattern_message' => 'Enter a valid mobile number.', 'section' => 'Contact'],
         'primary_email'   => ['label' => 'Primary email', 'type' => 'email', 'max' => 255],
         'notes'           => ['label' => 'Notes', 'type' => 'textarea', 'rows' => 3],

@@ -62,8 +62,8 @@ require APP_ROOT . '/includes/header.php';
         <div class="stat-card__icon stat-card__icon--warning"><?= icon('wallet') ?></div>
         <div>
             <p class="stat-card__label"><a href="<?= e(url('portal/obligations.php')) ?>">Remaining balance</a></p>
-            <p class="stat-card__value stat-card__value--money"><?= e(format_money($summary['outstanding'])) ?></p>
-            <p class="stat-card__meta"><?= e((int) $summary['open_count']) ?> open item(s)</p>
+            <p class="stat-card__value stat-card__value--money"><?= e(format_money((float) $summary['outstanding'] + (float) $summary['penalties'])) ?></p>
+            <p class="stat-card__meta"><?= (float) $summary['penalties'] > 0 ? 'Includes ' . e(format_money($summary['penalties'])) . ' late charges · ' : '' ?><?= e((int) $summary['open_count']) ?> open item(s)</p>
         </div>
     </article>
     <article class="stat-card">

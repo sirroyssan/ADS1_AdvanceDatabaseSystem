@@ -9,7 +9,7 @@ require_once __DIR__ . '/borrower_functions.php';
 $currentUser = require_admin();
 
 $borrower = find_or_redirect(borrower_find(request_id()), 'pages/borrowers/index.php', 'Borrower');
-$fields = borrower_fields();
+$fields = borrower_fields($borrower);
 $fields['borrower_number']['required'] = true;
 unset($fields['borrower_number']['help']);
 $data = form_data_from_row($fields, $borrower);

@@ -7,8 +7,8 @@
  *           and notifies the owner/administrators.
  * ?id=...:  edit the borrower's own payment while it is submitted or needs
  *           correction; a corrected payment goes back to "submitted".
- * Proof of payment is required unless the method is cash (or a proof is
- * already attached).
+ * Proof of payment is optional for family members (relationship_is_family)
+ * and required for everyone else, unless a proof is already attached.
  */
 
 require_once __DIR__ . '/../includes/auth_check.php';
@@ -28,6 +28,7 @@ if ($editId !== '') {
     }
 }
 $hasProof = $payment && (int) db_value('SELECT COUNT(*) FROM payment_attachments WHERE borrower_payment_id = :p', [':p' => $payment['id']]) > 0;
+$proofRequired = !relationship_is_family($borrower['relationship']);
 
 $methods = portal_payment_method_options($bid, $payment['payment_method_id'] ?? null);
 $fields = [
@@ -60,8 +61,8 @@ if (is_post()) {
 
     $file = $_FILES['proof'] ?? ['error' => UPLOAD_ERR_NO_FILE];
     $hasFile = ($file['error'] ?? UPLOAD_ERR_NO_FILE) !== UPLOAD_ERR_NO_FILE;
-    $isCash = !$errors && db_value('SELECT method_type FROM payment_methods WHERE id = :id', [':id' => $data['payment_method_id']]) === 'cash';
-    if (!$errors && !$hasFile && !$hasProof && !$isCash) {
+    // Family members (siblings, relatives) may skip the proof; everyone else must attach it.
+    if (!$errors && !$hasFile && !$hasProof && $proofRequired) {
         $errors['proof'] = 'Attach a screenshot or photo of the receipt so the owner can verify the payment.';
     }
 
@@ -169,11 +170,12 @@ $action = $payment ? url('portal/pay.php', ['id' => $payment['id']]) : url('port
         <?= render_fields($fields, $data, $errors) ?>
         <div class="form-grid">
             <div class="form-group form-group--full">
-                <label for="f_proof">Proof of payment<?= $hasProof ? '' : ' <span class="required" aria-hidden="true">*</span>' ?></label>
-                <input type="file" id="f_proof" name="proof" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf"
+                <label for="f_proof">Proof of payment<?= $hasProof || !$proofRequired ? ' <span class="text-muted">(optional)</span>' : ' <span class="required" aria-hidden="true">*</span>' ?></label>
+                <input type="file" id="f_proof" name="proof" accept=".jpg,.jpeg,.png,.gif,.webp,.pdf"<?= $proofRequired && !$hasProof ? ' required' : '' ?>
                        class="<?= isset($errors['proof']) ? 'is-invalid' : '' ?>" aria-describedby="f_proof-help f_proof-error">
                 <p class="field-help" id="f_proof-help">Screenshot, photo or PDF of the receipt, up to <?= e(DOCUMENT_MAX_BYTES / 1024 / 1024) ?> MB.
-                    <?= $hasProof ? 'A proof is already attached; add another only if needed.' : 'Not needed for cash payments.' ?></p>
+                    <?= $hasProof ? 'A proof is already attached; add another only if needed.'
+                        : ($proofRequired ? 'Required for your account.' : 'Optional for family members, but it helps the owner approve your payment faster.') ?></p>
                 <p class="field-error" id="f_proof-error" <?= isset($errors['proof']) ? '' : 'hidden' ?>><?= e($errors['proof'] ?? '') ?></p>
             </div>
         </div>

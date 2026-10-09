@@ -572,6 +572,42 @@ Users with the **Borrower** role sign in to their own portal instead of the admi
 
 No schema change.
 
+## Penalties and payment order (`includes/penalties.php`)
+
+**Rule assignment:**
+- When an obligation is created (manually, or from a cash loan allocation), every **active** penalty rule in effect on the obligation date is assigned at once. The assignment is logged (`assign_penalty_rules`) and shown on the obligation page.
+- Anything already overdue (a back-dated obligation) is charged immediately.
+- DATABASE LIMITATION: the schema has no column that ties a rule to an obligation; it only records charges in `applied_penalties`. The assignment is therefore resolved from each rule's active flag and effective dates rather than stored. To pin a specific rule per obligation, add the nullable column `borrower_obligations.penalty_rule_id` (proposal; not applied).
+
+**Automatic monthly penalties:**
+- **Which items:** every open obligation past its due date. An installment purchase with one obligation is charged per overdue installment.
+- **When:** one charge per rule on the first day after the grace period, then every month on the same day. A rule with frequency *once* charges only once.
+- **How much:** the percentage of the chosen basis, or the fixed amount, capped by the maximum charge.
+- **No double charges:** each charge is unique per obligation + rule + installment + date, so re-running never charges twice.
+- **When it runs:**
+  - automatically once a day, on the first page load;
+  - with *Run penalty check now* (Penalty Rules list, or per obligation);
+  - or by a scheduler running `php db/run_penalties.php`.
+- **Missed months:** they are back-filled from the later of the first overdue day and the rule's *effective from* date. Use *effective from* to limit how far back charges go.
+
+**Payment order:**
+- Every allocation (manual or auto) is split, strictly:
+  1. unpaid penalties, oldest first (allocation type `penalty`)
+  2. interest and fees (`agreed_interest + agreed_fees`, type `interest`)
+  3. principal (type `principal`)
+- Penalties are paid only through payments. The old "mark penalty paid" button was removed.
+
+**Waive or delete:**
+- Owners and administrators only (`require_admin()` plus a check inside `penalty_terminate`). A reason of at least 10 characters is required.
+- *Waive* keeps the row, sets the unpaid amount to 0 and appends "WAIVED … by … on …: reason" to its notes.
+- *Delete* removes an unpaid penalty. The full row, the reason and its key go to `activity_logs` (`delete_penalty`), so the monthly check never charges that period again.
+
+**Proof of payment by relationship:**
+- The borrower's *Relationship* is a dropdown.
+  - **Family:** sister, brother, parent, child, spouse, cousin, other relative. Proof is **optional** in the portal.
+  - **Not related:** friend, colleague, neighbor, other, or not set. Proof is **mandatory**.
+- Older typed-in values are classified by keyword (`relationship_is_family()`).
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |

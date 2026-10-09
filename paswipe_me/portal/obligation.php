@@ -32,7 +32,7 @@ $schedule = $o['transaction_id'] ? db_all(
     [':t' => $o['transaction_id']]
 ) : [];
 $applied = db_all(
-    'SELECT a.allocated_amount, a.created_at, p.id AS payment_id, p.payment_number, p.payment_date
+    'SELECT a.allocated_amount, a.allocation_type, a.created_at, p.id AS payment_id, p.payment_number, p.payment_date
        FROM borrower_payment_allocations a JOIN borrower_payments p ON p.id = a.borrower_payment_id
       WHERE a.obligation_id = :id AND p.borrower_id = :b ORDER BY a.created_at',
     [':id' => $id, ':b' => $bid]
@@ -83,6 +83,7 @@ require APP_ROOT . '/includes/header.php';
     <div class="figure"><p class="figure__label">Amount due</p><p class="figure__value"><?= e(format_money($o['total_amount_due'])) ?></p></div>
     <div class="figure"><p class="figure__label">Paid</p><p class="figure__value"><?= e(format_money($o['total_paid'])) ?></p></div>
     <div class="figure"><p class="figure__label">Remaining</p><p class="figure__value"><?= e(format_money($o['outstanding_amount'])) ?></p></div>
+    <div class="figure"><p class="figure__label">Late charges unpaid</p><p class="figure__value"><?= e(format_money(array_sum(array_column($penalties, 'remaining_amount')))) ?></p></div>
     <div class="figure"><p class="figure__label">Due date</p><p class="figure__value"><?= $o['due_date'] ? e(format_date($o['due_date'])) : '—' ?></p></div>
 </section>
 
@@ -118,7 +119,7 @@ require APP_ROOT . '/includes/header.php';
                 <ul class="child-list">
                     <?php foreach ($applied as $a): ?>
                         <li><a href="<?= e(url('portal/payment.php', ['id' => $a['payment_id']])) ?>"><?= e($a['payment_number']) ?></a>
-                            <span><?= e(format_money($a['allocated_amount'])) ?> · <?= e(format_date($a['payment_date'])) ?></span></li>
+                            <span><?= e(format_money($a['allocated_amount'])) ?> to <?= e(strtolower(humanize($a['allocation_type']))) ?> · <?= e(format_date($a['payment_date'])) ?></span></li>
                     <?php endforeach; ?>
                 </ul>
             <?php endif; ?>
@@ -148,6 +149,7 @@ require APP_ROOT . '/includes/header.php';
 <?php if ($penalties): ?>
     <section class="panel subpanel">
         <header class="panel__header"><h3><?= icon('alert') ?> Late charges</h3></header>
+        <p class="field-help">Your payments pay late charges first, then interest and fees, then the principal.</p>
         <div class="table-wrap">
             <table class="table table--cards table--compact">
                 <thead><tr><th scope="col">Date</th><th scope="col">Charge</th><th scope="col" class="num">Days late</th><th scope="col" class="num">Amount</th><th scope="col" class="num">Paid</th><th scope="col" class="num">Remaining</th></tr></thead>

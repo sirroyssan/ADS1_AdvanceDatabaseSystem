@@ -135,12 +135,27 @@ function payment_log(array $payment, string $toStatus, string $action, ?string $
 }
 
 /**
- * Apply $amount of an approved payment to an obligation (and optionally one
- * installment). Runs in one transaction; returns an error message or null.
+ * Apply part of an approved payment to an obligation, strictly in this order
+ * (includes/penalties.php):
+ *   1. unpaid penalties of the obligation, oldest first  -> allocation_type "penalty"
+ *   2. its interest and fees (agreed_interest + agreed_fees) -> "interest"
+ *   3. principal                                        -> "principal"
+ * Interest + principal reduce the obligation balance (and the chosen
+ * installment, if any); the penalty part reduces applied_penalties.
+ * $type is kept for compatibility and ignored. Returns an error or null.
  */
 function payment_allocate(array $payment, string $obligationId, ?string $scheduleId, float $amount, string $type, string $userId): ?string
 {
-    return db_transaction(function () use ($payment, $obligationId, $scheduleId, $amount, $type, $userId) {
+    try {
+        return payment_allocate_locked($payment, $obligationId, $scheduleId, $amount, $userId);
+    } catch (DomainException $e) {
+        return $e->getMessage(); // rolled back
+    }
+}
+
+function payment_allocate_locked(array $payment, string $obligationId, ?string $scheduleId, float $amount, string $userId): ?string
+{
+    return db_transaction(function () use ($payment, $obligationId, $scheduleId, $amount, $userId) {
         $fresh = db_row('SELECT id, amount, status FROM borrower_payments WHERE id = :id FOR UPDATE', [':id' => $payment['id']]);
         if (!$fresh || $fresh['status'] !== 'approved') {
             return 'Only approved payments can be allocated.';
@@ -150,32 +165,60 @@ function payment_allocate(array $payment, string $obligationId, ?string $schedul
         $unallocated = (float) $fresh['amount'] - $allocated;
 
         $obligation = db_row(
-            "SELECT * FROM borrower_obligations WHERE id = :id AND borrower_id = :b AND status NOT IN ('cancelled', 'paid', 'written_off') FOR UPDATE",
+            "SELECT * FROM borrower_obligations WHERE id = :id AND borrower_id = :b AND status NOT IN ('cancelled', 'written_off') FOR UPDATE",
             [':id' => $obligationId, ':b' => $payment['borrower_id']]
         );
         if (!$obligation) {
             return 'Choose an open obligation of this borrower.';
         }
+        $penalties = db_all(
+            'SELECT * FROM applied_penalties WHERE obligation_id = :o AND remaining_amount > 0 ORDER BY applied_date, created_at FOR UPDATE',
+            [':o' => $obligation['id']]
+        );
+        $penaltyDue = array_sum(array_map(static fn ($p) => (float) $p['remaining_amount'], $penalties));
+        $maximum = $penaltyDue + (float) $obligation['outstanding_amount'];
+
         if ($amount <= 0) {
             return 'Enter an amount greater than zero.';
         }
         if ($amount > $unallocated + 0.004) {
             return 'Only ' . format_money($unallocated) . ' of this payment is still unallocated.';
         }
-        if ($amount > (float) $obligation['outstanding_amount'] + 0.004) {
-            return 'The obligation only has ' . format_money($obligation['outstanding_amount']) . ' outstanding.';
+        if ($maximum <= 0.004) {
+            return 'This obligation has nothing left to pay.';
+        }
+        if ($amount > $maximum + 0.004) {
+            return 'The obligation only has ' . format_money($maximum) . ' left (' . format_money($penaltyDue) . ' penalties + ' . format_money($obligation['outstanding_amount']) . ' balance).';
         }
 
-        if ($scheduleId !== null) {
+        [$toPenalty, $toInterest, $toPrincipal] = allocation_split($obligation, $amount);
+        $toBalance = $toInterest + $toPrincipal;
+
+        // 1. Penalties, oldest first.
+        $left = $toPenalty;
+        foreach ($penalties as $p) {
+            if ($left <= 0.004) {
+                break;
+            }
+            $part = min($left, (float) $p['remaining_amount']);
+            db_update('applied_penalties', [
+                'paid_amount'      => number_format((float) $p['paid_amount'] + $part, 2, '.', ''),
+                'remaining_amount' => number_format((float) $p['remaining_amount'] - $part, 2, '.', ''),
+            ], $p['id']);
+            $left -= $part;
+        }
+
+        // The installment (if chosen) receives the balance part only.
+        if ($scheduleId !== null && $toBalance > 0.004) {
             $schedule = db_row(
                 'SELECT s.* FROM installment_schedules s JOIN installment_plans p ON p.id = s.installment_plan_id
                   WHERE s.id = :s AND p.transaction_id <=> :t FOR UPDATE',
                 [':s' => $scheduleId, ':t' => $obligation['transaction_id']]
             );
             if (!$schedule) {
-                return 'The installment must belong to the obligation\'s transaction.';
+                throw new DomainException('The installment must belong to the obligation\'s transaction.');
             }
-            $paid = (float) $schedule['amount_paid'] + $amount;
+            $paid = (float) $schedule['amount_paid'] + $toBalance;
             db_update('installment_schedules', [
                 'amount_paid'      => number_format($paid, 2, '.', ''),
                 'remaining_amount' => number_format(max(0, (float) $schedule['amount_due'] - $paid), 2, '.', ''),
@@ -184,15 +227,19 @@ function payment_allocate(array $payment, string $obligationId, ?string $schedul
             ], $schedule['id']);
         }
 
-        db_insert('borrower_payment_allocations', [
-            'id' => new_uuid(), 'borrower_payment_id' => $payment['id'], 'obligation_id' => $obligation['id'],
-            'installment_schedule_id' => $scheduleId, 'allocated_amount' => number_format($amount, 2, '.', ''),
-            'allocation_type' => $type,
-        ]);
+        foreach (['penalty' => $toPenalty, 'interest' => $toInterest, 'principal' => $toPrincipal] as $kind => $part) {
+            if ($part > 0.004) {
+                db_insert('borrower_payment_allocations', [
+                    'id' => new_uuid(), 'borrower_payment_id' => $payment['id'], 'obligation_id' => $obligation['id'],
+                    'installment_schedule_id' => $kind === 'penalty' ? null : $scheduleId,
+                    'allocated_amount' => number_format($part, 2, '.', ''), 'allocation_type' => $kind,
+                ]);
+            }
+        }
 
-        $totalPaid = (float) $obligation['total_paid'] + $amount;
+        $totalPaid = (float) $obligation['total_paid'] + $toBalance;
         $outstanding = max(0, (float) $obligation['total_amount_due'] - $totalPaid);
-        $isPaid = $outstanding <= 0.004;
+        $isPaid = $outstanding <= 0.004 && $penaltyDue - $toPenalty <= 0.004;
         db_update('borrower_obligations', [
             'total_paid'         => number_format($totalPaid, 2, '.', ''),
             'outstanding_amount' => number_format($outstanding, 2, '.', ''),
@@ -216,10 +263,13 @@ function payment_allocate(array $payment, string $obligationId, ?string $schedul
 function payment_allocation_choices(string $borrowerId): array
 {
     $obligations = db_options(
-        "SELECT id, CONCAT(obligation_number, ' — outstanding ₱', FORMAT(outstanding_amount, 2), IFNULL(CONCAT(' — due ', DATE_FORMAT(due_date, '%b %e, %Y')), ''))
-           FROM borrower_obligations
-          WHERE borrower_id = :b AND status NOT IN ('cancelled', 'paid', 'written_off') AND outstanding_amount > 0
-          ORDER BY due_date IS NULL, due_date, obligation_date",
+        "SELECT o.id, CONCAT(o.obligation_number, ' — balance ₱', FORMAT(o.outstanding_amount, 2),
+                       IF(pen.unpaid > 0, CONCAT(' + penalties ₱', FORMAT(pen.unpaid, 2)), ''),
+                       IFNULL(CONCAT(' — due ', DATE_FORMAT(o.due_date, '%b %e, %Y')), ''))
+           FROM borrower_obligations o
+           LEFT JOIN (SELECT obligation_id, SUM(remaining_amount) AS unpaid FROM applied_penalties GROUP BY obligation_id) pen ON pen.obligation_id = o.id
+          WHERE o.borrower_id = :b AND o.status NOT IN ('cancelled', 'written_off') AND (o.outstanding_amount > 0 OR pen.unpaid > 0)
+          ORDER BY o.due_date IS NULL, o.due_date, o.obligation_date",
         [':b' => $borrowerId]
     );
 

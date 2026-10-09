@@ -170,9 +170,9 @@ require APP_ROOT . '/includes/header.php';
                 'obligation_id'           => ['label' => 'Obligation', 'type' => 'select', 'options' => $obligationOptions, 'required' => true, 'empty_label' => 'Select obligation'],
                 'installment_schedule_id' => ['label' => 'Installment (optional)', 'type' => 'select', 'options' => $scheduleOptions, 'option_data' => $scheduleData,
                                               'attrs' => ['data-depends-on' => 'f_obligation_id'], 'empty_label' => '— Whole obligation —'],
-                'allocated_amount'        => ['label' => 'Amount', 'type' => 'decimal', 'required' => true],
-                'allocation_type'         => ['label' => 'Allocation type', 'type' => 'text', 'max' => 50],
-            ], ['allocated_amount' => number_format($unallocated, 2, '.', ''), 'allocation_type' => 'installment'], []) ?>
+                'allocated_amount'        => ['label' => 'Amount', 'type' => 'decimal', 'required' => true,
+                                              'help' => 'Applied in this order: unpaid penalties (oldest first), then interest and fees, then principal.'],
+            ], ['allocated_amount' => number_format($unallocated, 2, '.', '')], []) ?>
             <div class="inline-panel__actions">
                 <button type="button" class="btn btn--outline" data-toggle-panel="allocate-form">Cancel</button>
                 <button type="submit" class="btn btn--primary" data-loading-text="Applying…"><?= icon('check') ?> <span class="btn__label">Apply payment</span></button>

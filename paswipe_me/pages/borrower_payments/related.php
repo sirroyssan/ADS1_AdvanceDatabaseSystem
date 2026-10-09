@@ -43,10 +43,12 @@ try {
         case 'auto_allocate':
             // Apply the unallocated amount to the oldest open obligations first.
             $remaining = (float) $payment['amount'] - (float) $payment['allocated'];
+            // Each obligation receives penalties first, then interest, then principal (payment_allocate).
             $open = db_all(
-                "SELECT id, outstanding_amount FROM borrower_obligations
-                  WHERE borrower_id = :b AND status NOT IN ('cancelled', 'paid', 'written_off') AND outstanding_amount > 0
-                  ORDER BY due_date IS NULL, due_date, obligation_date",
+                "SELECT o.id, o.outstanding_amount + COALESCE(pen.unpaid, 0) AS outstanding_amount FROM borrower_obligations o
+                   LEFT JOIN (SELECT obligation_id, SUM(remaining_amount) AS unpaid FROM applied_penalties GROUP BY obligation_id) pen ON pen.obligation_id = o.id
+                  WHERE o.borrower_id = :b AND o.status NOT IN ('cancelled', 'written_off') AND (o.outstanding_amount > 0 OR pen.unpaid > 0)
+                  ORDER BY o.due_date IS NULL, o.due_date, o.obligation_date",
                 [':b' => $payment['borrower_id']]
             );
             $applied = 0.0;

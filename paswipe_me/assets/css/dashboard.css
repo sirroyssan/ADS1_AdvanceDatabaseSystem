@@ -1987,3 +1987,28 @@ input[type="file"] {
 .activity-list li.is-unread p strong {
     color: var(--primary, #1d4ed8);
 }
+
+/* Penalties: assigned rules and the waive/delete link */
+.penalty-rules-note {
+    margin: 0 0 14px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+    font-size: 14px;
+}
+
+.penalty-rules-note ul {
+    margin: 6px 0 0;
+    padding-left: 18px;
+}
+
+.link-button {
+    padding: 0;
+    border: 0;
+    background: none;
+    color: var(--primary, #1d4ed8);
+    font: inherit;
+    text-decoration: underline;
+    cursor: pointer;
+}
