@@ -125,13 +125,14 @@ function card_usage_sql(): string
            FROM transactions t WHERE t.status IN ($txnCharged) AND $notLinked",
         // Refunded transactions give the amount back.
         "SELECT t.credit_card_id, 'credits', t.amount FROM transactions t WHERE t.status = 'refunded' AND $notLinked",
-        // Installment plan interest and fees are billed to the card.
+        // Installment plan interest and fees are billed to the card (not for a borrower's
+        // share of a cash loan/advance: that plan is the borrower's repayment, not the bank's).
         "SELECT t.credit_card_id, 'interest_fees', p.interest_amount + p.fees_amount
            FROM installment_plans p JOIN transactions t ON t.id = p.transaction_id
-          WHERE t.status IN ($txnCharged) AND t.status <> 'refunded' AND p.status <> 'cancelled'",
+          WHERE t.status IN ($txnCharged) AND t.status <> 'refunded' AND p.status <> 'cancelled' AND $notLinked",
         "SELECT t.credit_card_id, 'credits', s.remaining_amount
            FROM installment_schedules s JOIN installment_plans p ON p.id = s.installment_plan_id JOIN transactions t ON t.id = p.transaction_id
-          WHERE s.status = 'waived' AND t.status IN ($txnCharged) AND t.status <> 'refunded' AND p.status <> 'cancelled'",
+          WHERE s.status = 'waived' AND t.status IN ($txnCharged) AND t.status <> 'refunded' AND p.status <> 'cancelled' AND $notLinked",
         // Cash loans: principal, then interest and fees billed to the card.
         "SELECT l.credit_card_id, 'cash_loans', $principal FROM cash_loans l WHERE l.status IN ($loanCharged)",
         "SELECT l.credit_card_id, 'interest_fees',

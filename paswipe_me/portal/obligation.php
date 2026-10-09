@@ -10,7 +10,7 @@ require_once __DIR__ . '/../includes/auth_check.php';
 $bid = $borrower['id'];
 
 $o = portal_find(
-    "SELECT o.*, t.transaction_number, t.transaction_date, t.amount AS transaction_amount, m.merchant_name,
+    "SELECT o.*, t.transaction_number, t.transaction_date, t.payment_type, t.amount AS transaction_amount, m.merchant_name,
             cl.loan_reference
        FROM borrower_obligations o
        LEFT JOIN transactions t ON t.id = o.transaction_id
@@ -94,7 +94,7 @@ require APP_ROOT . '/includes/header.php';
             'Number'          => e($o['obligation_number']),
             'Description'     => show($o['description']),
             'For'             => $o['transaction_number']
-                ? e('Purchase ' . $o['transaction_number']) . ($o['merchant_name'] ? ' · ' . e($o['merchant_name']) : '') . ' · ' . e(format_date($o['transaction_date']))
+                ? e(($o['payment_type'] === 'cash_advance' ? 'Cash advance ' : 'Purchase ') . $o['transaction_number']) . ($o['merchant_name'] ? ' · ' . e($o['merchant_name']) : '') . ' · ' . e(format_date($o['transaction_date']))
                 : ($o['loan_reference'] ? e('Share of cash loan ' . $o['loan_reference']) : '<span class="text-muted">—</span>'),
             'Original amount' => e(format_money($o['original_amount'])),
             'Agreed interest' => e(format_money($o['agreed_interest'])),

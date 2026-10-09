@@ -620,6 +620,20 @@ No schema change.
 - **Regular Edit form:** the amount is read-only for non-owners.
 - **Owner role:** only an owner can give or remove it (an administrator may appoint the first owner), and the last owner cannot be removed.
 
+## Cash advances given to borrowers
+
+On a cash advance page, **Give to a borrower** turns all or part of the withdrawn cash into a borrower obligation. The form takes the date given, amount, fee, interest per month (%), number of monthly payments and first due date.
+
+- **Total owed** = amount given + fee + add-on interest (amount × monthly rate × months), split into equal monthly payments (`build_schedule`). The last payment absorbs any rounding.
+- **How it is stored, without a schema change:** `cash_advances` has no borrower column, so each share uses:
+  - a `transactions` row (payment type *cash_advance*, the borrower, and the advance's card and reference number). A reference number `CA-YYYYMMDD-####` is generated if the advance had none.
+  - an `installment_plans` row with its `installment_schedules` (the borrower's monthly payments)
+  - a `borrower_obligations` row (`original_amount` = amount given, `agreed_fees` = fee, `agreed_interest` = interest)
+- **Card usage:** it counts the withdrawal once, from `cash_advances`. The linked borrower transaction and its plan's interest and fees are not added to the card. Only the bank's own fee and interest on the advance are.
+- **Penalties:** the rules are assigned immediately and late charges apply per overdue monthly payment. Payments follow the normal order (penalties → interest/fees → principal).
+- **Limits:** you can't give more than was withdrawn. An advance given to borrowers who still owe cannot be cancelled. Its card and reference number are locked, and the withdrawn amount can't be lowered below what was given.
+- **Notifications:** the borrower is notified and sees the item as "Cash advance" with its payment schedule in the portal.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |

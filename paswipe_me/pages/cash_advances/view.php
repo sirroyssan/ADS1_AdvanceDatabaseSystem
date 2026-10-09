@@ -14,7 +14,10 @@ if (is_post()) {
     require_csrf('pages/cash_advances/view.php?id=' . $advance['id']);
     $status = input_string($_POST, 'status');
 
-    if ($advance['status'] === 'active' && in_array($status, ['completed', 'cancelled'], true)) {
+    $openShares = array_filter(cash_advance_shares($advance), static fn ($s) => $s['obligation_id'] && !in_array($s['obligation_status'], ['paid', 'cancelled', 'written_off'], true));
+    if ($status === 'cancelled' && $openShares) {
+        flash('error', 'This cash advance was given to borrowers who still owe it. Cancel or settle their obligations first.');
+    } elseif ($advance['status'] === 'active' && in_array($status, ['completed', 'cancelled'], true)) {
         card_usage_apply([$advance['credit_card_id']], fn () => db_update('cash_advances', ['status' => $status], $advance['id']));
         log_activity('status_change', 'cash_advance', $advance['id'], 'Cash advance marked ' . $status, ['status' => $advance['status']], ['status' => $status]);
         flash('success', 'Cash advance marked as ' . humanize($status) . '.');
@@ -23,6 +26,20 @@ if (is_post()) {
     }
     redirect('pages/cash_advances/view.php', ['id' => $advance['id']]);
 }
+
+$shares = cash_advance_shares($advance);
+$given = array_sum(array_column($shares, 'amount'));
+$remaining = max(0, (float) $advance['amount'] - $given);
+$giveFields = cash_advance_give_fields($advance, $remaining);
+$prefill = $_SESSION['give_form'] ?? null;
+unset($_SESSION['give_form']);
+$giveData = $prefill ? array_intersect_key($prefill, $giveFields) : form_defaults($giveFields, [
+    'given_date'     => $advance['advance_date'],
+    'amount'         => number_format($remaining, 2, '.', ''),
+    'fee'            => (float) $advance['amount'] > 0 ? number_format((float) $advance['fee'] * $remaining / (float) $advance['amount'], 2, '.', '') : '0.00',
+    'months'         => 1,
+    'first_due_date' => schedule_due_date($advance['advance_date'], 1, 'monthly'),
+]);
 
 $pageTitle = 'Cash Advance';
 $activeNav = 'cash_advances';
@@ -74,6 +91,56 @@ require APP_ROOT . '/includes/header.php';
         'Last updated'     => e(format_datetime($advance['updated_at'])),
     ]) ?>
     <p class="field-help no-print">Cash advances are never deleted; cancel a mistaken entry instead.</p>
+</section>
+
+<section class="panel subpanel">
+    <header class="panel__header">
+        <h3><?= icon('users') ?> Given to borrowers</h3>
+        <?php if ($advance['status'] !== 'cancelled' && $remaining > 0.004): ?>
+            <button type="button" class="btn btn--sm btn--primary no-print" data-toggle-panel="give-borrower"><?= icon('plus') ?> <span>Give to a borrower</span></button>
+        <?php endif; ?>
+    </header>
+    <section class="figure-grid">
+        <div class="figure"><p class="figure__label">Withdrawn</p><p class="figure__value"><?= e(format_money($advance['amount'])) ?></p></div>
+        <div class="figure"><p class="figure__label">Given to borrowers</p><p class="figure__value"><?= e(format_money($given)) ?></p></div>
+        <div class="figure"><p class="figure__label">Not yet given</p><p class="figure__value"><?= e(format_money($remaining)) ?></p></div>
+    </section>
+    <?php if ($advance['status'] !== 'cancelled' && $remaining > 0.004): ?>
+        <form method="post" action="<?= e(url('pages/cash_advances/give.php')) ?>" class="inline-panel no-print" id="give-borrower" <?= $prefill ? '' : 'hidden' ?> novalidate data-validate>
+            <?= csrf_field() ?>
+            <input type="hidden" name="id" value="<?= e($advance['id']) ?>">
+            <p class="field-help">The borrower owes the amount given + the fee + interest (amount × monthly rate × months), split into equal monthly payments.
+                Late payments are charged by your penalty rules. The bank's fee and interest on this card are tracked separately.</p>
+            <?= render_fields($giveFields, $giveData, []) ?>
+            <div class="inline-panel__actions">
+                <button type="button" class="btn btn--outline" data-toggle-panel="give-borrower">Cancel</button>
+                <button type="submit" class="btn btn--primary" data-loading-text="Saving…"><?= icon('check') ?> <span class="btn__label">Create obligation</span></button>
+            </div>
+        </form>
+    <?php endif; ?>
+    <?php if (!$shares): ?>
+        <p class="empty-inline">Not given to any borrower yet.</p>
+    <?php else: ?>
+        <div class="table-wrap">
+            <table class="table table--cards table--compact">
+                <thead><tr><th scope="col">Borrower</th><th scope="col">Date given</th><th scope="col" class="num">Given</th><th scope="col">Payments</th>
+                    <th scope="col">Obligation</th><th scope="col" class="num">Total owed</th><th scope="col" class="num">Remaining</th></tr></thead>
+                <tbody>
+                <?php foreach ($shares as $s): ?>
+                    <tr>
+                        <td data-label="Borrower"><?= related_link($s['borrower_id'], borrower_name($s), 'pages/borrowers/view.php') ?></td>
+                        <td data-label="Date given"><?= e(format_date($s['transaction_date'])) ?></td>
+                        <td data-label="Given" class="num"><?= e(format_money($s['amount'])) ?></td>
+                        <td data-label="Payments"><?= $s['number_of_installments'] ? e($s['number_of_installments']) . ' × ' . e(format_money($s['installment_amount'])) : '<span class="text-muted">—</span>' ?></td>
+                        <td data-label="Obligation"><?= $s['obligation_id'] ? related_link($s['obligation_id'], $s['obligation_number'], 'pages/obligations/view.php') . ' ' . badge($s['obligation_status']) : '<span class="text-muted">—</span>' ?></td>
+                        <td data-label="Total owed" class="num"><?= show_money($s['total_amount_due']) ?></td>
+                        <td data-label="Remaining" class="num"><?= show_money($s['outstanding_amount']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
 </section>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

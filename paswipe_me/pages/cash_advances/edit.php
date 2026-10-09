@@ -17,16 +17,27 @@ if ($advance['status'] === 'cancelled') {
 
 $fields = cash_advance_fields($advance);
 $fields['total_amount']['attrs']['data-keep'] = '1';
+$givenToBorrowers = cash_advance_given_total($advance);
+if ($givenToBorrowers > 0) {
+    // The card and reference number link this withdrawal to the borrowers' shares.
+    foreach (['credit_card_id', 'reference_number'] as $locked) {
+        $fields[$locked]['readonly'] = true;
+        $fields[$locked]['help'] = 'Locked: part of this cash advance was given to borrowers.';
+    }
+}
 $data = form_data_from_row($fields, $advance);
 $errors = [];
 
 if (is_post()) {
     require_csrf('pages/cash_advances/edit.php?id=' . $advance['id']);
     [$data, $errors] = cash_advance_validate($fields, $_POST, $advance['id']);
+    if (!isset($errors['amount']) && $givenToBorrowers > 0 && (float) $data['amount'] + 0.004 < $givenToBorrowers) {
+        $errors['amount'] = format_money($givenToBorrowers) . ' was already given to borrowers; the amount withdrawn cannot be lower.';
+    }
 
     if (!$errors) {
         try {
-            card_usage_apply([$advance['credit_card_id'], $data['credit_card_id']], fn () => db_update('cash_advances', $data, $advance['id']));
+            card_usage_apply([$advance['credit_card_id'], $data['credit_card_id'] ?? null], fn () => db_update('cash_advances', $data, $advance['id']));
             log_activity('update', 'cash_advance', $advance['id'], 'Updated cash advance', array_intersect_key($advance, $data), $data);
             flash('success', 'Cash advance was updated successfully.');
             redirect('pages/cash_advances/view.php', ['id' => $advance['id']]);
