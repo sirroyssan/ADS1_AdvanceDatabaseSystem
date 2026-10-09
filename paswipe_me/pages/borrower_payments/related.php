@@ -1,6 +1,6 @@
 <?php
 /**
- * Borrower Payments - actions (POST): allocate, auto_allocate,
+ * Borrower Payments - actions (POST): allocate,
  * attach_document, detach_document. Allocations cannot be removed
  * (financial history); a wrong allocation is corrected with an
  * adjustment on the obligation by an administrator.
@@ -38,13 +38,6 @@ try {
             notify_borrower($payment['borrower_id'], 'payment_applied', 'Payment ' . $payment['payment_number'] . ' applied',
                 format_money($amount) . ' of your payment was applied to your balance.', 'borrower_payment', $payment['id']);
             flash('success', format_money($amount) . ' was applied to the obligation.');
-            break;
-
-        case 'auto_allocate':
-            $applied = payment_auto_allocate($payment['id'], $currentUser['id']);
-            flash($applied > 0 ? 'success' : 'error', $applied > 0
-                ? format_money($applied) . ' was applied to the oldest open obligations (penalties, interest, principal; installments oldest first).'
-                : 'Nothing could be applied: this borrower has no open obligations.');
             break;
 
         case 'attach_document':

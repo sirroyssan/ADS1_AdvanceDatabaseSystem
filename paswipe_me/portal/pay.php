@@ -41,6 +41,12 @@ $fields = [
 ];
 $data = $payment ? form_data_from_row($fields, $payment) : form_defaults($fields);
 $errors = [];
+$payGroups = payable_items($bid);
+// Current choices (edit) or what was posted, keyed like the form: obligation:schedule.
+$chosen = [];
+foreach ($payment ? payment_selections($payment['id']) : [] as $sel) {
+    $chosen[$sel['obligation_id'] . ':' . ($sel['installment_schedule_id'] ?? '')] = $sel['amount'];
+}
 
 if (is_post()) {
     require_csrf($payment ? 'portal/pay.php?id=' . $payment['id'] : 'portal/pay.php');
@@ -57,6 +63,21 @@ if (is_post()) {
         [':b' => $bid, ':r' => $data['reference_number'], ':id' => $payment['id'] ?? '']
     ) > 0) {
         $errors['reference_number'] = 'You already submitted a payment with this reference number.';
+    }
+
+    // What the borrower says this payment is for (optional; never more than the amount paid).
+    $chosen = [];
+    foreach ((array) ($_POST['select'] ?? []) as $key => $on) {
+        if (is_string($key) && $on === '1') {
+            $chosen[$key] = (string) ($_POST['select_amount'][$key] ?? '');
+        }
+    }
+    $selections = [];
+    if (!$errors) {
+        [$selections, $selectionError] = payment_selections_from_input($_POST, $bid, (float) $data['amount']);
+        if ($selectionError !== null) {
+            $errors['selection'] = $selectionError;
+        }
     }
 
     $file = $_FILES['proof'] ?? ['error' => UPLOAD_ERR_NO_FILE];
@@ -80,7 +101,7 @@ if (is_post()) {
             $id = $payment['id'] ?? new_uuid();
             $number = $payment['payment_number'] ?? generate_reference('PAY', 'borrower_payments', 'payment_number');
 
-            db_transaction(function () use ($id, $number, $payment, $data, $stored, $documentId, $currentUser, $bid, $borrower) {
+            db_transaction(function () use ($id, $number, $payment, $data, $stored, $documentId, $currentUser, $bid, $borrower, $selections) {
                 if ($payment === null) {
                     db_insert('borrower_payments', ['id' => $id, 'payment_number' => $number, 'borrower_id' => $bid] + $data
                         + ['status' => 'submitted', 'allocation_status' => 'unallocated', 'submitted_at' => date('Y-m-d H:i:s')]);
@@ -93,6 +114,7 @@ if (is_post()) {
                     }
                     db_update('borrower_payments', $update, $id);
                 }
+                payment_selections_save($id, $selections);
 
                 if ($stored) {
                     db_insert('documents', ['id' => $documentId, 'document_type' => 'payment_proof'] + $stored + [
@@ -138,6 +160,7 @@ $receiving = db_all(
 );
 
 $pageTitle = $payment ? 'Fix Payment' : 'Submit Payment';
+$pageScripts = ['assets/js/portal-pay.js'];
 $activeNav = $payment ? 'portal_payments' : 'portal_pay';
 $layout = 'portal';
 require APP_ROOT . '/includes/header.php';
@@ -168,6 +191,47 @@ $action = $payment ? url('portal/pay.php', ['id' => $payment['id']]) : url('port
             <div class="alert alert--error" role="alert"><?= icon('alert') ?><span><?= e($errors['_form'] ?? 'Please correct the highlighted fields below.') ?></span></div>
         <?php endif; ?>
         <?= render_fields($fields, $data, $errors) ?>
+
+        <fieldset class="pay-for" data-pay-for>
+            <legend>What is this payment for?</legend>
+            <p class="field-help">Tick the items or installments you are paying and the amount for each. Late charges on an item are paid first from what you put on it.
+                Anything you do not assign is posted by the owner.</p>
+            <?php if (isset($errors['selection'])): ?><p class="field-error"><?= e($errors['selection']) ?></p><?php endif; ?>
+            <?php if (!$payGroups): ?>
+                <p class="empty-inline">You have nothing open to pay right now.</p>
+            <?php else: ?>
+                <div class="table-wrap">
+                    <table class="table table--cards table--compact pay-for__table">
+                        <thead><tr><th scope="col" class="col-check"><span class="visually-hidden">Pay</span></th><th scope="col">Item</th><th scope="col">Due</th><th scope="col" class="num">To pay</th><th scope="col" class="num">Amount you are paying</th></tr></thead>
+                        <?php foreach ($payGroups as $g): ?>
+                            <tbody>
+                            <tr class="pay-for__group"><td colspan="5"><strong><?= e($g['obligation']['obligation_number']) ?></strong>
+                                <?= $g['obligation']['description'] ? ' · ' . e(excerpt($g['obligation']['description'], 60)) : '' ?>
+                                <span class="text-muted"> · total to pay <?= e(format_money($g['owed'])) ?><?= $g['penalties'] > 0 ? ' (incl. ' . e(format_money($g['penalties'])) . ' late charges)' : '' ?></span></td></tr>
+                            <?php foreach ($g['rows'] as $r): ?>
+                                <?php $on = array_key_exists($r['key'], $chosen); ?>
+                                <tr>
+                                    <td class="col-check"><input type="checkbox" name="select[<?= e($r['key']) ?>]" value="1" data-pay-check <?= $on ? 'checked' : '' ?>
+                                               id="sel-<?= e(md5($r['key'])) ?>"></td>
+                                    <td data-label="Item"><label for="sel-<?= e(md5($r['key'])) ?>"><?= e($r['label']) ?></label>
+                                        <?= $r['overdue'] ? ' <span class="status status--danger">Overdue</span>' : '' ?></td>
+                                    <td data-label="Due"><?= $r['due_date'] ? e(format_date($r['due_date'])) : '<span class="text-muted">—</span>' ?></td>
+                                    <td data-label="To pay" class="num"><?= e(format_money($r['owed'])) ?></td>
+                                    <td data-label="Amount you are paying" class="num">
+                                        <input type="text" inputmode="decimal" class="input-num" name="select_amount[<?= e($r['key']) ?>]" data-pay-amount data-owed="<?= e(number_format($r['owed'], 2, '.', '')) ?>"
+                                               value="<?= e($on ? $chosen[$r['key']] : '') ?>" <?= $on ? '' : 'disabled' ?> aria-label="Amount for <?= e($g['obligation']['obligation_number'] . ' ' . $r['label']) ?>">
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        <?php endforeach; ?>
+                    </table>
+                </div>
+                <p class="pay-for__summary" aria-live="polite">Assigned <strong data-pay-assigned>₱0.00</strong> of <strong data-pay-total>₱0.00</strong> paid ·
+                    not assigned <strong data-pay-rest>₱0.00</strong> <span class="text-muted">(the owner will post it)</span></p>
+            <?php endif; ?>
+        </fieldset>
+
         <div class="form-grid">
             <div class="form-group form-group--full">
                 <label for="f_proof">Proof of payment<?= $hasProof || !$proofRequired ? ' <span class="text-muted">(optional)</span>' : ' <span class="required" aria-hidden="true">*</span>' ?></label>

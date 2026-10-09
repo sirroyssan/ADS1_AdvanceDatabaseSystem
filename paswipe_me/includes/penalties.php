@@ -297,6 +297,7 @@ function penalty_run_if_due(): void
 {
     penalty_schema_upgrade();
     try {
+        payment_selections_upgrade();
         schedule_sync_upgrade();
         schedule_refresh_statuses();
         obligation_refresh_overdue();
@@ -315,17 +316,6 @@ function penalty_run_if_due(): void
 
     try {
         [$checked, $created] = penalty_run_all($today);
-        // Then apply any approved payment that still has money left over (e.g. approved
-        // before automatic application, or a borrower who had nothing open at the time).
-        require_once APP_ROOT . '/pages/borrower_payments/payment_functions.php';
-        foreach (db_all(
-            "SELECT p.id FROM borrower_payments p
-              WHERE p.status = 'approved'
-                AND p.amount > (SELECT COALESCE(SUM(a.allocated_amount), 0) FROM borrower_payment_allocations a WHERE a.borrower_payment_id = p.id) + 0.004
-              ORDER BY p.payment_date, p.submitted_at"
-        ) as $pending) {
-            payment_auto_allocate($pending['id'], (string) db_value("SELECT u.id FROM users u JOIN user_roles r ON r.user_id = u.id WHERE r.role IN ('owner', 'admin') ORDER BY r.role = 'owner' DESC LIMIT 1"));
-        }
         if ($created > 0) {
             log_activity('penalty_run', 'system', null, 'Daily penalty check: ' . $created . ' new penalt' . ($created === 1 ? 'y' : 'ies') . ' on ' . $checked . ' open obligation(s)');
         }

@@ -35,6 +35,8 @@ $attachments = db_all(
     [':id' => $id]
 );
 
+$selections = payment_selections($id);
+$selectedTotal = array_sum(array_map(static fn ($x) => (float) $x['amount'], $selections));
 $decisions = PAYMENT_TRANSITIONS[$payment['status']] ?? [];
 $canAllocate = $payment['status'] === 'approved' && $unallocated > 0.004;
 [$obligationOptions, $scheduleOptions, $scheduleData] = $canAllocate ? payment_allocation_choices($payment['borrower_id']) : [[], [], []];
@@ -167,12 +169,35 @@ require APP_ROOT . '/includes/header.php';
 </div>
 
 <section class="panel subpanel">
+    <header class="panel__header"><h3><?= icon('check') ?> What the borrower wants to pay</h3></header>
+    <?php if (!$selections): ?>
+        <p class="empty-inline">The borrower did not choose any item. Post the whole amount with Allocate below.</p>
+    <?php else: ?>
+        <div class="table-wrap">
+            <table class="table table--cards table--compact">
+                <thead><tr><th scope="col">Item</th><th scope="col">Installment</th><th scope="col" class="num">Amount chosen</th></tr></thead>
+                <tbody>
+                <?php foreach ($selections as $sel): ?>
+                    <tr>
+                        <td data-label="Item"><a href="<?= e(url('pages/obligations/view.php', ['id' => $sel['obligation_id']])) ?>"><?= e($sel['obligation_number']) ?></a>
+                            <?= $sel['description'] ? '<br><span class="text-muted">' . e(excerpt($sel['description'], 60)) . '</span>' : '' ?></td>
+                        <td data-label="Installment"><?= $sel['installment_number'] ? '#' . e($sel['installment_number']) . ' · due ' . e(format_date($sel['installment_due'])) : '<span class="text-muted">Whole item / late charges</span>' ?></td>
+                        <td data-label="Amount chosen" class="num"><?= e(format_money($sel['amount'])) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+                <tfoot><tr><td colspan="2">Chosen · not assigned by the borrower: <?= e(format_money(max(0, (float) $payment['amount'] - $selectedTotal))) ?></td><td class="num"><?= e(format_money($selectedTotal)) ?></td></tr></tfoot>
+            </table>
+        </div>
+    <?php endif; ?>
+    <p class="field-help">On approval the payment is applied as chosen (each item: late charges first, then interest, then principal). Anything not chosen stays unallocated for you to post below.</p>
+</section>
+
+<section class="panel subpanel">
     <header class="panel__header">
         <h3><?= icon('file-text') ?> Allocations to obligations</h3>
         <?php if ($canAllocate && $obligationOptions): ?>
             <div class="action-bar no-print">
-                <?= post_button($related, ['id' => $id, 'action' => 'auto_allocate'], 'Auto-allocate', 'repeat', 'btn btn--sm btn--outline',
-                    'Apply the unallocated ' . format_money($unallocated) . ' to this borrower\'s oldest open obligations?', false, 'Auto-allocate payment?') ?>
                 <button type="button" class="btn btn--sm btn--primary" data-toggle-panel="allocate-form"><?= icon('plus') ?> <span>Allocate</span></button>
             </div>
         <?php endif; ?>

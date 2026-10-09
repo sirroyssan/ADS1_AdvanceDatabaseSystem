@@ -100,15 +100,36 @@ function schedule_sync_rows(string $obligationId, ?array $payment): float
         [':p' => $target['parent_id']]
     );
 
+    // Money the borrower (or admin) aimed at a specific installment goes there first;
+    // the rest fills the installments oldest first.
+    $targeted = [];
+    if ($target['table'] === 'installment_schedules') {
+        foreach (db_all(
+            "SELECT installment_schedule_id AS sid, SUM(allocated_amount) AS amt FROM borrower_payment_allocations
+              WHERE obligation_id = :o AND installment_schedule_id IS NOT NULL AND allocation_type <> 'penalty'
+              GROUP BY installment_schedule_id",
+            [':o' => $obligationId]
+        ) as $t) {
+            $targeted[$t['sid']] = (float) $t['amt'];
+        }
+    }
+    $plan = [];
+    $free = $target['pool'];
+    foreach ($rows as $row) {
+        $plan[$row['id']] = $row['status'] === 'waived' ? 0.0 : min((float) $row['amount_due'], $targeted[$row['id']] ?? 0.0);
+        $free -= $plan[$row['id']];
+    }
+    $free = max(0, $free);
+
     $before = 0.0;
-    $left = $target['pool'];
     foreach ($rows as $row) {
         $before += (float) $row['amount_paid'];
         if ($row['status'] === 'waived') {
             continue;
         }
-        $paid = round(min((float) $row['amount_due'], max(0, $left)), 2);
-        $left -= $paid;
+        $extra = min((float) $row['amount_due'] - $plan[$row['id']], $free);
+        $free -= $extra;
+        $paid = round($plan[$row['id']] + $extra, 2);
         if (abs($paid - (float) $row['amount_paid']) < 0.005) {
             continue;
         }

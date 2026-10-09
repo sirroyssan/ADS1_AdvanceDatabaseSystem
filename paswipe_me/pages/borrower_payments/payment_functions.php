@@ -76,52 +76,6 @@ function payment_find(string $id): ?array
     );
 }
 
-/**
- * Apply an approved payment's unallocated amount to the borrower's open
- * obligations, oldest due first (each: penalties, interest, principal,
- * installments oldest first). Returns the amount applied.
- */
-function payment_auto_allocate(string $paymentId, string $userId): float
-{
-    $payment = payment_find($paymentId);
-    if (!$payment || $payment['status'] !== 'approved') {
-        return 0.0;
-    }
-    $remaining = round((float) $payment['amount'] - (float) $payment['allocated'], 2);
-    if ($remaining <= 0.004) {
-        return 0.0;
-    }
-
-    $open = db_all(
-        "SELECT o.id, o.outstanding_amount + COALESCE(pen.unpaid, 0) AS owed FROM borrower_obligations o
-           LEFT JOIN (SELECT obligation_id, SUM(remaining_amount) AS unpaid FROM applied_penalties GROUP BY obligation_id) pen ON pen.obligation_id = o.id
-          WHERE o.borrower_id = :b AND o.status NOT IN ('cancelled', 'written_off') AND (o.outstanding_amount > 0 OR pen.unpaid > 0)
-          ORDER BY o.due_date IS NULL, o.due_date, o.obligation_date",
-        [':b' => $payment['borrower_id']]
-    );
-
-    $applied = 0.0;
-    foreach ($open as $o) {
-        if ($remaining <= 0.004) {
-            break;
-        }
-        $part = round(min($remaining, (float) $o['owed']), 2);
-        if ($part <= 0.004 || payment_allocate($payment, $o['id'], null, $part, 'auto', $userId) !== null) {
-            continue;
-        }
-        $remaining -= $part;
-        $applied += $part;
-    }
-
-    if ($applied > 0) {
-        log_activity('allocate', 'borrower_payment', $payment['id'], 'Automatically applied ' . format_money($applied) . ' of ' . $payment['payment_number'], null, null, $userId);
-        notify_borrower($payment['borrower_id'], 'payment_applied', 'Payment ' . $payment['payment_number'] . ' applied',
-            format_money($applied) . ' of your payment was applied to your balance (late charges first, then interest, then principal).', 'borrower_payment', $payment['id']);
-    }
-
-    return round($applied, 2);
-}
-
 function allocation_status_for(float $amount, float $allocated): string
 {
     if ($allocated <= 0.004) {

@@ -35,6 +35,7 @@ $history = db_all(
     'SELECT action, to_status, reason, performed_by, performed_at FROM payment_verification_logs WHERE borrower_payment_id = :p ORDER BY performed_at, id',
     [':p' => $id]
 );
+$selections = payment_selections($id);
 $canEdit = in_array($payment['status'], PAYMENT_EDITABLE_STATUSES, true);
 $canCancel = in_array($payment['status'], PORTAL_CANCELLABLE_STATUSES, true);
 
@@ -113,6 +114,20 @@ require APP_ROOT . '/includes/header.php';
             <?php endif; ?>
             <?php if ($canEdit): ?>
                 <p class="field-help no-print">Add another file with <a href="<?= e(url('portal/pay.php', ['id' => $id])) ?>">Edit</a>.</p>
+            <?php endif; ?>
+        </section>
+
+        <section class="panel">
+            <header class="panel__header"><h3>You chose to pay</h3></header>
+            <?php if (!$selections): ?>
+                <p class="empty-inline">No item chosen — the owner will post this payment.</p>
+            <?php else: ?>
+                <ul class="child-list">
+                    <?php foreach ($selections as $sel): ?>
+                        <li><a href="<?= e(url('portal/obligation.php', ['id' => $sel['obligation_id']])) ?>"><?= e(payment_selection_label($sel)) ?></a>
+                            <span><?= e(format_money($sel['amount'])) ?></span></li>
+                    <?php endforeach; ?>
+                </ul>
             <?php endif; ?>
         </section>
 

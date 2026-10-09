@@ -41,5 +41,6 @@ require_once APP_ROOT . '/includes/card_usage.php';
 require_once APP_ROOT . '/includes/portal.php';
 require_once APP_ROOT . '/includes/penalties.php';
 require_once APP_ROOT . '/includes/schedule_sync.php';
+require_once APP_ROOT . '/includes/payment_selections.php';
 
 start_secure_session();

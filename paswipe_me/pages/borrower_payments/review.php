@@ -74,12 +74,19 @@ try {
 
     log_activity('review', 'borrower_payment', $payment['id'], $payment['payment_number'] . ' ' . $decision . ($reason ? ': ' . $reason : ''),
         ['status' => $payment['status']], ['status' => $decision] + $checks);
-    // An approved payment is applied at once: penalties, interest, principal, installments oldest first.
-    $applied = $decision === 'approved' ? payment_auto_allocate($payment['id'], $currentUser['id']) : 0.0;
+    // Approved: apply it exactly as the borrower chose. Anything left is posted by the owner/admin.
+    [$applied, $notes] = $decision === 'approved' ? payment_apply_selections($payment['id'], $currentUser['id']) : [0.0, []];
     flash('success', 'Payment ' . $payment['payment_number'] . ' is now ' . humanize($decision) . '.'
-        . ($decision === 'approved'
-            ? ($applied > 0 ? ' ' . format_money($applied) . ' was applied automatically to the borrower\'s balance.' : ' The borrower has nothing open to apply it to.')
-            : ''));
+        . ($applied > 0 ? ' ' . format_money($applied) . ' was applied to the items the borrower chose.' : ''));
+    if ($decision === 'approved') {
+        $rest = round((float) $payment['amount'] - (float) payment_find($payment['id'])['allocated'], 2);
+        foreach ($notes as $note) {
+            flash('info', 'Not applied: ' . $note);
+        }
+        if ($rest > 0.004) {
+            flash('warning', format_money($rest) . ' is not allocated yet. Choose where to post it with Allocate below.');
+        }
+    }
 } catch (DomainException $e) {
     flash('error', $e->getMessage());
 } catch (PDOException $e) {

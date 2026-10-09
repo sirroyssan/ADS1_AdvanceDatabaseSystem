@@ -2319,3 +2319,43 @@ input[type="file"] {
         line-height: 1;
     }
 }
+
+/* Borrower: what is this payment for? */
+.pay-for {
+    margin: 8px 0 20px;
+    padding: 0;
+    border: 0;
+}
+
+.pay-for legend {
+    margin-bottom: 4px;
+    font-weight: 600;
+}
+
+.pay-for__group td {
+    background: var(--surface-muted);
+}
+
+.pay-for__table .input-num {
+    width: 130px;
+    min-height: 34px;
+    padding: 4px 8px;
+    text-align: right;
+}
+
+.pay-for__table .input-num:disabled {
+    background: var(--surface-muted);
+}
+
+.pay-for__summary {
+    margin: 10px 0 0;
+}
+
+.pay-for.is-over .pay-for__summary {
+    color: var(--danger, #dc2626);
+}
+
+/* Grid columns may shrink below their content (wide tables scroll inside .table-wrap). */
+.detail-layout > * {
+    min-width: 0;
+}

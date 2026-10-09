@@ -718,6 +718,18 @@ Shared SQL in `includes/penalties.php`: `penalty_totals_join()`, `borrower_total
 - **Overdue.** It is calculated, never typed: *what was due by today − what the borrower paid* (a cash loan uses the borrower's share). It is updated immediately when payments change and on every page load. The field is read-only on the obligation form.
 - **One-time upgrade.** Existing schedules were re-derived from borrower payments, replacing amounts entered with the old Pay button (marker `storage/upgrade_schedule_sync.done`). Card payments recorded earlier were kept.
 
+## Borrower chooses what a payment is for (approved table `borrower_payment_selections`)
+
+- **Borrower (Submit Payment):** ticks one or more items or installments and types an amount for each. The installments of an installment purchase are listed separately, plus "late charges / any part of this item"; a cash loan share or a single-due item appears as one line.
+  - An amount can't be more than what that line owes, and the total chosen can't be more than the amount paid.
+  - Choosing is optional. Anything not chosen is left to the owner/admin.
+- **Owner/admin:** the payment page shows *What the borrower wants to pay* and the amount not assigned.
+  - **Approving** applies the payment exactly as chosen. Each item pays its late charges first, then interest, then principal. An installment choice is credited to that installment, even if older ones are still open.
+  - **The rest stays unallocated** until the owner/admin posts it with **Allocate**, choosing the item and optionally the installment.
+- **Removed:** "Auto-allocate" and the daily automatic application of leftovers.
+- **Schedules:** amounts aimed at a specific installment are credited there first; the rest of an item's payments fill its installments oldest first.
+- **Upgrade:** the table is created automatically on first load (marker `storage/upgrade_payment_selections.done`); the same SQL is in `db/upgrade_payment_selections.sql`.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |
