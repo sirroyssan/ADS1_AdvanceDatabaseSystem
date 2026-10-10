@@ -11,6 +11,12 @@ $currentUser = require_admin();
 $fields = bank_charge_fields();
 $preset = input_string($_GET, 'credit_card_id');
 $data = form_defaults($fields, is_valid_uuid($preset) ? ['credit_card_id' => $preset] : []);
+// Opened from a statement's reconciliation ("Add missing transaction"): start from the
+// statement's date and report afterwards which statement the record went to.
+$reconcile = is_valid_uuid(input_string($_GET, 'reconcile')) ? input_string($_GET, 'reconcile') : null;
+if (!is_post() && preg_match('/^\d{4}-\d{2}-\d{2}$/', input_string($_GET, 'charge_date'))) {
+    $data['charge_date'] = input_string($_GET, 'charge_date');
+}
 $errors = [];
 
 if (is_post()) {
@@ -23,6 +29,7 @@ if (is_post()) {
             card_usage_apply([$data['credit_card_id']], fn () => db_insert('bank_charges', ['id' => $id] + $data));
             log_activity('create', 'bank_charge', $id, 'Recorded bank charge "' . $data['charge_type'] . '" of ' . format_money($data['amount']), null, $data);
             flash('success', 'Bank charge was recorded.');
+            statement_placement_notice($data['credit_card_id'], $data['charge_date'], $reconcile);
             redirect('pages/bank_charges/view.php', ['id' => $id]);
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
@@ -44,6 +51,6 @@ require APP_ROOT . '/includes/header.php';
     </div>
 </section>
 
-<?= render_record_form(url('pages/bank_charges/create.php'), $fields, $data, $errors, 'Save charge', url('pages/bank_charges/index.php')) ?>
+<?= render_record_form(url('pages/bank_charges/create.php', array_filter(['reconcile' => $reconcile])), $fields, $data, $errors, 'Save charge', url('pages/bank_charges/index.php')) ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

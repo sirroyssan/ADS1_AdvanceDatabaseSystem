@@ -59,7 +59,7 @@ require APP_ROOT . '/includes/header.php';
                 $status === 'cancelled' ? 'Cancel this demand letter? It stays on record.' : null, false, $status === 'cancelled' ? 'Cancel letter?' : null) ?>
         <?php endforeach; ?>
         <?php if (in_array($letter['status'], LETTER_EDITABLE_STATUSES, true)): ?>
-            <a href="<?= e(url('pages/demand_letters/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+            <a data-modal-form href="<?= e(url('pages/demand_letters/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
         <?php endif; ?>
     </div>
 </section>

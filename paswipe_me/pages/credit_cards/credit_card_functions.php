@@ -8,9 +8,14 @@
 
 defined('APP_ROOT') or exit('No direct access.');
 
-function credit_card_fields(?array $current = null): array
+const CARD_DUE_RULES = ['day_of_month' => 'Fixed day of the month', 'days_after_cutoff' => 'Number of days after the cutoff'];
+
+/** Card settings that shape statements; changing them needs a confirmation once statements exist. */
+const CARD_BILLING_SETTINGS = ['billing_cycle_day', 'due_date_rule', 'payment_due_day', 'due_days_after_cutoff', 'minimum_due_percent', 'minimum_due_floor'];
+
+function credit_card_fields(?array $current = null, bool $confirmBilling = false): array
 {
-    return [
+    $fields = [
         'card_nickname'     => ['label' => 'Card nickname', 'type' => 'text', 'max' => 100, 'required' => true],
         'issuer'            => ['label' => 'Issuer (bank)', 'type' => 'select', 'options' => bank_options(bank_canonical($current['issuer'] ?? null)), 'required' => true, 'empty_label' => 'Select bank',
                                 'help' => 'Penalty rules are set per bank, so this decides which penalty rules apply to this card\'s transactions, cash advances and cash loans.'],
@@ -22,15 +27,32 @@ function credit_card_fields(?array $current = null): array
         'credit_limit'      => ['label' => 'Credit limit', 'type' => 'decimal', 'min' => 0, 'required' => true, 'section' => 'Limits and billing'],
         'opening_balance'   => ['label' => 'Opening balance', 'type' => 'decimal', 'min' => 0, 'default' => '0.00',
                                 'help' => 'Amount already used on the card before you started recording it here. Used credit, available credit and utilization are then calculated automatically from your transactions, cash loans, cash advances, bank charges and payments.'],
-        'interest_rate'     => ['label' => 'Interest rate (%)', 'type' => 'decimal', 'scale' => 4, 'digits' => 8, 'min' => 0, 'placeholder' => '0.0000'],
-        'billing_cycle_day' => ['label' => 'Billing cycle day', 'type' => 'int', 'min' => 1, 'max' => 31],
-        'payment_due_day'   => ['label' => 'Payment due day', 'type' => 'int', 'min' => 1, 'max' => 31],
+        'interest_rate'     => ['label' => 'Interest rate (% per month)', 'type' => 'decimal', 'scale' => 4, 'digits' => 8, 'min' => 0, 'placeholder' => '0.0000'],
+        'billing_cycle_day' => ['label' => 'Statement cutoff day', 'type' => 'int', 'min' => 1, 'max' => 31, 'section' => 'Billing cycle and statements',
+                                'help' => 'Day of the month the bank closes each statement (e.g. 15). Statements are generated from it automatically; a month without that day uses its last day.'],
+        'due_date_rule'     => ['label' => 'Payment due date rule', 'type' => 'select', 'options' => CARD_DUE_RULES, 'empty_label' => '— Not known yet —',
+                                'help' => 'How the bank sets the due date. Not known: each statement\'s due date is marked "needs confirmation" until you set it.'],
+        'payment_due_day'   => ['label' => 'Payment due day', 'type' => 'int', 'min' => 1, 'max' => 31, 'help' => 'For "fixed day of the month": the first such day after the cutoff.'],
+        'due_days_after_cutoff' => ['label' => 'Days after cutoff', 'type' => 'int', 'min' => 1, 'max' => 60, 'help' => 'For "days after the cutoff", e.g. 20.'],
+        'minimum_due_percent' => ['label' => 'Minimum due (% of statement balance)', 'type' => 'decimal', 'scale' => 4, 'digits' => 7, 'min' => 0, 'max' => 100,
+                                'help' => 'Only if the bank\'s rule is known (e.g. 3). Leave blank otherwise: the minimum due then shows "needs confirmation".'],
+        'minimum_due_floor' => ['label' => 'Minimum due at least (₱)', 'type' => 'decimal', 'min' => 0, 'help' => 'e.g. 500 — the minimum is never lower than this (or the whole balance if smaller).'],
         'annual_fee'        => ['label' => 'Annual fee', 'type' => 'bool', 'switch_label' => 'This card has an annual fee'],
         'annual_fee_amount' => ['label' => 'Annual fee amount', 'type' => 'decimal', 'min' => 0, 'default' => '0.00'],
         'opening_date'      => ['label' => 'Opening date', 'type' => 'date', 'section' => 'Dates'],
         'expiration_date'   => ['label' => 'Expiration date', 'type' => 'date'],
         'notes'             => ['label' => 'Notes', 'type' => 'textarea', 'rows' => 3],
     ];
+    if ($confirmBilling) {
+        // Only when the card already has generated statements (see edit.php).
+        $fields = array_slice($fields, 0, array_search('annual_fee', array_keys($fields), true), true)
+            + ['confirm_billing_change' => ['label' => 'Billing change', 'type' => 'bool',
+                'switch_label' => 'I changed the cutoff / due date / minimum due rules: apply them from the current billing cycle on',
+                'help' => 'Statements already generated keep their periods, due dates and minimum due; only the current and later cycles use the new settings.']]
+            + $fields;
+    }
+
+    return $fields;
 }
 
 function credit_card_validate(array $fields, array $input, ?string $id = null): array
@@ -42,6 +64,18 @@ function credit_card_validate(array $fields, array $input, ?string $id = null): 
     }
     if ((int) $data['annual_fee'] === 0) {
         $data['annual_fee_amount'] = '0.00';
+    }
+    if ($data['due_date_rule'] === null && $data['payment_due_day'] !== null) {
+        $data['due_date_rule'] = 'day_of_month';
+    }
+    if ($data['due_date_rule'] === 'day_of_month' && $data['payment_due_day'] === null) {
+        $errors['payment_due_day'] = 'Enter the payment due day for a fixed-day rule.';
+    }
+    if ($data['due_date_rule'] === 'days_after_cutoff' && $data['due_days_after_cutoff'] === null) {
+        $errors['due_days_after_cutoff'] = 'Enter how many days after the cutoff the payment is due.';
+    }
+    if ($data['due_date_rule'] !== 'days_after_cutoff') {
+        $data['due_days_after_cutoff'] = null;
     }
 
     return [$data, $errors];

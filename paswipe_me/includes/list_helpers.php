@@ -382,7 +382,10 @@ function active_badge(int|string|null $isActive): string
 
 function icon_link(string $href, string $iconName, string $label, bool $danger = false): string
 {
-    return '<a href="' . e($href) . '" class="icon-button' . ($danger ? ' icon-button--danger' : '') . '" title="' . e($label) . '" aria-label="' . e($label) . '">'
+    // Edit links open the record's form in the shared modal (assets/js/modal-form.js).
+    $modal = $iconName === 'edit' ? ' data-modal-form' : '';
+
+    return '<a href="' . e($href) . '" class="icon-button' . ($danger ? ' icon-button--danger' : '') . '" title="' . e($label) . '" aria-label="' . e($label) . '"' . $modal . '>'
         . icon($iconName) . '</a>';
 }
 

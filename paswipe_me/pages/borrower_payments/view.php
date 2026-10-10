@@ -67,7 +67,7 @@ require APP_ROOT . '/includes/header.php';
             <button type="button" class="btn btn--outline" data-toggle-panel="override-amount"><?= icon('lock') ?> <span>Override amount</span></button>
         <?php endif; ?>
         <?php if (in_array($payment['status'], PAYMENT_EDITABLE_STATUSES, true)): ?>
-            <a href="<?= e(url('pages/borrower_payments/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+            <a data-modal-form href="<?= e(url('pages/borrower_payments/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
         <?php endif; ?>
     </div>
 </section>

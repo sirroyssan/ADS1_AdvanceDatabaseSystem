@@ -30,6 +30,12 @@ try {
             ) > 0) {
                 $errors['cycle_start_date'] = 'This billing cycle already exists.';
             }
+            // A special cycle shapes periods that are not statements yet; statements keep their periods.
+            $lastEnd = card_last_statement_end($card['id']);
+            if (!$errors && $lastEnd && $data['cycle_start_date'] <= $lastEnd) {
+                $errors['cycle_start_date'] = 'Statements already cover the dates up to ' . format_date($lastEnd)
+                    . '. A new cycle must start after that (e.g. ' . format_date(date_add_days($lastEnd, 1)) . ').';
+            }
             if ($errors) {
                 flash('error', 'Billing cycle not saved: ' . reset($errors));
                 break;
@@ -40,7 +46,15 @@ try {
             break;
 
         case 'delete_cycle':
-            $count = db_exec('DELETE FROM card_billing_cycles WHERE id = :i AND credit_card_id = :c', [':i' => input_string($_POST, 'item_id'), ':c' => $card['id']]);
+            $cycle = db_row('SELECT * FROM card_billing_cycles WHERE id = :i AND credit_card_id = :c', [':i' => input_string($_POST, 'item_id'), ':c' => $card['id']]);
+            if ($cycle && (int) db_value(
+                'SELECT COUNT(*) FROM credit_card_statements WHERE credit_card_id = :c AND cutoff_date = :e AND COALESCE(period_start_date, :s) = :s',
+                [':c' => $card['id'], ':e' => $cycle['cycle_end_date'], ':s' => $cycle['cycle_start_date']]
+            ) > 0) {
+                flash('error', 'This cycle belongs to a statement, so it is kept as history.');
+                break;
+            }
+            $count = $cycle ? db_exec('DELETE FROM card_billing_cycles WHERE id = :i', [':i' => $cycle['id']]) : 0;
             if ($count) {
                 log_activity('delete_cycle', 'credit_card', $card['id'], 'Deleted a billing cycle');
             }

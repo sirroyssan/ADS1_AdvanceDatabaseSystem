@@ -66,7 +66,7 @@ require APP_ROOT . '/includes/header.php';
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
         <?php if (!$isClosed): ?>
             <a data-modal-form href="<?= e(url('pages/borrower_payments/create.php', ['borrower_id' => $obligation['borrower_id']])) ?>" class="btn btn--outline"><?= icon('receipt') ?> <span>Record payment</span></a>
-            <a href="<?= e(url('pages/obligations/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+            <a data-modal-form href="<?= e(url('pages/obligations/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
         <?php endif; ?>
     </div>
 </section>

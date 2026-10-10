@@ -2541,3 +2541,80 @@ html.has-modal-form body {
 .modal-form__body .detail-layout {
     display: block;
 }
+
+/* ==================================================================
+ * Statements: SOA reconciliation result, missing-record actions
+ * ================================================================== */
+.recon-result {
+    margin-bottom: 20px;
+    padding: 18px 20px;
+    border: 1px solid var(--border);
+    border-left-width: 5px;
+    border-radius: var(--radius);
+    background: var(--surface);
+}
+
+.recon-result h3 {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin: 0 0 6px;
+    font-size: 17px;
+}
+
+.recon-result p { margin: 6px 0; }
+.recon-result--balanced { border-left-color: var(--success); background: var(--success-soft); }
+.recon-result--balanced h3 { color: var(--success); }
+.recon-result--difference { border-left-color: var(--danger); background: var(--danger-soft); }
+.recon-result--difference h3 { color: var(--danger); }
+.recon-result--pending { border-left-color: var(--warning); background: var(--warning-soft); }
+
+.recon-figures {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+    gap: 12px;
+    margin: 12px 0;
+}
+
+.recon-figures div {
+    padding: 10px 12px;
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+}
+
+.recon-figures dt { font-size: 13px; color: var(--text-muted); }
+.recon-figures dd { margin: 4px 0 0; font-size: 18px; font-weight: 700; }
+.recon-compare { background: var(--surface); }
+.recon-meta, .recon-help { font-size: 14px; color: var(--text-muted); }
+.recon-actions { margin: 8px 0; }
+.text-danger { color: var(--danger); }
+
+.missing-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 8px 0 14px;
+}
+
+.recon-system {
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface-muted);
+}
+
+.recon-system__title {
+    margin: 0 0 6px;
+    font-weight: 600;
+}
+
+.open-cycle {
+    margin: 8px 0 12px;
+    padding: 10px 12px;
+    border: 1px dashed var(--border-strong);
+    border-radius: var(--radius-sm);
+}
+
+.open-cycle__title { margin: 0 0 2px; font-weight: 600; }
+.open-cycle p { margin: 0; font-size: 14px; }

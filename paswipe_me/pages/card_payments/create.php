@@ -17,6 +17,12 @@ foreach (['credit_card_id', 'statement_id'] as $key) {
     }
 }
 $data = form_defaults($fields, $preset);
+// Opened from a statement's reconciliation ("Add missing transaction"): start from the
+// statement's date and report afterwards which statement the record went to.
+$reconcile = is_valid_uuid(input_string($_GET, 'reconcile')) ? input_string($_GET, 'reconcile') : null;
+if (!is_post() && preg_match('/^\d{4}-\d{2}-\d{2}$/', input_string($_GET, 'payment_date'))) {
+    $data['payment_date'] = input_string($_GET, 'payment_date');
+}
 $errors = [];
 
 if (is_post()) {
@@ -29,6 +35,7 @@ if (is_post()) {
             card_usage_apply([$data['credit_card_id']], fn () => db_insert('credit_card_payments', ['id' => $id] + $data));
             log_activity('create', 'card_payment', $id, 'Recorded card payment of ' . format_money($data['amount']), null, $data);
             flash('success', 'Card payment of ' . format_money($data['amount']) . ' was recorded.');
+            statement_placement_notice($data['credit_card_id'], $data['payment_date'], $reconcile);
             redirect('pages/card_payments/view.php', ['id' => $id]);
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
@@ -50,6 +57,6 @@ require APP_ROOT . '/includes/header.php';
     </div>
 </section>
 
-<?= render_record_form(url('pages/card_payments/create.php'), $fields, $data, $errors, 'Save payment', url('pages/card_payments/index.php')) ?>
+<?= render_record_form(url('pages/card_payments/create.php', array_filter(['reconcile' => $reconcile])), $fields, $data, $errors, 'Save payment', url('pages/card_payments/index.php')) ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

@@ -40,6 +40,7 @@ if (is_post()) {
             card_usage_apply([$advance['credit_card_id'], $data['credit_card_id'] ?? null], fn () => db_update('cash_advances', $data, $advance['id']));
             log_activity('update', 'cash_advance', $advance['id'], 'Updated cash advance', array_intersect_key($advance, $data), $data);
             flash('success', 'Cash advance was updated successfully.');
+            statement_move_notice($advance['credit_card_id'], $advance['advance_date'], $data['credit_card_id'] ?? $advance['credit_card_id'], $data['advance_date'] ?? $advance['advance_date']);
             redirect('pages/cash_advances/view.php', ['id' => $advance['id']]);
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);

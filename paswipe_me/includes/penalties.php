@@ -298,6 +298,7 @@ function penalty_run_if_due(): void
     penalty_schema_upgrade();
     try {
         payment_selections_upgrade();
+        statement_schema_upgrade();
         schedule_sync_upgrade();
         obligation_refresh_overdue();
         schedule_refresh_statuses();

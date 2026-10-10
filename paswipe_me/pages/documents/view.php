@@ -33,7 +33,7 @@ require APP_ROOT . '/includes/header.php';
         <?php if ($fileExists): ?>
             <a href="<?= e(url('pages/documents/download.php', ['id' => $doc['id']])) ?>" class="btn btn--outline"><?= icon('folder') ?> <span>Download</span></a>
         <?php endif; ?>
-        <a href="<?= e(url('pages/documents/edit.php', ['id' => $doc['id']])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+        <a data-modal-form href="<?= e(url('pages/documents/edit.php', ['id' => $doc['id']])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
     </div>
 </section>
 

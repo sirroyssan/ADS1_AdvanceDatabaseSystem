@@ -22,6 +22,7 @@ if (is_post()) {
             card_usage_apply([$payment['credit_card_id'], $data['credit_card_id']], fn () => db_update('credit_card_payments', $data, $payment['id']));
             log_activity('update', 'card_payment', $payment['id'], 'Corrected card payment', array_intersect_key($payment, $data), $data);
             flash('success', 'Card payment was updated successfully.');
+            statement_move_notice($payment['credit_card_id'], $payment['payment_date'], $data['credit_card_id'] ?? $payment['credit_card_id'], $data['payment_date'] ?? $payment['payment_date']);
             redirect('pages/card_payments/view.php', ['id' => $payment['id']]);
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);

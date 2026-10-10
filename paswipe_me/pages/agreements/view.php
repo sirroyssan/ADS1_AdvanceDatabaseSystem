@@ -40,7 +40,7 @@ require APP_ROOT . '/includes/header.php';
         <a href="<?= e(url('pages/agreements/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print agreement</span></button>
         <?php if (!$locked): ?>
-            <a href="<?= e(url('pages/agreements/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+            <a data-modal-form href="<?= e(url('pages/agreements/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
         <?php endif; ?>
     </div>
 </section>

@@ -10,6 +10,11 @@ $currentUser = require_admin();
 
 $plan = find_or_redirect(plan_find(request_id()), 'pages/installment_plans/index.php', 'Installment plan');
 $schedule = db_all('SELECT * FROM installment_schedules WHERE installment_plan_id = :id ORDER BY installment_number', [':id' => $plan['id']]);
+// Bank installments: which card statement bills each one (by its due date).
+$isBankPlan = db_value('SELECT payment_type FROM transactions WHERE id = :t', [':t' => $plan['transaction_id']]) === 'installment';
+if ($isBankPlan) {
+    statement_sync_card($plan['credit_card_id']);
+}
 $locked = plan_is_locked($plan['id']);
 $remaining = array_sum(array_map(static fn ($r) => in_array($r['status'], ['waived', 'cancelled'], true) ? 0 : (float) $r['remaining_amount'], $schedule));
 
@@ -34,7 +39,7 @@ require APP_ROOT . '/includes/header.php';
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/installment_plans/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print schedule</span></button>
-        <a href="<?= e(url('pages/installment_plans/edit.php', ['id' => $plan['id']])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+        <a data-modal-form href="<?= e(url('pages/installment_plans/edit.php', ['id' => $plan['id']])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
     </div>
 </section>
 
@@ -91,5 +96,31 @@ require APP_ROOT . '/includes/header.php';
     <p class="field-help no-print">Updated automatically from the borrower's approved payments (oldest installment first); statuses follow today's date. The amount paid toward the bank installments is recorded as a card payment automatically.</p>
     <?= render_schedule_table($schedule, '', [], false) ?>
 </section>
+
+<?php if ($isBankPlan && $schedule): ?>
+    <section class="panel subpanel">
+        <header class="panel__header"><h3><?= icon('layers') ?> Billing on the card statements</h3></header>
+        <p class="field-help">Each installment is billed once, on the statement whose period contains its due date. Changing the plan regenerates the schedule rows, so no charge is billed twice.</p>
+        <div class="table-wrap">
+            <table class="table table--cards table--compact">
+                <thead><tr><th scope="col" class="num">#</th><th scope="col">Billing date</th><th scope="col" class="num">Installment charge</th><th scope="col">Statement</th><th scope="col" class="num">Not billed yet after it</th></tr></thead>
+                <tbody>
+                <?php $left = array_sum(array_map(static fn ($r) => in_array($r['status'], ['waived', 'cancelled'], true) ? 0 : (float) $r['amount_due'], $schedule)); ?>
+                <?php foreach ($schedule as $r): if (in_array($r['status'], ['waived', 'cancelled'], true)) { continue; } $left -= (float) $r['amount_due']; $where = statement_for_date($plan['credit_card_id'], $r['due_date']); ?>
+                    <tr>
+                        <td data-label="#" class="num"><?= e($r['installment_number']) ?> of <?= e($plan['number_of_installments']) ?></td>
+                        <td data-label="Billing date"><?= e(format_date($r['due_date'])) ?></td>
+                        <td data-label="Installment charge" class="num"><?= e(format_money($r['amount_due'])) ?></td>
+                        <td data-label="Statement"><?= $where['statement']
+                            ? '<a href="' . e(url('pages/statements/view.php', ['id' => $where['statement']['id']])) . '">Cut off ' . e(format_date($where['statement']['cutoff_date'] ?: $where['statement']['statement_date'])) . '</a>'
+                            : '<span class="text-muted">' . e(ucfirst($where['label'])) . '</span>' ?></td>
+                        <td data-label="Not billed yet after it" class="num"><?= e(format_money(max(0, $left))) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+<?php endif; ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

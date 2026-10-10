@@ -17,6 +17,12 @@ foreach (['credit_card_id', 'borrower_id'] as $key) {
     }
 }
 $data = form_defaults($fields, $preset);
+// Opened from a statement's reconciliation ("Add missing transaction"): start from the
+// statement's date and report afterwards which statement the record went to.
+$reconcile = is_valid_uuid(input_string($_GET, 'reconcile')) ? input_string($_GET, 'reconcile') : null;
+if (!is_post() && preg_match('/^\d{4}-\d{2}-\d{2}$/', input_string($_GET, 'transaction_date'))) {
+    $data['transaction_date'] = input_string($_GET, 'transaction_date');
+}
 $errors = [];
 
 if (is_post()) {
@@ -30,6 +36,7 @@ if (is_post()) {
             card_usage_apply([$data['credit_card_id']], fn () => db_insert('transactions', ['id' => $id] + $data + ['created_by' => $currentUser['id'], 'updated_by' => $currentUser['id']]));
             log_activity('create', 'transaction', $id, 'Recorded transaction ' . $data['transaction_number'] . ' for ' . format_money($data['amount']), null, $data);
             flash('success', 'Transaction ' . $data['transaction_number'] . ' was recorded. You can now add the purchased items.');
+            statement_placement_notice($data['credit_card_id'], $data['transaction_date'], $reconcile);
             redirect('pages/transactions/view.php', ['id' => $id]);
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
@@ -51,6 +58,6 @@ require APP_ROOT . '/includes/header.php';
     </div>
 </section>
 
-<?= render_record_form(url('pages/transactions/create.php'), $fields, $data, $errors, 'Save transaction', url('pages/transactions/index.php')) ?>
+<?= render_record_form(url('pages/transactions/create.php', array_filter(['reconcile' => $reconcile])), $fields, $data, $errors, 'Save transaction', url('pages/transactions/index.php')) ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

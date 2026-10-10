@@ -36,6 +36,7 @@ if (is_post()) {
             card_usage_apply([$txn['credit_card_id'], $data['credit_card_id'] ?? null], fn () => db_update('transactions', $data + ['updated_by' => $currentUser['id']], $txn['id']));
             log_activity('update', 'transaction', $txn['id'], 'Updated transaction ' . $data['transaction_number'], array_intersect_key($txn, $data), $data);
             flash('success', 'Transaction ' . $data['transaction_number'] . ' was updated successfully.');
+            statement_move_notice($txn['credit_card_id'], $txn['transaction_date'], $data['credit_card_id'] ?? $txn['credit_card_id'], $data['transaction_date'] ?? $txn['transaction_date']);
             redirect('pages/transactions/view.php', ['id' => $txn['id']]);
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);

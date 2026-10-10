@@ -52,7 +52,7 @@ require APP_ROOT . '/includes/header.php';
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/categories/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
-        <a href="<?= e(url('pages/categories/edit.php', ['id' => $category['id']])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+        <a data-modal-form href="<?= e(url('pages/categories/edit.php', ['id' => $category['id']])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
     </div>
 </section>
 

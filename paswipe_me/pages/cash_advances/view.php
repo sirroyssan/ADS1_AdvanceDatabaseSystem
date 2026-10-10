@@ -68,7 +68,7 @@ require APP_ROOT . '/includes/header.php';
                 'Cancel this cash advance? It stays on record as cancelled and can no longer be edited.', false, 'Cancel cash advance?') ?>
         <?php endif; ?>
         <?php if ($advance['status'] !== 'cancelled'): ?>
-            <a href="<?= e(url('pages/cash_advances/edit.php', ['id' => $advance['id']])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+            <a data-modal-form href="<?= e(url('pages/cash_advances/edit.php', ['id' => $advance['id']])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
         <?php endif; ?>
     </div>
 </section>

@@ -66,7 +66,7 @@ require APP_ROOT . '/includes/header.php';
                 'Cancel payment ' . $payment['payment_number'] . '? Use this only if you submitted it by mistake.', false, 'Cancel this payment?') ?>
         <?php endif; ?>
         <?php if ($canEdit): ?>
-            <a href="<?= e(url('portal/pay.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span><?= $payment['status'] === 'correction_required' ? 'Fix and resubmit' : 'Edit' ?></span></a>
+            <a data-modal-form href="<?= e(url('portal/pay.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span><?= $payment['status'] === 'correction_required' ? 'Fix and resubmit' : 'Edit' ?></span></a>
         <?php endif; ?>
     </div>
 </section>
@@ -113,7 +113,7 @@ require APP_ROOT . '/includes/header.php';
                 </ul>
             <?php endif; ?>
             <?php if ($canEdit): ?>
-                <p class="field-help no-print">Add another file with <a href="<?= e(url('portal/pay.php', ['id' => $id])) ?>">Edit</a>.</p>
+                <p class="field-help no-print">Add another file with <a data-modal-form href="<?= e(url('portal/pay.php', ['id' => $id])) ?>">Edit</a>.</p>
             <?php endif; ?>
         </section>
 

@@ -290,7 +290,7 @@ require APP_ROOT . '/includes/header.php';
                         <td class="actions no-print">
                             <div class="row-actions">
                                 <a href="<?= e($viewUrl) ?>" class="icon-button" title="View" aria-label="View <?= e($row['name']) ?>"><?= icon('eye') ?></a>
-                                <a href="<?= e(url('pages/categories/edit.php', ['id' => $row['id']])) ?>" class="icon-button" title="Edit" aria-label="Edit <?= e($row['name']) ?>"><?= icon('edit') ?></a>
+                                <a data-modal-form href="<?= e(url('pages/categories/edit.php', ['id' => $row['id']])) ?>" class="icon-button" title="Edit" aria-label="Edit <?= e($row['name']) ?>"><?= icon('edit') ?></a>
                                 <?php if ($usageTotal > 0): ?>
                                     <a href="<?= e(url('pages/categories/delete.php', ['id' => $row['id']])) ?>" class="icon-button icon-button--danger"
                                        title="In use – delete options" aria-label="Delete options for <?= e($row['name']) ?>"><?= icon('trash') ?></a>
