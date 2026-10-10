@@ -87,7 +87,7 @@
 
             overlay.appendChild(panel);
             document.body.appendChild(overlay);
-            document.body.classList.add('modal-open');
+            document.documentElement.classList.add('modal-open');
             requestAnimationFrame(function () { overlay.classList.add('is-visible'); });
 
             var timer = null;
@@ -98,7 +98,7 @@
                     clearTimeout(timer);
                     overlay.classList.remove('is-visible');
                     overlay.classList.add('is-leaving');
-                    document.body.classList.remove('modal-open');
+                    document.documentElement.classList.remove('modal-open');
                     setTimeout(function () { overlay.remove(); }, 200);
                     if (lastFocus && document.body.contains(lastFocus)) lastFocus.focus();
                     resolve(result);

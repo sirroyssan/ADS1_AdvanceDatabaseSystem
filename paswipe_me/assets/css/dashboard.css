@@ -1143,7 +1143,9 @@ a.dropdown__item {
     flex: 1;
 }
 
-body.modal-open {
+/* Scroll is locked on <html> only: overflow on <body> would make the body its own
+   scroll box and the sticky sidebar would jump to the top of the page. */
+html.modal-open {
     overflow: hidden;
 }
 
@@ -2368,8 +2370,7 @@ input[type="file"] {
 /* ==================================================================
  * Modal forms (assets/js/modal-form.js) - every "Add" form opens here
  * ================================================================== */
-html.has-modal-form,
-html.has-modal-form body {
+html.has-modal-form {
     overflow: hidden;
 }
 
