@@ -107,6 +107,17 @@ $recentActivity = dashboard_rows(
       LIMIT 8"
 );
 
+// Credit card payments: recorded SOAs and the payments linked to them (each statement once).
+$cardPay = statement_payment_summary();
+$dueSoon = db_all(
+    'SELECT s.id, s.cutoff_date, s.statement_date, s.due_date, s.total_amount_due, s.minimum_amount_due, c.card_nickname, c.issuer, c.last_four,
+            COALESCE(sp.paid, 0) AS paid, ' . statement_remaining_sql() . ' AS remaining, ' . statement_status_sql() . ' AS pay_status
+       FROM credit_card_statements s JOIN credit_cards c ON c.id = s.credit_card_id ' . statement_paid_join() . '
+      WHERE ' . statement_remaining_sql() . ' > 0.004 AND s.due_date <= CURDATE() + INTERVAL ' . STATEMENT_UPCOMING_DAYS . ' DAY
+      ORDER BY s.due_date
+      LIMIT 10'
+);
+
 $pageTitle  = 'Dashboard';
 $activeNav  = 'dashboard';
 require APP_ROOT . '/includes/header.php';
@@ -117,6 +128,38 @@ require APP_ROOT . '/includes/header.php';
         <h2 class="page-header__title">Welcome, <?= e(user_display_name($currentUser)) ?></h2>
         <p class="page-header__subtitle">Overview of <?= e(APP_NAME) ?> as of <?= e(date('F j, Y g:i A')) ?>.</p>
     </div>
+</section>
+
+<section class="panel pay-summary" aria-labelledby="card-pay-title">
+    <header class="panel__header">
+        <h3 id="card-pay-title"><?= icon('credit-card') ?> Credit card payments</h3>
+        <a class="btn btn--sm btn--outline" href="<?= e(url('pages/statements/index.php')) ?>">Statements</a>
+    </header>
+    <div class="pay-cards">
+        <?php
+        $payCards = [
+            ['Registered credit cards', $cardPay['cards'], $cardPay['active_cards'] . ' active', url('pages/credit_cards/index.php'), 'primary', 'credit-card'],
+            ['Pending payments', $cardPay['unpaid'], 'statements to pay on ' . $cardPay['unpaid_cards'] . ' card(s) · ' . $cardPay['pending'] . ' with nothing paid yet', url('pages/statements/index.php', ['status' => 'unpaid']), 'warning', 'history'],
+            ['Partially paid statements', $cardPay['partial'], 'payment recorded, balance left', url('pages/statements/index.php', ['status' => 'partially_paid']), 'info', 'wallet'],
+            ['Total outstanding statement balance', format_money($cardPay['outstanding']), 'left to pay on recorded SOAs', url('pages/statements/index.php', ['status' => 'unpaid', 'sort' => 'amount']), 'primary', 'banknote'],
+            ['Upcoming payments', $cardPay['upcoming'], 'due in the next ' . STATEMENT_UPCOMING_DAYS . ' days', url('pages/statements/index.php', ['status' => 'upcoming']), 'warning', 'calendar'],
+            ['Overdue payments', $cardPay['overdue'], $cardPay['overdue'] ? format_money($cardPay['overdue_amount']) . ' on ' . $cardPay['overdue_cards'] . ' card(s)' : 'nothing overdue', url('pages/statements/index.php', ['status' => 'overdue']), 'danger', 'alert'],
+        ];
+        foreach ($payCards as [$label, $value, $meta, $href, $tone, $iconName]): ?>
+            <a class="pay-card pay-card--<?= e($tone) ?>" href="<?= e($href) ?>">
+                <span class="pay-card__icon"><?= icon($iconName) ?></span>
+                <span class="pay-card__label"><?= e($label) ?></span>
+                <span class="pay-card__value"><?= e(is_numeric($value) ? stat_number((int) $value) : $value) ?></span>
+                <span class="pay-card__meta"><?= e($meta) ?></span>
+            </a>
+        <?php endforeach; ?>
+    </div>
+    <h4 class="pay-summary__title">Upcoming and overdue payments</h4>
+    <?php if (!$dueSoon): ?>
+        <p class="empty-inline">Nothing overdue or due in the next <?= e(STATEMENT_UPCOMING_DAYS) ?> days.</p>
+    <?php else: ?>
+        <?= render_statement_rows($dueSoon) ?>
+    <?php endif; ?>
 </section>
 
 <section class="stat-grid" aria-label="Summary statistics">
@@ -214,7 +257,7 @@ require APP_ROOT . '/includes/header.php';
                 <tbody>
                 <?php foreach ($borrowerBalances as $row): ?>
                     <tr>
-                        <td data-label="Borrower"><a class="table-link" href="<?= e(url('pages/borrowers/view.php', ['id' => $row['id']])) ?>"><?= e(borrower_name($row)) ?></a>
+                        <td data-label="Borrower"><a data-modal-form class="table-link" href="<?= e(url('pages/borrowers/view.php', ['id' => $row['id']])) ?>"><?= e(borrower_name($row)) ?></a>
                             <span class="text-muted"><?= e($row['borrower_number']) ?></span></td>
                         <td data-label="Outstanding" class="num"><?= e(format_money($row['outstanding'])) ?></td>
                         <td data-label="Penalties" class="num<?= (float) $row['penalties'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($row['penalties'])) ?></td>
@@ -245,7 +288,7 @@ require APP_ROOT . '/includes/header.php';
                     <tbody>
                     <?php foreach ($pendingPayments as $row): ?>
                         <tr>
-                            <td><a href="<?= e(url('pages/borrower_payments/view.php', ['id' => $row['id']])) ?>"><?= e($row['payment_number']) ?></a></td>
+                            <td><a data-modal-form href="<?= e(url('pages/borrower_payments/view.php', ['id' => $row['id']])) ?>"><?= e($row['payment_number']) ?></a></td>
                             <td><?= e($row['first_name'] . ' ' . $row['last_name']) ?></td>
                             <td><?= e(format_date($row['payment_date'])) ?></td>
                             <td class="num"><?= e(format_money($row['amount'])) ?></td>
@@ -274,7 +317,7 @@ require APP_ROOT . '/includes/header.php';
                     <tbody>
                     <?php foreach ($overdueObligations as $row): ?>
                         <tr>
-                            <td><a href="<?= e(url('pages/obligations/view.php', ['id' => $row['id']])) ?>"><?= e($row['obligation_number']) ?></a></td>
+                            <td><a data-modal-form href="<?= e(url('pages/obligations/view.php', ['id' => $row['id']])) ?>"><?= e($row['obligation_number']) ?></a></td>
                             <td><?= e($row['first_name'] . ' ' . $row['last_name']) ?></td>
                             <td><?= e(format_date($row['due_date'])) ?></td>
                             <td class="num"><?= e($row['overdue_days']) ?></td>

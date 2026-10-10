@@ -74,7 +74,7 @@ require APP_ROOT . '/includes/header.php';
                 <?php foreach ($result['rows'] as $i => $o): ?>
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
-                        <td data-label="Item"><a class="table-link" href="<?= e(url('portal/obligation.php', ['id' => $o['id']])) ?>"><?= e($o['obligation_number']) ?></a>
+                        <td data-label="Item"><a data-modal-form class="table-link" href="<?= e(url('portal/obligation.php', ['id' => $o['id']])) ?>"><?= e($o['obligation_number']) ?></a>
                             <?php if ($o['description']): ?><br><span class="text-muted"><?= e($o['description']) ?></span><?php endif; ?></td>
                         <td data-label="Date"><?= e(format_date($o['obligation_date'])) ?></td>
                         <td data-label="Due date"><?= $o['due_date'] ? e(format_date($o['due_date'])) : '<span class="text-muted">—</span>' ?></td>

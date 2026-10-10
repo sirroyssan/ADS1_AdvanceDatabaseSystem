@@ -85,7 +85,7 @@ require APP_ROOT . '/includes/header.php';
                 <?php foreach ($result['rows'] as $i => $row): ?>
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
-                        <td data-label="File"><a class="table-link" href="<?= e(url('pages/documents/view.php', ['id' => $row['id']])) ?>"><?= e($row['original_filename']) ?></a></td>
+                        <td data-label="File"><a data-modal-form class="table-link" href="<?= e(url('pages/documents/view.php', ['id' => $row['id']])) ?>"><?= e($row['original_filename']) ?></a></td>
                         <td data-label="Type"><?= e(humanize($row['document_type'])) ?></td>
                         <td data-label="Size" class="num"><?= e(format_bytes($row['file_size'] !== null ? (int) $row['file_size'] : null)) ?></td>
                         <td data-label="Uploaded"><?= e(format_datetime($row['uploaded_at'])) ?><?= $row['uploaded_by_name'] ? '<br><span class="text-muted">' . e($row['uploaded_by_name']) . '</span>' : '' ?></td>

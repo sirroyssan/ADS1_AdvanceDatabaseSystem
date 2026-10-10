@@ -11,12 +11,9 @@ $currentUser = require_admin();
 $card = find_or_redirect(credit_card_find(request_id()), 'pages/credit_cards/index.php', 'Credit card');
 $id = $card['id'];
 
-// Generate statements for closed periods and recalculate them from the records.
-statement_sync_card($id);
-$card = credit_card_find($id);
-$openPeriod = card_open_period($card);
-$openLines = $openPeriod ? statement_period_lines($id, $openPeriod[0], $openPeriod[1]) : null;
-$openTotals = $openLines ? statement_period_totals($openLines, 0.0, 0.0) : null;
+// The billing period open today and its records so far (read only).
+$openPeriod = card_period_containing(card_period_context($card), date('Y-m-d'));
+$openSummary = statement_lines_summary(statement_period_lines($id, $openPeriod['start'], $openPeriod['end']));
 $cardUsage = card_usage($id);
 $cashLoans = db_all(
     'SELECT * FROM cash_loans WHERE credit_card_id = :id ORDER BY created_at DESC LIMIT 8',
@@ -31,9 +28,10 @@ $transactions = db_all(
     [':id' => $id]
 );
 $statements = db_all(
-    "SELECT s.id, s.statement_date, s.period_start_date, s.cutoff_date, s.source, s.due_date, s.total_amount_due, s.minimum_amount_due,
-            COALESCE(" . statement_reconciliation_sql() . ", 'pending') AS recon
-       FROM credit_card_statements s WHERE s.credit_card_id = :id ORDER BY s.statement_date DESC LIMIT 6",
+    'SELECT s.id, s.statement_date, s.cutoff_date, s.due_date, s.total_amount_due, s.minimum_amount_due,
+            COALESCE(sp.paid, 0) AS paid, ' . statement_remaining_sql() . ' AS remaining, ' . statement_status_sql() . ' AS pay_status
+       FROM credit_card_statements s ' . statement_paid_join() . '
+      WHERE s.credit_card_id = :id ORDER BY COALESCE(s.cutoff_date, s.statement_date) DESC LIMIT 6',
     [':id' => $id]
 );
 $statementPeriods = db_all('SELECT period_start_date, cutoff_date FROM credit_card_statements WHERE credit_card_id = :id', [':id' => $id]);
@@ -87,8 +85,8 @@ require APP_ROOT . '/includes/header.php';
             'Statement cutoff day' => show($card['billing_cycle_day'] ? ordinal((int) $card['billing_cycle_day']) . ' of the month' : null),
             'Payment due date'  => e(card_billing_summary($card)),
             'Minimum due rule'  => card_has_minimum_rule($card)
-                ? e(rtrim(rtrim(number_format((float) $card['minimum_due_percent'], 4), '0'), '.') . '% of the statement balance, at least ' . format_money($card['minimum_due_floor']))
-                : '<span class="status status--warning">Not known — minimum due needs confirmation</span>',
+                ? e(rtrim(rtrim(number_format((float) $card['minimum_due_percent'], 4), '0'), '.') . '% of the statement balance, at least ' . format_money($card['minimum_due_floor']) . ' (reference)')
+                : '<span class="text-muted">Not set (the minimum due comes from each SOA)</span>',
             'Annual fee'        => (int) $card['annual_fee'] === 1 ? e(format_money($card['annual_fee_amount'])) : 'None',
             'Opening date'      => show($card['opening_date'] ? format_date($card['opening_date']) : null),
             'Expiration date'   => show($card['expiration_date'] ? format_date($card['expiration_date']) : null),
@@ -156,26 +154,26 @@ require APP_ROOT . '/includes/header.php';
                 <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/statements/index.php', ['card' => $id])) ?>"><span>View all</span></a>
             </header>
             <p class="field-help"><?= e(card_billing_summary($card)) ?></p>
-            <?php if ($openPeriod): ?>
-                <div class="open-cycle">
-                    <p class="open-cycle__title">Current cycle <?= e(format_date($openPeriod[0])) ?> – <?= e(format_date($openPeriod[1])) ?></p>
-                    <p class="text-muted">Charges so far <?= e(format_money($openTotals['purchases'] + $openTotals['installment_charges'] + $openTotals['cash_advances'] + $openTotals['interest'] + $openTotals['finance_charges'] + $openTotals['late_fees'] + $openTotals['other_charges'])) ?>
-                        · payments <?= e(format_money($openTotals['payments'])) ?> · <?= e(count($openLines['lines'])) ?> record(s). The statement is generated after the cutoff.</p>
-                </div>
-            <?php endif; ?>
+            <div class="open-cycle">
+                <p class="open-cycle__title">Current cycle <?= e(format_date($openPeriod['start'])) ?> – <?= e(format_date($openPeriod['end'])) ?></p>
+                <p class="text-muted">Charges so far <?= e(format_money($openSummary['charges'])) ?> · payments and credits <?= e(format_money($openSummary['payments'])) ?>
+                    · <?= e($openSummary['count']) ?> record(s).</p>
+            </div>
             <?php if (!$statements): ?>
-                <p class="empty-inline">No statements yet.</p>
+                <p class="empty-inline">No bank SOA recorded yet.</p>
             <?php else: ?>
                 <ul class="child-list">
                     <?php foreach ($statements as $s): ?>
-                        <li><span><a href="<?= e(url('pages/statements/view.php', ['id' => $s['id']])) ?>"><?= e($s['period_start_date'] ? format_date($s['period_start_date']) . ' – ' . format_date($s['cutoff_date']) : format_date($s['statement_date'])) ?></a>
-                                <br><?= reconciliation_badge($s['recon']) ?></span>
+                        <li><span><a data-modal-form href="<?= e(url('pages/statements/view.php', ['id' => $s['id']])) ?>"><?= e(statement_month_label($s['cutoff_date'] ?: $s['statement_date'])) ?></a>
+                                <br><?= statement_status_badge($s['pay_status'], $s['due_date']) ?></span>
                             <span><?= e(format_money($s['total_amount_due'])) ?> · due <?= e(format_date($s['due_date'])) ?>
-                                <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/statements/reconcile.php', ['id' => $s['id']])) ?>"><?= icon('scale') ?> <span>Reconcile</span></a></span></li>
+                                <?php if ((float) $s['remaining'] > 0.004): ?>
+                                    <a data-modal-form class="btn btn--sm btn--primary no-print" href="<?= e(url('pages/statements/pay.php', ['id' => $s['id']])) ?>"><?= icon('wallet') ?> <span>Pay</span></a>
+                                <?php endif; ?></span></li>
                     <?php endforeach; ?>
                 </ul>
             <?php endif; ?>
-            <p class="field-help no-print"><a data-modal-form href="<?= e(url('pages/statements/create.php', ['credit_card_id' => $id])) ?>">Add a statement by hand</a> (only for periods before the card was tracked).</p>
+            <p class="field-help no-print"><a data-modal-form href="<?= e(url('pages/statements/create.php', ['credit_card_id' => $id])) ?>">Record an SOA</a> · <a href="<?= e(url('pages/statements/index.php', ['card' => $id])) ?>">All billing periods</a></p>
         </section>
 
         <section class="panel panel--danger no-print">
@@ -200,7 +198,7 @@ require APP_ROOT . '/includes/header.php';
         <h3>Billing cycles</h3>
         <button type="button" class="btn btn--sm btn--outline no-print" data-modal-panel="add-cycle" data-modal-subtitle="Only when the bank uses a different schedule for an upcoming period. Normal periods follow the card's cutoff day."><?= icon('plus') ?> <span>Add special cycle</span></button>
     </header>
-    <p class="field-help">Periods follow the statement cutoff day set on the card. Periods that already have a statement are kept as they are.</p>
+    <p class="field-help">Periods follow the statement cutoff day set on the card. A recorded SOA keeps its own period.</p>
     <form method="post" action="<?= e($related) ?>" class="inline-panel no-print" id="add-cycle" hidden novalidate data-validate>
         <?= csrf_field() ?>
         <input type="hidden" name="id" value="<?= e($id) ?>">

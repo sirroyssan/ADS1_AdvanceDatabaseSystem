@@ -96,7 +96,7 @@ require APP_ROOT . '/includes/header.php';
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
                         <td data-label="Date charged"><?= e(format_date($p['applied_date'])) ?></td>
-                        <td data-label="Item"><a class="table-link" href="<?= e(url('portal/obligation.php', ['id' => $p['obligation_id']])) ?>"><?= e($p['obligation_number']) ?></a></td>
+                        <td data-label="Item"><a data-modal-form class="table-link" href="<?= e(url('portal/obligation.php', ['id' => $p['obligation_id']])) ?>"><?= e($p['obligation_number']) ?></a></td>
                         <td data-label="Charge"><?= e($p['rule_name']) ?></td>
                         <td data-label="Days late" class="num"><?= e($p['overdue_days']) ?></td>
                         <td data-label="Amount" class="num"><?= e(format_money($p['amount'])) ?></td>

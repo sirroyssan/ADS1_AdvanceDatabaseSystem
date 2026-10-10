@@ -17,9 +17,9 @@ foreach (['credit_card_id', 'statement_id'] as $key) {
     }
 }
 $data = form_defaults($fields, $preset);
-// Opened from a statement's reconciliation ("Add missing transaction"): start from the
+// Opened from a statement ("Add missing transaction"): start from the
 // statement's date and report afterwards which statement the record went to.
-$reconcile = is_valid_uuid(input_string($_GET, 'reconcile')) ? input_string($_GET, 'reconcile') : null;
+$reconcile = preg_match('/^\d{4}-\d{2}-\d{2}$/', input_string($_GET, 'period')) ? input_string($_GET, 'period') : null;   // cutoff of the statement period being viewed
 if (!is_post() && preg_match('/^\d{4}-\d{2}-\d{2}$/', input_string($_GET, 'payment_date'))) {
     $data['payment_date'] = input_string($_GET, 'payment_date');
 }
@@ -57,6 +57,6 @@ require APP_ROOT . '/includes/header.php';
     </div>
 </section>
 
-<?= render_record_form(url('pages/card_payments/create.php', array_filter(['reconcile' => $reconcile])), $fields, $data, $errors, 'Save payment', url('pages/card_payments/index.php')) ?>
+<?= render_record_form(url('pages/card_payments/create.php', array_filter(['period' => $reconcile])), $fields, $data, $errors, 'Save payment', url('pages/card_payments/index.php')) ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

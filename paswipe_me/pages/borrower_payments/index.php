@@ -94,7 +94,7 @@ require APP_ROOT . '/includes/header.php';
                 <?php foreach ($result['rows'] as $i => $row): ?>
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
-                        <td data-label="Payment #"><a class="table-link" href="<?= e(url('pages/borrower_payments/view.php', ['id' => $row['id']])) ?>"><?= e($row['payment_number']) ?></a></td>
+                        <td data-label="Payment #"><a data-modal-form class="table-link" href="<?= e(url('pages/borrower_payments/view.php', ['id' => $row['id']])) ?>"><?= e($row['payment_number']) ?></a></td>
                         <td data-label="Date"><?= e(format_date($row['payment_date'])) ?></td>
                         <td data-label="Borrower"><?= e(borrower_name($row)) ?></td>
                         <td data-label="Method / Reference"><?= show(trim(($row['method_name'] ?? '') . ($row['reference_number'] ? ' · ' . $row['reference_number'] : ''), ' ·')) ?></td>

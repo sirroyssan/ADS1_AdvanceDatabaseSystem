@@ -2532,14 +2532,27 @@ html.has-modal-form body {
     .modal-form { display: none !important; }
 }
 
-/* Modals show only the form: side panels are left out, layouts are one column. */
-.modal-form__body .detail-side,
-.modal-form__body aside {
-    display: none;
+/* Modals use one column; a view's side panels (related records) follow below. */
+.modal-form__body .detail-layout {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 16px;
 }
 
-.modal-form__body .detail-layout {
-    display: block;
+.modal-form__body .detail-side {
+    display: grid;
+    gap: 16px;
+}
+
+/* A view modal's own actions (Edit, Pay, …). */
+.modal-form__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.modal-form__body .figure-grid {
+    margin: 0;
 }
 
 /* ==================================================================
@@ -2618,3 +2631,63 @@ html.has-modal-form body {
 
 .open-cycle__title { margin: 0 0 2px; font-weight: 600; }
 .open-cycle p { margin: 0; font-size: 14px; }
+
+/* Statements: card picker, period table */
+.card-picker {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+    gap: 12px;
+    margin-bottom: 18px;
+}
+
+.card-pick {
+    display: grid;
+    gap: 2px;
+    padding: 12px 14px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    text-decoration: none;
+}
+
+.card-pick:hover { border-color: var(--primary); }
+.card-pick.is-selected { border-color: var(--primary); box-shadow: inset 0 0 0 1px var(--primary); background: var(--primary-soft); }
+.card-pick__name { font-weight: 700; }
+.card-pick__meta { font-size: 13px; color: var(--text-muted); }
+.panel__header--padded { padding: 16px 20px 4px; }
+.panel__header--padded h3 { margin: 0; }
+.list-summary { margin: 0; padding: 12px 20px; font-size: 14px; color: var(--text-muted); border-bottom: 1px solid var(--border); }
+.pager { display: flex; align-items: center; justify-content: flex-end; gap: 12px; padding: 12px 20px; }
+
+/* Dashboard: credit card payment summary */
+.pay-summary { margin-bottom: 20px; }
+.pay-cards {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+    gap: 12px;
+    margin-bottom: 16px;
+}
+
+.pay-card {
+    display: grid;
+    gap: 2px;
+    padding: 14px;
+    border: 1px solid var(--border);
+    border-top: 4px solid var(--primary);
+    border-radius: var(--radius);
+    background: var(--surface);
+    color: var(--text);
+    text-decoration: none;
+    transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+
+.pay-card:hover, .pay-card:focus-visible { box-shadow: var(--shadow-sm); transform: translateY(-1px); }
+.pay-card--warning { border-top-color: var(--warning); }
+.pay-card--info { border-top-color: var(--info); }
+.pay-card--danger { border-top-color: var(--danger); }
+.pay-card__icon { color: var(--text-muted); }
+.pay-card__label { font-size: 13px; font-weight: 600; color: var(--text-muted); }
+.pay-card__value { font-size: 24px; font-weight: 700; }
+.pay-card__meta { font-size: 12px; color: var(--text-muted); }
+.pay-summary__title { margin: 4px 0 8px; font-size: 15px; }

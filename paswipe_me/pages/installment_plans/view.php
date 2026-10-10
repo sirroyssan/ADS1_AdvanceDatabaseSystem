@@ -12,9 +12,7 @@ $plan = find_or_redirect(plan_find(request_id()), 'pages/installment_plans/index
 $schedule = db_all('SELECT * FROM installment_schedules WHERE installment_plan_id = :id ORDER BY installment_number', [':id' => $plan['id']]);
 // Bank installments: which card statement bills each one (by its due date).
 $isBankPlan = db_value('SELECT payment_type FROM transactions WHERE id = :t', [':t' => $plan['transaction_id']]) === 'installment';
-if ($isBankPlan) {
-    statement_sync_card($plan['credit_card_id']);
-}
+$planCtx = $isBankPlan ? card_period_context(db_row('SELECT * FROM credit_cards WHERE id = :c', [':c' => $plan['credit_card_id']])) : null;
 $locked = plan_is_locked($plan['id']);
 $remaining = array_sum(array_map(static fn ($r) => in_array($r['status'], ['waived', 'cancelled'], true) ? 0 : (float) $r['remaining_amount'], $schedule));
 
@@ -106,14 +104,15 @@ require APP_ROOT . '/includes/header.php';
                 <thead><tr><th scope="col" class="num">#</th><th scope="col">Billing date</th><th scope="col" class="num">Installment charge</th><th scope="col">Statement</th><th scope="col" class="num">Not billed yet after it</th></tr></thead>
                 <tbody>
                 <?php $left = array_sum(array_map(static fn ($r) => in_array($r['status'], ['waived', 'cancelled'], true) ? 0 : (float) $r['amount_due'], $schedule)); ?>
-                <?php foreach ($schedule as $r): if (in_array($r['status'], ['waived', 'cancelled'], true)) { continue; } $left -= (float) $r['amount_due']; $where = statement_for_date($plan['credit_card_id'], $r['due_date']); ?>
+                <?php foreach ($schedule as $r): if (in_array($r['status'], ['waived', 'cancelled'], true)) { continue; } $left -= (float) $r['amount_due']; $where = card_period_containing($planCtx, $r['due_date']); ?>
                     <tr>
                         <td data-label="#" class="num"><?= e($r['installment_number']) ?> of <?= e($plan['number_of_installments']) ?></td>
                         <td data-label="Billing date"><?= e(format_date($r['due_date'])) ?></td>
                         <td data-label="Installment charge" class="num"><?= e(format_money($r['amount_due'])) ?></td>
-                        <td data-label="Statement"><?= $where['statement']
-                            ? '<a href="' . e(url('pages/statements/view.php', ['id' => $where['statement']['id']])) . '">Cut off ' . e(format_date($where['statement']['cutoff_date'] ?: $where['statement']['statement_date'])) . '</a>'
-                            : '<span class="text-muted">' . e(ucfirst($where['label'])) . '</span>' ?></td>
+                        <td data-label="Statement"><a data-modal-form href="<?= e($where['statement_id']
+                            ? url('pages/statements/view.php', ['id' => $where['statement_id']])
+                            : url('pages/statements/view.php', ['card' => $plan['credit_card_id'], 'start' => $where['start'], 'end' => $where['end']])) ?>"><?= e(statement_month_label($where['end'])) ?></a>
+                            <span class="text-muted"><?= $where['statement_id'] ? '· SOA recorded' : '· SOA not recorded' ?></span></td>
                         <td data-label="Not billed yet after it" class="num"><?= e(format_money(max(0, $left))) ?></td>
                     </tr>
                 <?php endforeach; ?>

@@ -1,76 +1,69 @@
 <?php
 /**
- * Statements module (table: credit_card_statements).
- * UNIQUE (credit_card_id, statement_date). Referenced by cash_advances,
- * credit_card_payments and bank_charges (statement_id).
+ * Statements module (table: credit_card_statements) - the bank's actual SOA
+ * per card and billing period. The card details and the period's records come
+ * from the database (includes/statement_engine.php); only the SOA figures are
+ * entered here. UNIQUE (credit_card_id, statement_date) and
+ * (credit_card_id, cutoff_date). Payments link with credit_card_payments.statement_id.
  */
 
 defined('APP_ROOT') or exit('No direct access.');
 
-const STATEMENT_AMOUNT_FIELDS = ['previous_balance', 'purchases', 'payments', 'interest', 'finance_charges', 'late_fees', 'other_charges', 'credits', 'adjustments'];
-
-function statement_fields(?array $current = null): array
+/**
+ * The SOA form. $lockedCard: the card is already known (no need to pick it).
+ */
+function statement_fields(?array $current = null, bool $lockedCard = false): array
 {
-    $money = static fn (string $label, array $extra = []) => ['label' => $label, 'type' => 'decimal', 'min' => 0, 'default' => '0.00'] + $extra;
-
-    return [
+    $fields = [
         'credit_card_id'         => ['label' => 'Credit card', 'type' => 'select', 'options' => credit_card_options($current['credit_card_id'] ?? null, false), 'required' => true, 'empty_label' => 'Select card'],
+        'cutoff_date'            => ['label' => 'Statement cutoff date', 'type' => 'date', 'required' => true,
+                                     'help' => 'Last day of the billing period on the SOA. It decides the statement month.'],
+        'total_amount_due'       => ['label' => 'Actual SOA amount (statement balance)', 'type' => 'decimal', 'required' => true,
+                                     'help' => 'Exactly as printed on the bank\'s SOA. Kept as entered even if your records add up differently.'],
+        'minimum_amount_due'     => ['label' => 'Minimum amount due', 'type' => 'decimal', 'min' => 0, 'required' => true],
+        'due_date'               => ['label' => 'Payment due date', 'type' => 'date', 'required' => true],
+        'statement_date'         => ['label' => 'Statement date', 'type' => 'date', 'help' => 'Date printed on the SOA. Leave blank to use the cutoff date.', 'section' => 'Optional'],
         'statement_number'       => ['label' => 'Statement number', 'type' => 'text', 'max' => 100],
-        'statement_date'         => ['label' => 'Statement date', 'type' => 'date', 'required' => true],
-        'cutoff_date'            => ['label' => 'Cut-off date', 'type' => 'date'],
-        'due_date'               => ['label' => 'Due date', 'type' => 'date', 'required' => true],
-        'attachment_document_id' => ['label' => 'Statement file', 'type' => 'select', 'options' => document_options($current['attachment_document_id'] ?? null), 'empty_label' => '— No file —', 'help' => 'Upload the PDF first in Document Files.'],
-        'previous_balance'       => $money('Previous balance', ['section' => 'Amounts']),
-        'purchases'              => $money('Purchases'),
-        'payments'               => $money('Payments'),
-        'interest'               => $money('Interest'),
-        'finance_charges'        => $money('Finance charges'),
-        'late_fees'              => $money('Late fees'),
-        'other_charges'          => $money('Other charges'),
-        'credits'                => $money('Credits'),
-        'adjustments'            => ['label' => 'Adjustments', 'type' => 'decimal', 'default' => '0.00', 'help' => 'May be negative.'],
-        'total_amount_due'       => ['label' => 'Total amount due', 'type' => 'decimal', 'min' => 0, 'help' => 'Leave blank to compute: previous + purchases − payments + interest + charges + fees − credits + adjustments.'],
-        'minimum_amount_due'     => $money('Minimum amount due'),
+        'attachment_document_id' => ['label' => 'SOA file', 'type' => 'select', 'options' => document_options($current['attachment_document_id'] ?? null), 'empty_label' => '— No file —', 'help' => 'Upload the PDF first in Document Files.'],
+        'notes'                  => ['label' => 'Notes', 'type' => 'textarea', 'rows' => 2],
     ];
+    if ($lockedCard) {
+        unset($fields['credit_card_id']);
+    }
+
+    return $fields;
 }
 
-function statement_validate(array $fields, array $input, ?string $id = null): array
+function statement_validate(array $fields, array $input, ?string $id = null, ?string $cardId = null): array
 {
     [$data, $errors] = validate_fields($fields, $input, $id);
+    $cardId = $cardId ?? $data['credit_card_id'] ?? null;
+    $data['statement_date'] = $data['statement_date'] ?: $data['cutoff_date'];
 
-    if ($data['statement_date'] && $data['due_date'] && $data['due_date'] < $data['statement_date']) {
-        $errors['due_date'] = 'Due date must be on or after the statement date.';
+    if ($data['statement_date'] && $data['cutoff_date'] && $data['statement_date'] < $data['cutoff_date']) {
+        $errors['statement_date'] = 'The statement date cannot be before the cutoff date.';
     }
-    if ($data['statement_date'] && $data['cutoff_date'] && $data['cutoff_date'] > $data['statement_date']) {
-        $errors['cutoff_date'] = 'Cut-off date cannot be after the statement date.';
+    if ($data['due_date'] && $data['cutoff_date'] && $data['due_date'] < $data['cutoff_date']) {
+        $errors['due_date'] = 'The payment due date must be on or after the cutoff date.';
     }
-
-    if ($data['total_amount_due'] === null && !array_intersect_key($errors, array_flip(STATEMENT_AMOUNT_FIELDS))) {
-        $total = (float) $data['previous_balance'] + (float) $data['purchases'] - (float) $data['payments']
-            + (float) $data['interest'] + (float) $data['finance_charges'] + (float) $data['late_fees']
-            + (float) $data['other_charges'] - (float) $data['credits'] + (float) $data['adjustments'];
-        $data['total_amount_due'] = number_format(max(0, $total), 2, '.', '');
-    }
-    if ($data['total_amount_due'] !== null && (float) $data['minimum_amount_due'] > (float) $data['total_amount_due']) {
-        $errors['minimum_amount_due'] = 'Minimum amount due cannot be more than the total amount due.';
-    }
-
-    // A statement typed in by hand must not overlap the periods of generated statements.
-    if (!isset($errors['credit_card_id']) && !isset($errors['statement_date']) && $data['credit_card_id'] && $data['statement_date']
-        && ($covering = db_row(
-            "SELECT cutoff_date FROM credit_card_statements WHERE credit_card_id = :c AND source = 'generated' AND id <> :id
-                AND :d BETWEEN period_start_date AND cutoff_date",
-            [':c' => $data['credit_card_id'], ':d' => $data['cutoff_date'] ?: $data['statement_date'], ':id' => $id ?? '']
-        ))) {
-        $errors['statement_date'] = 'This date is already covered by the generated statement cut off ' . format_date($covering['cutoff_date']) . '. Edit or reconcile that statement instead.';
-    }
-
-    if (!isset($errors['credit_card_id']) && !isset($errors['statement_date']) && $data['credit_card_id'] && $data['statement_date']
-        && (int) db_value(
-            'SELECT COUNT(*) FROM credit_card_statements WHERE credit_card_id = :c AND statement_date = :d AND id <> :id',
-            [':c' => $data['credit_card_id'], ':d' => $data['statement_date'], ':id' => $id ?? '']
-        ) > 0) {
-        $errors['statement_date'] = 'This card already has a statement on this date.';
+    if (!isset($errors['cutoff_date']) && $cardId && $data['cutoff_date']) {
+        $card = db_row('SELECT * FROM credit_cards WHERE id = :c', [':c' => $cardId]);
+        if ($card) {
+            // One SOA per card and billing period.
+            $ctx = card_period_context($card);
+            $ctx['soas'] = array_values(array_filter($ctx['soas'], static fn ($s) => $s['id'] !== $id));
+            $period = card_period_containing($ctx, $data['cutoff_date']);
+            $taken = db_row(
+                'SELECT cutoff_date FROM credit_card_statements WHERE credit_card_id = :c AND id <> :id
+                    AND (COALESCE(cutoff_date, statement_date) = :d OR statement_date = :sd OR (period_start_date IS NOT NULL AND :d2 BETWEEN period_start_date AND cutoff_date))',
+                [':c' => $cardId, ':id' => $id ?? '', ':d' => $data['cutoff_date'], ':sd' => $data['statement_date'], ':d2' => $data['cutoff_date']]
+            );
+            if ($taken) {
+                $errors['cutoff_date'] = 'An SOA is already recorded for this card and period (cutoff ' . format_date($taken['cutoff_date']) . '). Edit that one instead.';
+            } else {
+                $data['period_start_date'] = $period['start'];
+            }
+        }
     }
 
     return [$data, $errors];
@@ -78,20 +71,13 @@ function statement_validate(array $fields, array $input, ?string $id = null): ar
 
 function statement_find(string $id): ?array
 {
-    if (!is_valid_uuid($id)) {
-        return null;
-    }
-
-    return db_row(
-        "SELECT s.*, c.card_nickname, c.issuer, c.last_four, d.original_filename
-           FROM credit_card_statements s
-           JOIN credit_cards c ON c.id = s.credit_card_id
-           LEFT JOIN documents d ON d.id = s.attachment_document_id
-          WHERE s.id = :id",
-        [':id' => $id]
-    );
+    return statement_soa_find($id);
 }
 
+/**
+ * Records that keep a statement. Payments always do; the old statement links
+ * on bank charges and cash advances too.
+ */
 function statement_usage(string $id): array
 {
     return record_usage([
@@ -103,85 +89,7 @@ function statement_usage(string $id): array
 
 function statement_label(array $s): string
 {
-    return $s['card_nickname'] . ' •••• ' . $s['last_four'] . ' — ' . format_date($s['statement_date']);
-}
-
-/* ------------------------------------------------------------------
- * Generated statements (includes/statement_engine.php)
- * ------------------------------------------------------------------ */
-
-/** True when the statement is the card's latest and nothing was reconciled on it yet. */
-function statement_period_editable(array $statement): bool
-{
-    if ($statement['source'] !== 'generated') {
-        return false;
-    }
-    $latest = db_value('SELECT id FROM credit_card_statements WHERE credit_card_id = :c ORDER BY statement_date DESC LIMIT 1', [':c' => $statement['credit_card_id']]);
-
-    return $latest === $statement['id']
-        && (int) db_value('SELECT COUNT(*) FROM statement_reconciliations WHERE statement_id = :s', [':s' => $statement['id']]) === 0;
-}
-
-/**
- * What can be changed on a generated statement. The charges and payments
- * come from the records; corrections go there, or into the adjustment.
- */
-function generated_statement_fields(array $statement): array
-{
-    $fields = [
-        'statement_number'       => ['label' => 'Statement number', 'type' => 'text', 'max' => 100, 'help' => 'As printed on the bank\'s SOA (optional).'],
-        'statement_date'         => ['label' => 'Statement date', 'type' => 'date', 'required' => true, 'help' => 'Date the bank issued it; on or after the cutoff.'],
-    ];
-    if (statement_period_editable($statement)) {
-        $fields['cutoff_date'] = ['label' => 'Cutoff date', 'type' => 'date', 'required' => true,
-            'help' => 'Only the latest statement\'s cutoff can be moved (e.g. the bank closed it early). Records then move between this statement and the current cycle by their dates.'];
-    }
-
-    return $fields + [
-        'due_date'               => ['label' => 'Payment due date', 'type' => 'date', 'required' => true,
-                                     'help' => 'Change it when the bank set a different date; it is then kept as entered.'],
-        'minimum_amount_due'     => ['label' => 'Minimum amount due', 'type' => 'decimal', 'min' => 0,
-                                     'help' => 'Leave blank to use the card\'s minimum-due rule (or "needs confirmation" when the rule is not known).'],
-        'adjustments'            => ['label' => 'Adjustment', 'type' => 'decimal', 'default' => '0.00', 'section' => 'Correction',
-                                     'help' => 'Only for a difference that is not a missing record (add missing charges and payments as records instead). May be negative.'],
-        'adjustment_reason'      => ['label' => 'Reason for the adjustment', 'type' => 'text', 'max' => 255],
-        'attachment_document_id' => ['label' => 'Statement file', 'type' => 'select', 'options' => document_options($statement['attachment_document_id'] ?? null), 'empty_label' => '— No file —', 'help' => 'Upload the SOA PDF first in Document Files.'],
-    ];
-}
-
-function generated_statement_validate(array $fields, array $input, array $statement): array
-{
-    [$data, $errors] = validate_fields($fields, $input, $statement['id']);
-    $cutoff = $data['cutoff_date'] ?? $statement['cutoff_date'];
-
-    if (isset($data['cutoff_date']) && $data['cutoff_date']) {
-        if ($data['cutoff_date'] < $statement['period_start_date']) {
-            $errors['cutoff_date'] = 'The cutoff cannot be before the period start (' . format_date($statement['period_start_date']) . ').';
-        } elseif ($data['cutoff_date'] >= date('Y-m-d')) {
-            $errors['cutoff_date'] = 'A statement can only be cut off before today.';
-        }
-    }
-    if ($data['statement_date'] && $cutoff && $data['statement_date'] < $cutoff) {
-        $errors['statement_date'] = 'The statement date cannot be before the cutoff date.';
-    }
-    if ($data['due_date'] && $data['statement_date'] && $data['due_date'] < $data['statement_date']) {
-        $errors['due_date'] = 'The due date must be on or after the statement date.';
-    }
-    if ($data['statement_date'] && (int) db_value(
-        'SELECT COUNT(*) FROM credit_card_statements WHERE credit_card_id = :c AND statement_date = :d AND id <> :id',
-        [':c' => $statement['credit_card_id'], ':d' => $data['statement_date'], ':id' => $statement['id']]
-    ) > 0) {
-        $errors['statement_date'] = 'This card already has a statement on this date.';
-    }
-    $adjustmentChanged = number_format((float) $data['adjustments'], 2, '.', '') !== number_format((float) $statement['adjustments'], 2, '.', '');
-    if ($adjustmentChanged && trim((string) $data['adjustment_reason']) === '') {
-        $errors['adjustment_reason'] = 'Say why the statement is adjusted (kept in the history).';
-    }
-    if ((float) $data['adjustments'] == 0.0 && !$adjustmentChanged && $data['adjustment_reason'] === null) {
-        $data['adjustment_reason'] = $statement['adjustment_reason'];
-    }
-
-    return [$data, $errors];
+    return $s['card_nickname'] . ' •••• ' . $s['last_four'] . ' — ' . statement_month_label($s['cutoff_date'] ?: $s['statement_date']);
 }
 
 /** Edit page of the record behind a statement line (null when it has none). */
@@ -202,16 +110,84 @@ function statement_line_edit_url(array $line): ?string
     return $module && $id ? url('pages/' . $module . '/edit.php', ['id' => $id]) : null;
 }
 
-/** "Add missing …" links for a statement: label => [url, icon]. */
-function statement_missing_links(array $statement): array
+/** "Add missing …" links for a period: label => [url, icon]. */
+function statement_missing_links(string $cardId, string $end): array
 {
-    $date = $statement['cutoff_date'] ?: $statement['statement_date'];
-    $base = ['credit_card_id' => $statement['credit_card_id'], 'reconcile' => $statement['id']];
+    $base = ['credit_card_id' => $cardId, 'period' => $end];
 
     return [
-        'Purchase or installment purchase' => [url('pages/transactions/create.php', $base + ['transaction_date' => $date]), 'layers'],
-        'Annual fee, interest or other bank charge' => [url('pages/bank_charges/create.php', $base + ['charge_date' => $date]), 'receipt'],
-        'Cash advance' => [url('pages/cash_advances/create.php', $base + ['advance_date' => $date]), 'banknote'],
-        'Payment or credit to the card' => [url('pages/card_payments/create.php', $base + ['payment_date' => $date]), 'wallet'],
+        'Purchase'                       => [url('pages/transactions/create.php', $base + ['transaction_date' => $end]), 'layers'],
+        'Annual fee, interest or charge' => [url('pages/bank_charges/create.php', $base + ['charge_date' => $end]), 'receipt'],
+        'Cash advance'                   => [url('pages/cash_advances/create.php', $base + ['advance_date' => $end]), 'banknote'],
+        'Payment or credit'              => [url('pages/card_payments/create.php', $base + ['payment_date' => $end]), 'wallet'],
     ];
+}
+
+/** Record SOA (or edit it when recorded) for a period. */
+function statement_soa_url(string $cardId, array $period): string
+{
+    return $period['statement_id']
+        ? url('pages/statements/edit.php', ['id' => $period['statement_id']])
+        : url('pages/statements/create.php', ['credit_card_id' => $cardId, 'cutoff' => $period['end']]);
+}
+
+/** View a period (recorded SOA or not). */
+function statement_view_url(string $cardId, array $period): string
+{
+    return $period['statement_id']
+        ? url('pages/statements/view.php', ['id' => $period['statement_id']])
+        : url('pages/statements/view.php', ['card' => $cardId, 'start' => $period['start'], 'end' => $period['end']]);
+}
+
+/**
+ * One-time token for a form that must not be saved twice (a double click or a
+ * resent request): issued with the form, used up by the first successful save.
+ */
+function form_once_token(string $form): string
+{
+    $token = bin2hex(random_bytes(16));
+    $_SESSION['form_once'][$form][$token] = time();
+    // Keep the list short.
+    $_SESSION['form_once'][$form] = array_slice($_SESSION['form_once'][$form], -20, null, true);
+
+    return $token;
+}
+
+function form_once_use(string $form, string $token): bool
+{
+    if ($token === '' || !isset($_SESSION['form_once'][$form][$token])) {
+        return false;
+    }
+    unset($_SESSION['form_once'][$form][$token]);
+
+    return true;
+}
+
+/**
+ * Card and period shown above the SOA / payment forms (taken from the
+ * database, nothing to type): card, issuer, period and what the records add up to.
+ */
+function statement_card_context(array $card, ?array $period, array $extra = []): string
+{
+    $rows = ['Credit card' => e($card['card_nickname'] . ' — ' . $card['issuer'] . ' •••• ' . $card['last_four'])];
+    if ($period) {
+        $summary = statement_lines_summary(statement_period_lines($card['id'], $period['start'], $period['end']));
+        $rows['Statement month'] = e(statement_month_label($period['end'])) . ' <span class="text-muted">(' . e(format_date($period['start'])) . ' – ' . e(format_date($period['end'])) . ')</span>';
+        $rows['Your records in this period'] = e($summary['count']) . ' record(s) · charges ' . e(format_money($summary['charges']))
+            . ' · payments and credits ' . e(format_money($summary['payments']));
+    }
+
+    return '<div class="recon-system">' . render_details($rows + $extra) . '</div>';
+}
+
+/**
+ * Billing period of a recorded SOA. Older statements entered before cutoff
+ * dates were required use their statement date.
+ */
+function statement_period_of(array $statement, array $card): array
+{
+    $end = $statement['cutoff_date'] ?: $statement['statement_date'];
+    $start = $statement['period_start_date'] ?: card_period_containing(card_period_context($card), $end)['start'];
+
+    return ['start' => $start, 'end' => $end, 'statement_id' => $statement['id']];
 }

@@ -76,7 +76,7 @@ require APP_ROOT . '/includes/header.php';
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
                         <td data-label="Name">
-                            <a class="table-link" href="<?= e(url('pages/users/view.php', ['id' => $row['id']])) ?>"><?= e($name) ?></a>
+                            <a data-modal-form class="table-link" href="<?= e(url('pages/users/view.php', ['id' => $row['id']])) ?>"><?= e($name) ?></a>
                             <?php if ($row['id'] === $currentUser['id']): ?><span class="chip">You</span><?php endif; ?>
                         </td>
                         <td data-label="Email / Username"><?= e($row['email']) ?><?php if ($row['username']): ?><br><span class="text-muted">@<?= e($row['username']) ?></span><?php endif; ?></td>

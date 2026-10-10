@@ -68,7 +68,7 @@ require APP_ROOT . '/includes/header.php';
                 <?php foreach ($result['rows'] as $i => $p): ?>
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
-                        <td data-label="Payment no."><a class="table-link" href="<?= e(url('portal/payment.php', ['id' => $p['id']])) ?>"><?= e($p['payment_number']) ?></a></td>
+                        <td data-label="Payment no."><a data-modal-form class="table-link" href="<?= e(url('portal/payment.php', ['id' => $p['id']])) ?>"><?= e($p['payment_number']) ?></a></td>
                         <td data-label="Paid on"><?= e(format_date($p['payment_date'])) ?></td>
                         <td data-label="Method"><?= show($p['method_name']) ?></td>
                         <td data-label="Reference"><?= show($p['reference_number']) ?></td>

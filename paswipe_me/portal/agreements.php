@@ -41,7 +41,7 @@ require APP_ROOT . '/includes/header.php';
                 <tbody>
                 <?php foreach ($agreements as $a): ?>
                     <tr>
-                        <td data-label="Agreement"><a class="table-link" href="<?= e(url('portal/agreement.php', ['id' => $a['id']])) ?>"><?= e($a['agreement_number']) ?></a></td>
+                        <td data-label="Agreement"><a data-modal-form class="table-link" href="<?= e(url('portal/agreement.php', ['id' => $a['id']])) ?>"><?= e($a['agreement_number']) ?></a></td>
                         <td data-label="Date"><?= e(format_date($a['agreement_date'])) ?></td>
                         <td data-label="For"><?= show($a['obligation_number']) ?></td>
                         <td data-label="Amount" class="num"><?= show_money($a['original_amount']) ?></td>

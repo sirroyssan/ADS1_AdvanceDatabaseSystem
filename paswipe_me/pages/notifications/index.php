@@ -86,7 +86,7 @@ require APP_ROOT . '/includes/header.php';
                     <?php $unread = $row['user_id'] === $currentUser['id'] && $row['read_at'] === null && $row['channel'] === 'in_app' && !in_array($row['status'], ['cancelled', 'failed'], true); ?>
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
-                        <td data-label="Title"><a class="table-link" href="<?= e(url('pages/notifications/view.php', ['id' => $row['id']])) ?>"><?= e($row['title']) ?></a><?= $unread ? ' <span class="chip">New</span>' : '' ?></td>
+                        <td data-label="Title"><a data-modal-form class="table-link" href="<?= e(url('pages/notifications/view.php', ['id' => $row['id']])) ?>"><?= e($row['title']) ?></a><?= $unread ? ' <span class="chip">New</span>' : '' ?></td>
                         <td data-label="Recipient"><?= e($row['recipient_name']) ?></td>
                         <td data-label="Type"><?= e(humanize($row['notification_type'])) ?></td>
                         <td data-label="Channel"><?= e(humanize($row['channel'])) ?></td>

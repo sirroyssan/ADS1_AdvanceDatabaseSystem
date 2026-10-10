@@ -78,7 +78,7 @@ require APP_ROOT . '/includes/header.php';
                 <?php foreach ($result['rows'] as $i => $row): ?>
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
-                        <td data-label="Card"><a class="table-link" href="<?= e(url('pages/credit_cards/view.php', ['id' => $row['id']])) ?>"><?= e($row['card_nickname']) ?></a><br><span class="text-muted">•••• <?= e($row['last_four']) ?></span></td>
+                        <td data-label="Card"><a data-modal-form class="table-link" href="<?= e(url('pages/credit_cards/view.php', ['id' => $row['id']])) ?>"><?= e($row['card_nickname']) ?></a><br><span class="text-muted">•••• <?= e($row['last_four']) ?></span></td>
                         <td data-label="Issuer / Network"><?= e($row['issuer']) ?><?= $row['network'] ? ' · ' . e(strtoupper($row['network'])) : '' ?></td>
                         <td data-label="Owner"><?= show($row['owner_name']) ?></td>
                         <td data-label="Limit" class="num"><?= e(format_money($row['credit_limit'])) ?></td>

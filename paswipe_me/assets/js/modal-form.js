@@ -204,6 +204,18 @@
         subtitleEl.hidden = !subtitle;
 
         body.innerHTML = '';
+        // A record's own actions (Edit, Pay, …) stay available at the top of a view modal;
+        // Back and Print only make sense on the full page.
+        var actions = main.querySelector('.page-header__actions');
+        if (actions) {
+            var bar = document.importNode(actions, true);
+            bar.className = 'modal-form__actions no-print';
+            bar.querySelectorAll('[data-print]').forEach(function (el) { el.remove(); });
+            bar.querySelectorAll('a').forEach(function (a) {
+                if (/^\s*back\s*$/i.test(a.textContent)) a.remove();
+            });
+            if (bar.children.length) body.appendChild(bar);
+        }
         // Messages for this form (e.g. "not found", "no permission") appear inline.
         main.querySelectorAll('.toast-stack [data-alert]').forEach(function (alert) {
             var close = alert.querySelector('[data-alert-close]');
@@ -281,6 +293,7 @@
     document.addEventListener('click', function (event) {
         if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
         var link = event.target.closest('a[data-modal-form]');
+        if (link && link.getAttribute('target')) link = null;
         if (link) {
             event.preventDefault();
             openUrl(link.href, link);

@@ -266,7 +266,7 @@ require APP_ROOT . '/includes/header.php';
                     <tr>
                         <td class="col-num" data-label="#"><?= e($pager['offset'] + $index + 1) ?></td>
                         <td data-label="Name">
-                            <a href="<?= e($viewUrl) ?>" class="table-link"><?= e($row['name']) ?></a>
+                            <a data-modal-form href="<?= e($viewUrl) ?>" class="table-link"><?= e($row['name']) ?></a>
                             <?php if ((int) $row['children_count'] > 0): ?>
                                 <span class="chip chip--muted"><?= e($row['children_count']) ?> sub</span>
                             <?php endif; ?>
@@ -289,7 +289,7 @@ require APP_ROOT . '/includes/header.php';
                         <td data-label="Created"><?= e(format_date($row['created_at'])) ?></td>
                         <td class="actions no-print">
                             <div class="row-actions">
-                                <a href="<?= e($viewUrl) ?>" class="icon-button" title="View" aria-label="View <?= e($row['name']) ?>"><?= icon('eye') ?></a>
+                                <a data-modal-form href="<?= e($viewUrl) ?>" class="icon-button" title="View" aria-label="View <?= e($row['name']) ?>"><?= icon('eye') ?></a>
                                 <a data-modal-form href="<?= e(url('pages/categories/edit.php', ['id' => $row['id']])) ?>" class="icon-button" title="Edit" aria-label="Edit <?= e($row['name']) ?>"><?= icon('edit') ?></a>
                                 <?php if ($usageTotal > 0): ?>
                                     <a href="<?= e(url('pages/categories/delete.php', ['id' => $row['id']])) ?>" class="icon-button icon-button--danger"

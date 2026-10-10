@@ -73,7 +73,7 @@ require APP_ROOT . '/includes/header.php';
                 <?php foreach ($result['rows'] as $i => $row): ?>
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
-                        <td data-label="Obligation #"><a class="table-link" href="<?= e(url('pages/obligations/view.php', ['id' => $row['id']])) ?>"><?= e($row['obligation_number']) ?></a></td>
+                        <td data-label="Obligation #"><a data-modal-form class="table-link" href="<?= e(url('pages/obligations/view.php', ['id' => $row['id']])) ?>"><?= e($row['obligation_number']) ?></a></td>
                         <td data-label="Borrower"><?= e(borrower_name($row)) ?> <span class="text-muted"><?= e($row['borrower_number']) ?></span></td>
                         <td data-label="Due date"><?= e(format_date($row['due_date'])) ?></td>
                         <td data-label="Days" class="num text-danger"><?= e($row['overdue_days']) ?></td>

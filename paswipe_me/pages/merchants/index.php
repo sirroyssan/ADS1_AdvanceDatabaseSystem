@@ -79,7 +79,7 @@ require APP_ROOT . '/includes/header.php';
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
                         <td data-label="Merchant">
-                            <a class="table-link" href="<?= e(url('pages/merchants/view.php', ['id' => $row['id']])) ?>"><?= e($row['merchant_name']) ?></a>
+                            <a data-modal-form class="table-link" href="<?= e(url('pages/merchants/view.php', ['id' => $row['id']])) ?>"><?= e($row['merchant_name']) ?></a>
                             <?php if ($row['branch']): ?><br><span class="text-muted"><?= e($row['branch']) ?></span><?php endif; ?>
                         </td>
                         <td data-label="Category"><?= show($row['category_name']) ?></td>

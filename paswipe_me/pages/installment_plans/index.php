@@ -78,7 +78,7 @@ require APP_ROOT . '/includes/header.php';
                 <?php foreach ($result['rows'] as $i => $row): ?>
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
-                        <td data-label="Transaction"><a class="table-link" href="<?= e(url('pages/installment_plans/view.php', ['id' => $row['id']])) ?>"><?= e($row['transaction_number']) ?></a></td>
+                        <td data-label="Transaction"><a data-modal-form class="table-link" href="<?= e(url('pages/installment_plans/view.php', ['id' => $row['id']])) ?>"><?= e($row['transaction_number']) ?></a></td>
                         <td data-label="Borrower"><?= $row['first_name'] ? e(borrower_name($row)) : '<span class="text-muted">Owner</span>' ?></td>
                         <td data-label="Terms"><?= e($row['number_of_installments']) ?> × <?= e(format_money($row['installment_amount'])) ?> <span class="text-muted"><?= e($row['frequency']) ?></span></td>
                         <td data-label="Progress"><?= e($row['settled']) ?> / <?= e($row['number_of_installments']) ?> paid</td>

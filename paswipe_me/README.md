@@ -776,63 +776,56 @@ How it works (no duplicated forms, the existing pages and handlers do the work):
 
 Every Edit button (list row pencil icons, detail page "Edit", Transaction → edit item, the borrower's "Edit / Fix and resubmit") opens the record's existing edit form in the shared modal, prefilled. Validation errors keep the modal open; saving refreshes the page content in place. `icon_link(…, 'edit', …)` adds `data-modal-form` automatically.
 
-## Automatic statements and SOA reconciliation (schema change: `db/upgrade_statements.sql`)
+## Statements: billing periods from your records + the bank's SOA (`includes/statement_engine.php`)
 
-**Card billing settings (Add / Edit Credit Card → "Billing cycle and statements"):**
+**What the Statements module does now:**
 
-| Setting | Notes |
+- It shows every registered card (issuer, last four, what is left to pay). For the chosen card it lists the billing periods (cutoff day from the card), newest first and paginated.
+- Each period lists the records already in the database by their own dates: purchases, installment charges (one schedule row per period), cash advances and fees, bank charges (annual fee, interest, late fees), payments and credits.
+- Nothing is generated or saved while you look.
+- **Record SOA** (modal, card and period prefilled) saves only what comes from the bank: actual SOA amount, minimum amount due, payment due date, and optionally the statement date, number, file and notes. One SOA per card and billing period (validation + unique key).
+- **The SOA amount is kept exactly as entered.** The statement view compares it with the records: previous recorded SOA + charges − payments and credits. It shows the difference and a warning, and **Add missing transaction** (purchase / bank charge / cash advance / payment, in a modal) lists the record in the right period. The SOA amount is never changed by it.
+- **Pay** (modal, from the statement list, the statement, the card page or the dashboard) shows the SOA amount, minimum, due date, paid and remaining. It saves one row in `credit_card_payments` through the Card Payments module's own fields, validation and saving, linked to the card and the statement. A one-time form token stops double submissions.
+
+**Payment status of a recorded SOA:**
+
+| Status | Meaning |
 |---|---|
-| Statement cutoff day | Existing column `billing_cycle_day`. |
-| Payment due date rule | Fixed day of the month (existing `payment_due_day`) or N days after the cutoff (new). |
-| Minimum due rule | New: % of the statement balance with a minimum amount. Leave it blank when the bank's rule is not known: the minimum then shows **Needs confirmation** (never guessed). The due date works the same way when no rule is set. |
+| Paid | Payments cover the SOA amount. |
+| Overdue | Due date passed and something is still unpaid. |
+| Partially paid | Some payment recorded, a balance is left. |
+| Pending | Nothing paid yet. |
+| Unrecorded SOA | A closed period with no SOA. |
 
-**Statements are generated, not typed.** `includes/statement_engine.php`:
+"Due soon" is added for unpaid statements due within 7 days (`STATEMENT_UPCOMING_DAYS`).
 
-- **When a statement is made:** after each cutoff, the closed period (day after the previous cutoff → cutoff) becomes a statement automatically (`source = generated`).
-- **No duplicates:**
-  - A unique (card, statement date) key and a lock on the card row stop two requests from creating the same statement.
-  - Running the generator again creates nothing new.
-- **What it contains:** records are placed by their **own date**, never the date they were entered:
-  - purchases;
-  - installment charges: one row of the installment schedule per period by its due date, so only the installment due is billed, and never twice. Bank cash loans' monthly installments are included the same way;
-  - cash advances and their fee/interest;
-  - bank charges by type: interest, finance charges, late fees, annual and other fees;
-  - payments and refunds.
-- **Balance:**
-  - Statement balance = previous statement balance + charges − payments/credits + adjustment.
-  - An adjustment needs a reason and is kept in the activity log. Use it only for differences that are not missing records.
-- **Recalculation:** generated statements are recalculated from the records whenever a statement, the statement list, the card or an installment plan is opened. So adding, editing or removing any record updates the affected statement, its minimum due and its reconciliation difference.
-- **Stored totals:** the totals columns of `credit_card_statements` keep the latest result, so lists and reports read them directly.
-- **Statements entered by hand** (`source = manual`, e.g. before the card was tracked) are never recalculated.
-- **Editable:**
-  - statement number and date, the due date (then kept as entered), the minimum due, and the adjustment;
-  - the latest statement's cutoff, while it is not reconciled yet.
-- **Different from the statement balance:** the card's current balance (`card_usage`), the remaining installment balance ("not billed yet", shown per installment), and the minimum due.
+**Dashboard → Credit card payments:**
 
-**Changing the billing settings:**
+- **Summary cards** (each opens the matching list): registered cards, pending payments (statements to pay, and on how many cards), partially paid, total outstanding statement balance, upcoming (7 days), overdue.
+- **Table** of upcoming and overdue statements with View and Pay.
+- **Figures** come from one grouped query over the recorded SOAs and their payments; each statement is counted once.
 
-- **Confirmation:** once statements exist, a change to the cutoff, due or minimum rules must be confirmed with a checkbox in the Edit Credit Card form.
-- **Generated statements keep everything:** their periods, due dates and minimum due (marked fixed), and no record moves between them.
-- **The new cutoff starts with the open cycle**, which ends on the next new cutoff day from today.
-- **Special bank schedule:** a "special cycle" (card page → Billing cycles) can be added for an upcoming period. It must start after the last statement. Cycles that belong to a statement cannot be deleted.
+**Why the Statements page was slow (fixed at the source):**
 
-**SOA reconciliation:**
+- **Cause:** the previous version generated and recalculated statements on every visit, for every card, from the card's first record. A card with an old opening date (e.g. 2008) produced about 224 statements, each recalculated with about 10 queries on each page load, plus writes. A long first run could pass PHP's time limit, roll back, and start over on the next load, so the page never finished.
+- **Removed:** all automatic generation and the writes on page load.
+- **Periods are now computed in memory:**
+  - the records of the periods shown are read in one pass (about 8 queries per page, whatever the number of periods);
+  - payments are summed in one grouped subquery, with no query per row;
+  - pagination applies to both periods and statements.
+- **Indexes added:** (card, date) on transactions, bank charges, card payments and cash advances.
+- **Measured** with 20,000 transactions and 36 SOAs on one card: the Statements page loads in about 0.1 s.
 
-- **Where:** Statement page → **Enter bank SOA**, also from the card page and the statement list.
-- **Fields:** the bank's statement balance (total amount due), minimum due, and optionally the previous balance and payments/credits, plus notes.
-- **History:** each entry is a new row in `statement_reconciliations` with a snapshot of the system's figures, so earlier SOA figures and results stay as history.
-- **Results:**
-  - **Balanced**: the balances match. The minimum, previous balance and payments are also compared when entered.
-  - **Difference detected**: shows the bank SOA statement balance, the system-calculated statement balance, the difference and the status. Nothing is changed automatically.
-  - **Pending review**: no SOA entered yet.
-- **Live status:** the status is recalculated against the current figures, so adding a missing record turns it Balanced.
-- **Resolve a difference:**
-  - **Review transactions** lists every record in the statement, each with an Edit button (modal).
-  - **Add missing transaction** opens the purchase / bank charge (e.g. annual fee) / cash advance / payment form in a modal, with the card and statement date prefilled.
-  - The record goes to the statement its date belongs to. If that is not the statement being reconciled, you are told, and it is not forced in.
-  - Editing a record's date or card out of (or into) a reconciled statement shows a warning.
+**Database changes (`db/upgrade_statements_v2.sql`, applied automatically):**
 
-**Installments:** an installment plan page shows, for each installment, the statement that bills it and the amount not billed yet after it. An installment purchase without a schedule is counted in full and flagged "needs attention".
+- `credit_card_statements.notes`, the unique key (card, cutoff date), and the date-range indexes above.
+- **One-time cleanup** (logged in the activity log):
+  - generated statements with an SOA you had entered became that SOA (your bank figures);
+  - generated statements you edited or linked to something were kept as records;
+  - generated statements with no input from you were removed, with the billing cycles created for them.
+- The earlier SOA comparisons (`statement_reconciliations`) stay as read-only history on the statement.
+
+**View buttons in the modal:** every View (eye icons, record links in lists, the dashboard, reports and the borrower portal) opens the record in the shared modal. The record's own actions (Edit, Pay, Approve, …) appear at the top of the modal; Back and Print stay on the full page. Add, Edit and View now all use the modal.
 
 ## DATABASE LIMITATIONS (no schema changes were made)
 

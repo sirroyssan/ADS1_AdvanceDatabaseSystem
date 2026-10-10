@@ -40,7 +40,7 @@ require APP_ROOT . '/includes/header.php';
                 <tbody>
                 <?php foreach ($letters as $l): ?>
                     <tr>
-                        <td data-label="Notice"><a class="table-link" href="<?= e(url('portal/letter.php', ['id' => $l['id']])) ?>"><?= e($l['letter_number']) ?></a>
+                        <td data-label="Notice"><a data-modal-form class="table-link" href="<?= e(url('portal/letter.php', ['id' => $l['id']])) ?>"><?= e($l['letter_number']) ?></a>
                             <?= $l['status'] === 'sent' ? ' <span class="status status--danger">New</span>' : '' ?></td>
                         <td data-label="Sent"><?= e($l['sent_at'] ? format_datetime($l['sent_at']) : format_date($l['generated_date'])) ?></td>
                         <td data-label="Balance stated" class="num"><?= show_money($l['remaining_balance']) ?></td>

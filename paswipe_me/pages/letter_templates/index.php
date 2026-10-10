@@ -67,7 +67,7 @@ require APP_ROOT . '/includes/header.php';
                 <?php foreach ($result['rows'] as $i => $row): ?>
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
-                        <td data-label="Template"><a class="table-link" href="<?= e(url('pages/letter_templates/view.php', ['id' => $row['id']])) ?>"><?= e($row['name']) ?></a></td>
+                        <td data-label="Template"><a data-modal-form class="table-link" href="<?= e(url('pages/letter_templates/view.php', ['id' => $row['id']])) ?>"><?= e($row['name']) ?></a></td>
                         <td data-label="Version"><?= e($row['version']) ?></td>
                         <td data-label="Status"><?= active_badge($row['is_active']) ?></td>
                         <td data-label="Used" class="num"><?= e($row['usage_count']) ?></td>

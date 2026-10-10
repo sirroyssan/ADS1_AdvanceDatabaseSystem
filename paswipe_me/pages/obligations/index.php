@@ -100,7 +100,7 @@ require APP_ROOT . '/includes/header.php';
                     <?php $late = $row['due_date'] && $row['due_date'] < date('Y-m-d') && (float) $row['outstanding_amount'] > 0 && !in_array($row['status'], ['cancelled', 'written_off', 'paid'], true); ?>
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
-                        <td data-label="Obligation #"><a class="table-link" href="<?= e(url('pages/obligations/view.php', ['id' => $row['id']])) ?>"><?= e($row['obligation_number']) ?></a></td>
+                        <td data-label="Obligation #"><a data-modal-form class="table-link" href="<?= e(url('pages/obligations/view.php', ['id' => $row['id']])) ?>"><?= e($row['obligation_number']) ?></a></td>
                         <td data-label="Borrower"><?= e(borrower_name($row)) ?><?= $row['description'] ? '<br><span class="text-muted">' . e(excerpt($row['description'], 40)) . '</span>' : '' ?></td>
                         <td data-label="Due date" class="<?= $late ? 'text-danger' : '' ?>"><?= e(format_date($row['due_date'])) ?><?= $late ? ' (past due)' : '' ?></td>
                         <td data-label="Total due" class="num"><?= e(format_money($row['total_amount_due'])) ?></td>

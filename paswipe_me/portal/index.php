@@ -129,7 +129,7 @@ require APP_ROOT . '/includes/header.php';
                 <tbody>
                 <?php foreach ($openObligations as $o): ?>
                     <tr>
-                        <td data-label="Item"><a class="table-link" href="<?= e(url('portal/obligation.php', ['id' => $o['id']])) ?>"><?= e($o['obligation_number']) ?></a>
+                        <td data-label="Item"><a data-modal-form class="table-link" href="<?= e(url('portal/obligation.php', ['id' => $o['id']])) ?>"><?= e($o['obligation_number']) ?></a>
                             <?php if ($o['description']): ?><br><span class="text-muted"><?= e($o['description']) ?></span><?php endif; ?></td>
                         <td data-label="Due date"><?= $o['due_date'] ? e(format_date($o['due_date'])) : '<span class="text-muted">—</span>' ?></td>
                         <td data-label="Outstanding" class="num"><?= e(format_money($o['outstanding_amount'])) ?></td>
@@ -161,7 +161,7 @@ require APP_ROOT . '/includes/header.php';
                 <?php foreach ($unpaidPenalties as $p): ?>
                     <tr>
                         <td data-label="Date charged"><?= e(format_date($p['applied_date'])) ?></td>
-                        <td data-label="Item"><a class="table-link" href="<?= e(url('portal/obligation.php', ['id' => $p['obligation_id']])) ?>"><?= e($p['obligation_number']) ?></a></td>
+                        <td data-label="Item"><a data-modal-form class="table-link" href="<?= e(url('portal/obligation.php', ['id' => $p['obligation_id']])) ?>"><?= e($p['obligation_number']) ?></a></td>
                         <td data-label="Charge"><?= e($p['rule_name']) ?></td>
                         <td data-label="Days late" class="num"><?= e($p['overdue_days']) ?></td>
                         <td data-label="Amount" class="num"><?= e(format_money($p['amount'])) ?></td>

@@ -30,11 +30,13 @@ try {
             ) > 0) {
                 $errors['cycle_start_date'] = 'This billing cycle already exists.';
             }
-            // A special cycle shapes periods that are not statements yet; statements keep their periods.
-            $lastEnd = card_last_statement_end($card['id']);
-            if (!$errors && $lastEnd && $data['cycle_start_date'] <= $lastEnd) {
-                $errors['cycle_start_date'] = 'Statements already cover the dates up to ' . format_date($lastEnd)
-                    . '. A new cycle must start after that (e.g. ' . format_date(date_add_days($lastEnd, 1)) . ').';
+            // A special cycle shapes periods without a recorded SOA; recorded SOAs keep their own periods.
+            if (!$errors && ($overlap = db_row(
+                'SELECT cutoff_date FROM credit_card_statements WHERE credit_card_id = :c AND period_start_date IS NOT NULL
+                    AND period_start_date <= :e AND cutoff_date >= :s LIMIT 1',
+                [':c' => $card['id'], ':s' => $data['cycle_start_date'], ':e' => $data['cycle_end_date']]
+            ))) {
+                $errors['cycle_start_date'] = 'These dates overlap the recorded SOA cut off ' . format_date($overlap['cutoff_date']) . '.';
             }
             if ($errors) {
                 flash('error', 'Billing cycle not saved: ' . reset($errors));

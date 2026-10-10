@@ -1,8 +1,10 @@
 <?php
 /**
- * Statements - one statement: its figures (generated from the card's records,
- * or as typed in for a manual statement), the records it contains, and the
- * reconciliation against the bank's Statement of Account (SOA).
+ * Statements - one card's billing period: the records already in the database
+ * for it, the bank's SOA when recorded (as entered), its payments and status,
+ * and the difference between the SOA and the records. Opens in the modal.
+ *   view.php?id=…                  a recorded SOA
+ *   view.php?card=…&start=…&end=…  a period without a recorded SOA
  */
 
 require_once __DIR__ . '/../../includes/auth_check.php';
@@ -10,263 +12,219 @@ require_once __DIR__ . '/statement_functions.php';
 
 $currentUser = require_admin();
 
-$found = find_or_redirect(statement_find(request_id()), 'pages/statements/index.php', 'Statement');
-// Bring the card's statements up to date with its records before showing figures.
-statement_sync_card($found['credit_card_id']);
-$statement = statement_find($found['id']);
-$id = $statement['id'];
-$card = db_row('SELECT * FROM credit_cards WHERE id = :c', [':c' => $statement['credit_card_id']]);
-$generated = $statement['source'] === 'generated';
-
-$period = $generated ? statement_period_lines($card['id'], $statement['period_start_date'], $statement['cutoff_date']) : null;
-$recon = statement_reconciliation_state($statement);
-$history = db_all(
-    'SELECT r.*, COALESCE(NULLIF(TRIM(CONCAT_WS(\' \', u.first_name, u.last_name)), \'\'), u.email) AS user_name
-       FROM statement_reconciliations r LEFT JOIN users u ON u.id = r.created_by
-      WHERE r.statement_id = :s ORDER BY r.created_at DESC, r.id DESC',
-    [':s' => $id]
-);
-$missing = statement_missing_links($statement);
-
-$charges = 0.0;
-foreach (STATEMENT_PARTS as $part => $label) {
-    if (!in_array($part, STATEMENT_CREDIT_PARTS, true)) {
-        $charges += (float) $statement[$part];
+$statement = null;
+if (input_string($_GET, 'id') !== '') {
+    $statement = find_or_redirect(statement_find(request_id()), 'pages/statements/index.php', 'Statement');
+    $card = db_row('SELECT * FROM credit_cards WHERE id = :c', [':c' => $statement['credit_card_id']]);
+    $period = statement_period_of($statement, $card);
+} else {
+    $cardId = input_string($_GET, 'card');
+    $card = is_valid_uuid($cardId) ? db_row('SELECT * FROM credit_cards WHERE id = :c', [':c' => $cardId]) : null;
+    $dateOk = static fn ($d) => (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', $d);
+    if (!$card || !$dateOk(input_string($_GET, 'start')) || !$dateOk(input_string($_GET, 'end'))) {
+        flash('error', 'Statement period not found.');
+        redirect('pages/statements/index.php');
+    }
+    $period = card_period_containing(card_period_context($card), input_string($_GET, 'end'));
+    if ($period['statement_id']) {
+        redirect('pages/statements/view.php', ['id' => $period['statement_id']]);
     }
 }
-$paidCredits = (float) $statement['payments'] + (float) $statement['credits'];
-$minimumUnconfirmed = $generated && $statement['minimum_due_status'] === 'unconfirmed';
-$dueUnconfirmed = $generated && $statement['due_date_status'] === 'unconfirmed';
 
-// Manual statements: records linked to them by hand.
-$usage = statement_usage($id);
+$lines = statement_period_lines($card['id'], $period['start'], $period['end']);
+$summary = statement_lines_summary($lines);
+$missing = statement_missing_links($card['id'], $period['end']);
+$payments = $statement ? db_all(
+    'SELECT p.id, p.payment_date, p.amount, p.reference_number, p.payment_type, pm.display_name AS method_name
+       FROM credit_card_payments p LEFT JOIN payment_methods pm ON pm.id = p.payment_method_id
+      WHERE p.statement_id = :s ORDER BY p.payment_date, p.created_at',
+    [':s' => $statement['id']]
+) : [];
+[$expected, $previousSoa] = $statement ? statement_expected($statement, $summary) : [null, null];
+$difference = $statement ? round((float) $statement['total_amount_due'] - $expected, 2) : null;
+$history = $statement ? db_all('SELECT * FROM statement_reconciliations WHERE statement_id = :s ORDER BY created_at DESC', [':s' => $statement['id']]) : [];
+$usage = $statement ? statement_usage($statement['id']) : ['total' => 0];
+$month = statement_month_label($period['end']);
 
-$pageTitle = 'Statement Details';
+$pageTitle = 'Statement';
 $activeNav = 'statements';
 require APP_ROOT . '/includes/header.php';
 
-$missingButtons = static function () use ($missing): string {
-    $html = '<div class="missing-actions no-print">';
-    foreach ($missing as $label => [$href, $iconName]) {
-        $html .= '<a data-modal-form href="' . e($href) . '" class="btn btn--sm btn--outline">' . icon($iconName) . ' <span>' . e($label) . '</span></a>';
-    }
-
-    return $html . '</div>';
-};
+$missingButtons = '<div class="missing-actions no-print">';
+foreach ($missing as $label => [$href, $iconName]) {
+    $missingButtons .= '<a data-modal-form href="' . e($href) . '" class="btn btn--sm btn--outline">' . icon($iconName) . ' <span>' . e($label) . '</span></a>';
+}
+$missingButtons .= '</div>';
 ?>
 
-<?= render_breadcrumb(['Statements' => url('pages/statements/index.php'), statement_label($statement) => null]) ?>
+<?= render_breadcrumb(['Statements' => url('pages/statements/index.php', ['card' => $card['id']]), $card['card_nickname'] . ' — ' . $month => null]) ?>
 
 <div class="print-header">
     <p class="print-header__system"><?= e(APP_NAME) ?></p>
-    <h2 class="print-header__title">Credit Card Statement</h2>
+    <h2 class="print-header__title">Statement — <?= e($card['card_nickname']) ?> — <?= e($month) ?></h2>
     <p class="print-header__meta">Printed: <?= e(date('F j, Y g:i A')) ?></p>
 </div>
 
 <section class="page-header">
     <div>
-        <h2 class="page-header__title"><?= e($statement['card_nickname']) ?> •••• <?= e($statement['last_four']) ?></h2>
-        <p class="page-header__subtitle">
-            <?php if ($statement['period_start_date']): ?>Period <?= e(format_date($statement['period_start_date'])) ?> – <?= e(format_date($statement['cutoff_date'])) ?> · <?php endif; ?>
-            Statement <?= e(format_date($statement['statement_date'])) ?> · due <?= e(format_date($statement['due_date'])) ?>
-            · <?= $generated ? '<span class="status status--info">Generated</span>' : '<span class="status status--muted">Entered by hand</span>' ?>
-            <?= reconciliation_badge($recon['status']) ?>
-        </p>
+        <h2 class="page-header__title"><?= e($card['card_nickname']) ?> — <?= e($month) ?> statement</h2>
+        <p class="page-header__subtitle"><?= e($card['issuer']) ?> •••• <?= e($card['last_four']) ?> · period <?= e(format_date($period['start'])) ?> – <?= e(format_date($period['end'])) ?>
+            · <?= statement_status_badge($statement ? $statement['pay_status'] : 'unrecorded', $statement['due_date'] ?? null) ?></p>
     </div>
     <div class="page-header__actions no-print">
-        <a href="<?= e(url('pages/credit_cards/view.php', ['id' => $card['id']])) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Card</span></a>
+        <a href="<?= e(url('pages/statements/index.php', ['card' => $card['id']])) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
-        <a data-modal-form href="<?= e(url('pages/statements/edit.php', ['id' => $id])) ?>" class="btn btn--outline"><?= icon('edit') ?> <span>Edit</span></a>
-        <a data-modal-form href="<?= e(url('pages/statements/reconcile.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('scale') ?> <span>Enter bank SOA</span></a>
-    </div>
-</section>
-
-<?php /* ---------------- Reconciliation result ---------------- */ ?>
-<?php if ($recon['status'] === 'pending'): ?>
-    <div class="recon-result recon-result--pending" role="status">
-        <h3>Pending review</h3>
-        <p>When the bank's Statement of Account arrives, click <strong>Enter bank SOA</strong> and type its statement balance (total amount due).
-            It is compared with the statement balance calculated from your records below.</p>
-    </div>
-<?php else: $latest = $recon['latest']; ?>
-    <div class="recon-result recon-result--<?= e($recon['status']) ?>" role="status">
-        <?php if ($recon['status'] === 'balanced'): ?>
-            <h3><?= icon('check') ?> Balanced</h3>
-            <p>The bank's SOA statement balance matches the statement balance calculated from your records.</p>
-        <?php else: ?>
-            <h3><?= icon('alert') ?> Difference detected — review transactions and fees</h3>
-        <?php endif; ?>
-        <dl class="recon-figures">
-            <div><dt>Bank SOA statement balance</dt><dd><?= e(format_money($latest['bank_statement_balance'])) ?></dd></div>
-            <div><dt>System-calculated statement balance</dt><dd><?= e(format_money($statement['total_amount_due'])) ?></dd></div>
-            <div><dt>Difference (bank − system)</dt><dd class="<?= $recon['status'] === 'balanced' ? '' : 'text-danger' ?>"><?= e(format_money($recon['difference'])) ?></dd></div>
-            <div><dt>Status</dt><dd><?= reconciliation_badge($recon['status']) ?></dd></div>
-        </dl>
-        <?php $comparison = reconciliation_comparison($latest, $statement); if (count($comparison) > 1): ?>
-            <div class="table-wrap">
-                <table class="table table--compact recon-compare">
-                    <thead><tr><th scope="col">SOA figure</th><th scope="col" class="num">Bank</th><th scope="col" class="num">System</th><th scope="col" class="num">Difference</th></tr></thead>
-                    <tbody>
-                    <?php foreach ($comparison as [$label, $bank, $system, $diff]): ?>
-                        <tr>
-                            <td data-label="SOA figure"><?= e($label) ?></td>
-                            <td data-label="Bank" class="num"><?= e(format_money($bank)) ?></td>
-                            <td data-label="System" class="num"><?= $system === null ? '<span class="status status--warning">Needs confirmation</span>' : e(format_money($system)) ?></td>
-                            <td data-label="Difference" class="num"><?= $diff === null ? '—' : (abs($diff) < 0.005 ? '<span class="status status--success">Match</span>' : '<strong class="text-danger">' . e(format_money($diff)) . '</strong>') ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php endif; ?>
-        <p class="recon-meta">SOA entered <?= e(format_datetime($latest['created_at'])) ?><?= $latest['notes'] ? ' · ' . e($latest['notes']) : '' ?>.
-            <?php if ($recon['changed_since']): ?>
-                Your records changed since then: the system balance was <?= e(format_money($latest['system_statement_balance'])) ?> and is now <?= e(format_money($statement['total_amount_due'])) ?>.
-            <?php endif; ?></p>
-        <?php if ($recon['status'] === 'difference'): ?>
-            <p class="recon-help">Compare the records below with the bank's SOA. Nothing was changed automatically. If the SOA lists something you did not record
-                (e.g. an annual fee), add it here — it is placed in the statement its date belongs to and the difference is recalculated.</p>
-            <div class="recon-actions no-print">
-                <a href="#review" class="btn btn--sm btn--primary"><?= icon('search') ?> <span>Review transactions</span></a>
-            </div>
-            <p class="recon-help no-print"><strong>Add missing transaction:</strong></p>
-            <?= $missingButtons() ?>
-        <?php endif; ?>
-    </div>
-<?php endif; ?>
-
-<?php /* ---------------- Figures ---------------- */ ?>
-<section class="figure-grid">
-    <div class="figure"><p class="figure__label">Previous balance</p><p class="figure__value"><?= e(format_money($statement['previous_balance'])) ?></p></div>
-    <div class="figure"><p class="figure__label">+ Charges</p><p class="figure__value"><?= e(format_money($charges)) ?></p></div>
-    <div class="figure"><p class="figure__label">− Payments &amp; credits</p><p class="figure__value"><?= e(format_money($paidCredits)) ?></p></div>
-    <div class="figure figure--total"><p class="figure__label">= Statement balance</p><p class="figure__value"><?= e(format_money($statement['total_amount_due'])) ?></p></div>
-    <div class="figure"><p class="figure__label">Minimum amount due</p><p class="figure__value"><?= $minimumUnconfirmed ? '<span class="status status--warning">Needs confirmation</span>' : e(format_money($statement['minimum_amount_due'])) ?></p></div>
-    <div class="figure"><p class="figure__label">Payment due date</p><p class="figure__value"><?= e(format_date($statement['due_date'])) ?><?= $dueUnconfirmed ? ' <span class="status status--warning">Needs confirmation</span>' : '' ?></p></div>
-</section>
-
-<?php if ($period && $period['warnings']): ?>
-    <div class="alert alert--warning" role="status"><?= icon('alert') ?>
-        <span><strong>Needs attention:</strong> <?= e(implode(' ', $period['warnings'])) ?></span></div>
-<?php endif; ?>
-
-<div class="detail-layout">
-    <section class="panel">
-        <header class="panel__header"><h3>Statement breakdown</h3></header>
-        <?php
-        $rows = [
-            'Card'           => related_link($statement['credit_card_id'], $statement['card_nickname'] . ' •••• ' . $statement['last_four'], 'pages/credit_cards/view.php'),
-            'Statement number' => show($statement['statement_number']),
-            'Period'         => $statement['period_start_date'] ? e(format_date($statement['period_start_date']) . ' – ' . format_date($statement['cutoff_date'])) : show($statement['cutoff_date'] ? 'Cutoff ' . format_date($statement['cutoff_date']) : null),
-            'Statement date' => e(format_date($statement['statement_date'])),
-            'Payment due date' => e(format_date($statement['due_date'])) . ($generated ? ' <span class="text-muted">· ' . e(match ($statement['due_date_status']) { 'rule' => 'from the card\'s rule', 'manual' => 'entered', default => 'needs confirmation' }) . '</span>' : ''),
-            'Previous balance' => e(format_money($statement['previous_balance'])),
-        ];
-        foreach (STATEMENT_PARTS as $part => $label) {
-            $rows[$label] = (in_array($part, STATEMENT_CREDIT_PARTS, true) ? '− ' : '') . e(format_money($statement[$part]));
-        }
-        $rows['Adjustment'] = e(format_money($statement['adjustments'])) . ($statement['adjustment_reason'] ? ' <span class="text-muted">· ' . e($statement['adjustment_reason']) . '</span>' : '');
-        $rows['Statement balance'] = '<strong>' . e(format_money($statement['total_amount_due'])) . '</strong>';
-        $rows['Minimum amount due'] = $minimumUnconfirmed ? '<span class="status status--warning">Needs confirmation</span> <span class="text-muted">set the card\'s minimum-due rule or enter it on Edit</span>'
-            : e(format_money($statement['minimum_amount_due'])) . ($generated ? ' <span class="text-muted">· ' . ($statement['minimum_due_status'] === 'rule' ? 'from the card\'s rule' : 'fixed — entered, or kept when the rule changed') . '</span>' : '');
-        $rows['Statement file'] = related_link($statement['attachment_document_id'], $statement['original_filename'], 'pages/documents/view.php');
-        $rows['Last calculated'] = e(format_datetime($statement['updated_at']));
-        echo render_details($rows);
-        ?>
-    </section>
-
-    <div class="detail-side">
-        <section class="panel">
-            <header class="panel__header"><h3>How this statement is made</h3></header>
-            <?php if ($generated): ?>
-                <p class="field-help">Generated at the cutoff from the card's records dated <?= e(format_date($statement['period_start_date'])) ?> – <?= e(format_date($statement['cutoff_date'])) ?>
-                    (their own dates, not the day they were entered). It is recalculated whenever a record changes; its period never moves when the card's cutoff day changes.</p>
-                <p class="field-help">Statement balance is not the card's current balance: <?= e(format_money(card_usage($card['id'])['used'])) ?> is used on the card today, including installments not billed yet.</p>
-            <?php else: ?>
-                <p class="field-help">Entered by hand: its figures are kept exactly as typed and are not recalculated.</p>
+        <?php if ($statement): ?>
+            <a data-modal-form href="<?= e(url('pages/statements/edit.php', ['id' => $statement['id']])) ?>" class="btn btn--outline"><?= icon('edit') ?> <span>Edit SOA</span></a>
+            <?php if ((float) $statement['remaining'] > 0.004): ?>
+                <a data-modal-form href="<?= e(url('pages/statements/pay.php', ['id' => $statement['id']])) ?>" class="btn btn--primary"><?= icon('wallet') ?> <span>Pay</span></a>
             <?php endif; ?>
-        </section>
-        <?php if (!$generated): ?>
-            <section class="panel panel--danger no-print">
-                <header class="panel__header"><h3>Delete</h3></header>
-                <?php if ($usage['total'] > 0 || $history): ?>
-                    <p class="field-help">Linked to <?= e($history ? 'SOA reconciliations' : usage_text($usage)) ?>, so it is kept.</p>
-                <?php else: ?>
-                    <p class="field-help">Delete only a statement entered by mistake.</p>
-                    <?= post_button(url('pages/statements/delete.php'), ['id' => $id], 'Delete statement', 'trash', 'btn btn--danger btn--block',
-                        'Are you sure you want to delete this statement? This cannot be undone.') ?>
-                <?php endif; ?>
-            </section>
+        <?php else: ?>
+            <a data-modal-form href="<?= e(statement_soa_url($card['id'], $period)) ?>" class="btn btn--primary"><?= icon('plus') ?> <span>Record SOA</span></a>
         <?php endif; ?>
     </div>
-</div>
+</section>
 
-<?php /* ---------------- Records in the statement ---------------- */ ?>
-<?php if ($generated): ?>
-    <section class="panel subpanel" id="review">
-        <header class="panel__header">
-            <h3><?= icon('layers') ?> Transactions in this statement (<?= e(count($period['lines'])) ?>)</h3>
-        </header>
-        <p class="field-help">Tick these off against the bank's SOA. Missing on your side? Add it below — it goes to the statement its date belongs to.
-            Wrong here? Edit the record; the statement and its reconciliation are recalculated (every change is kept in the activity log).</p>
-        <?= $missingButtons() ?>
-        <?php if (!$period['lines'] && $period['opening'] == 0): ?>
-            <p class="empty-inline">No records dated in this period.</p>
-        <?php else: ?>
-            <div class="table-wrap">
-                <table class="table table--cards table--compact">
-                    <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col" class="num">Amount</th><th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th></tr></thead>
-                    <tbody>
-                    <?php if ($period['opening'] > 0): ?>
-                        <tr><td data-label="Date">—</td><td data-label="Type">Opening balance</td><td data-label="Description">Balance before the card was tracked (in the previous balance)</td>
-                            <td data-label="Amount" class="num"><?= e(format_money($period['opening'])) ?></td><td></td></tr>
-                    <?php endif; ?>
-                    <?php foreach ($period['lines'] as $l): $credit = in_array($l['part'], STATEMENT_CREDIT_PARTS, true); $edit = statement_line_edit_url($l); ?>
-                        <tr>
-                            <td data-label="Date"><?= e(format_date($l['date'])) ?></td>
-                            <td data-label="Type"><?= e(STATEMENT_PARTS[$l['part']]) ?></td>
-                            <td data-label="Description"><a href="<?= e($l['link']) ?>"><?= e($l['description']) ?></a>
-                                <?php if ($l['note']): ?><br><span class="text-muted"><?= e($l['note']) ?></span><?php endif; ?></td>
-                            <td data-label="Amount" class="num"><?= $credit ? '− ' : '' ?><?= e(format_money($l['amount'])) ?></td>
-                            <td class="actions no-print"><div class="row-actions">
-                                <?php if ($edit): ?><?= icon_link($edit, 'edit', 'Edit ' . $l['description']) ?><?php endif; ?>
-                            </div></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php endif; ?>
+<?php if ($statement): ?>
+    <section class="figure-grid">
+        <div class="figure figure--total"><p class="figure__label">Actual SOA amount</p><p class="figure__value"><?= e(format_money($statement['total_amount_due'])) ?></p></div>
+        <div class="figure"><p class="figure__label">Minimum amount due</p><p class="figure__value"><?= e(format_money($statement['minimum_amount_due'])) ?></p></div>
+        <div class="figure"><p class="figure__label">Payment due date</p><p class="figure__value"><?= e(format_date($statement['due_date'])) ?></p></div>
+        <div class="figure"><p class="figure__label">Paid</p><p class="figure__value"><?= e(format_money($statement['paid'])) ?></p></div>
+        <div class="figure"><p class="figure__label">Remaining</p><p class="figure__value"><?= e(format_money($statement['remaining'])) ?></p></div>
+        <div class="figure"><p class="figure__label">Status</p><p class="figure__value"><?= statement_status_badge($statement['pay_status'], $statement['due_date']) ?></p></div>
+    </section>
+
+    <?php if (abs($difference) < 0.005): ?>
+        <div class="recon-result recon-result--balanced" role="status">
+            <h3><?= icon('check') ?> The SOA amount matches your records</h3>
+            <p><?= $previousSoa ? 'Previous SOA ' . e(format_money($previousSoa['total_amount_due'])) . ' + ' : '' ?>charges <?= e(format_money($summary['charges'])) ?> − payments and credits <?= e(format_money($summary['payments'])) ?> = <?= e(format_money($expected)) ?>.</p>
+        </div>
+    <?php else: ?>
+        <div class="recon-result recon-result--difference" role="status">
+            <h3><?= icon('alert') ?> The SOA amount differs from your records</h3>
+            <dl class="recon-figures">
+                <div><dt>Actual SOA amount (as entered)</dt><dd><?= e(format_money($statement['total_amount_due'])) ?></dd></div>
+                <div><dt>From your records</dt><dd><?= e(format_money($expected)) ?></dd></div>
+                <div><dt>Difference</dt><dd class="text-danger"><?= e(format_money($difference)) ?></dd></div>
+            </dl>
+            <p class="recon-help">From your records = <?= $previousSoa ? 'previous SOA ' . e(format_money($previousSoa['total_amount_due'])) : '<strong>previous SOA not recorded (counted as ₱0.00)</strong>' ?>
+                + charges <?= e(format_money($summary['charges'])) ?> − payments and credits <?= e(format_money($summary['payments'])) ?>.
+                The SOA amount you entered is kept as it is. Compare the transactions below with the SOA; if one is missing, add it here.</p>
+            <?= $missingButtons ?>
+        </div>
+    <?php endif; ?>
+<?php else: ?>
+    <div class="recon-result recon-result--pending" role="status">
+        <h3>SOA not recorded yet</h3>
+        <p>These are the records already in the system for this period. When the bank's SOA arrives, click <strong>Record SOA</strong> and type its amount, minimum due and due date.</p>
+    </div>
+    <section class="figure-grid">
+        <div class="figure"><p class="figure__label">Records</p><p class="figure__value"><?= e($summary['count']) ?></p></div>
+        <div class="figure"><p class="figure__label">Charges</p><p class="figure__value"><?= e(format_money($summary['charges'])) ?></p></div>
+        <div class="figure"><p class="figure__label">Payments and credits</p><p class="figure__value"><?= e(format_money($summary['payments'])) ?></p></div>
     </section>
 <?php endif; ?>
 
-<?php /* ---------------- Reconciliation history ---------------- */ ?>
-<section class="panel subpanel">
-    <header class="panel__header"><h3><?= icon('history') ?> SOA reconciliation history</h3></header>
-    <?php if (!$history): ?>
-        <p class="empty-inline">No bank SOA entered yet.</p>
+<?php if ($lines['warnings']): ?>
+    <div class="alert alert--warning" role="status"><?= icon('alert') ?>
+        <span><strong>Needs attention:</strong> <?= e(implode(' ', $lines['warnings'])) ?></span></div>
+<?php endif; ?>
+
+<section class="panel subpanel" id="review">
+    <header class="panel__header">
+        <h3><?= icon('layers') ?> Transactions in this period (<?= e($summary['count']) ?>)</h3>
+    </header>
+    <p class="field-help">From your records, by their own dates (<?= e(format_date($period['start'])) ?> – <?= e(format_date($period['end'])) ?>). Missing one from the bank's SOA? Add it:</p>
+    <?= $missingButtons ?>
+    <?php if (!$lines['lines'] && $summary['opening'] == 0): ?>
+        <p class="empty-inline">No records dated in this period.</p>
     <?php else: ?>
-        <p class="field-help">Each entry keeps the bank's figures and what the system calculated at that moment.</p>
         <div class="table-wrap">
             <table class="table table--cards table--compact">
-                <thead><tr><th scope="col">Entered</th><th scope="col" class="num">Bank balance</th><th scope="col" class="num">System then</th><th scope="col" class="num">Difference then</th>
-                    <th scope="col" class="num">Bank minimum</th><th scope="col">Result then</th><th scope="col">Notes</th></tr></thead>
+                <thead><tr><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Category</th><th scope="col">Installment / details</th><th scope="col">Status</th><th scope="col" class="num">Amount</th><th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th></tr></thead>
                 <tbody>
-                <?php foreach ($history as $h): ?>
+                <?php if ($summary['opening'] > 0): ?>
+                    <tr><td data-label="Date">—</td><td data-label="Description">Opening balance</td><td data-label="Category">Opening balance</td><td></td><td></td>
+                        <td data-label="Amount" class="num"><?= e(format_money($summary['opening'])) ?></td><td></td></tr>
+                <?php endif; ?>
+                <?php foreach ($lines['lines'] as $l): $credit = in_array($l['part'], STATEMENT_CREDIT_PARTS, true); $edit = statement_line_edit_url($l); ?>
                     <tr>
-                        <td data-label="Entered"><?= e(format_datetime($h['created_at'])) ?><br><span class="text-muted"><?= e($h['user_name'] ?? '') ?></span></td>
-                        <td data-label="Bank balance" class="num"><?= e(format_money($h['bank_statement_balance'])) ?></td>
-                        <td data-label="System then" class="num"><?= e(format_money($h['system_statement_balance'])) ?></td>
-                        <td data-label="Difference then" class="num"><?= e(format_money($h['difference'])) ?></td>
-                        <td data-label="Bank minimum" class="num"><?= $h['bank_minimum_due'] === null ? '—' : e(format_money($h['bank_minimum_due'])) ?></td>
-                        <td data-label="Result then"><?= reconciliation_badge($h['status']) ?></td>
-                        <td data-label="Notes"><?= show($h['notes']) ?></td>
+                        <td data-label="Date"><?= e(format_date($l['date'])) ?></td>
+                        <td data-label="Description"><?= e($l['description']) ?></td>
+                        <td data-label="Category"><?= e(STATEMENT_PARTS[$l['part']]) ?><?= $l['category'] && $l['category'] !== STATEMENT_PARTS[$l['part']] ? '<br><span class="text-muted">' . e($l['category']) . '</span>' : '' ?></td>
+                        <td data-label="Installment / details"><?= $l['note'] ? '<span class="text-muted">' . e($l['note']) . '</span>' : '' ?></td>
+                        <td data-label="Status"><?= $l['status'] ? badge($l['status']) : '' ?></td>
+                        <td data-label="Amount" class="num"><?= $credit ? '− ' : '' ?><?= e(format_money($l['amount'])) ?></td>
+                        <td class="actions no-print"><div class="row-actions">
+                            <a data-modal-form href="<?= e($l['link']) ?>" class="icon-button" title="View" aria-label="View <?= e($l['description']) ?>"><?= icon('eye') ?></a>
+                            <?php if ($edit): ?><?= icon_link($edit, 'edit', 'Edit ' . $l['description']) ?><?php endif; ?>
+                        </div></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
+                <tfoot><tr><td colspan="5">Charges − payments and credits</td><td class="num"><?= e(format_money($summary['charges'] - $summary['payments'])) ?></td><td></td></tr></tfoot>
             </table>
         </div>
     <?php endif; ?>
 </section>
+
+<?php if ($statement): ?>
+    <section class="panel subpanel">
+        <header class="panel__header">
+            <h3><?= icon('wallet') ?> Payments for this statement</h3>
+            <?php if ((float) $statement['remaining'] > 0.004): ?>
+                <a data-modal-form href="<?= e(url('pages/statements/pay.php', ['id' => $statement['id']])) ?>" class="btn btn--sm btn--primary no-print"><?= icon('plus') ?> <span>Pay</span></a>
+            <?php endif; ?>
+        </header>
+        <?php if (!$payments): ?>
+            <p class="empty-inline">No payment recorded for this statement yet.</p>
+        <?php else: ?>
+            <div class="table-wrap">
+                <table class="table table--cards table--compact">
+                    <thead><tr><th scope="col">Date</th><th scope="col">Type</th><th scope="col">Paid from</th><th scope="col">Reference</th><th scope="col" class="num">Amount</th><th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th></tr></thead>
+                    <tbody>
+                    <?php foreach ($payments as $p): ?>
+                        <tr>
+                            <td data-label="Date"><?= e(format_date($p['payment_date'])) ?></td>
+                            <td data-label="Type"><?= show($p['payment_type']) ?></td>
+                            <td data-label="Paid from"><?= show($p['method_name']) ?></td>
+                            <td data-label="Reference"><?= show($p['reference_number']) ?></td>
+                            <td data-label="Amount" class="num"><?= e(format_money($p['amount'])) ?></td>
+                            <td class="actions no-print"><div class="row-actions"><?= icon_link(url('pages/card_payments/edit.php', ['id' => $p['id']]), 'edit', 'Edit payment') ?></div></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                    <tfoot><tr><td colspan="4">Paid · remaining <?= e(format_money($statement['remaining'])) ?></td><td class="num"><?= e(format_money($statement['paid'])) ?></td><td></td></tr></tfoot>
+                </table>
+            </div>
+        <?php endif; ?>
+    </section>
+
+    <section class="panel subpanel">
+        <header class="panel__header"><h3>SOA details</h3></header>
+        <?= render_details([
+            'Statement cutoff' => e(format_date($statement['cutoff_date'] ?: $statement['statement_date'])),
+            'Statement date'   => e(format_date($statement['statement_date'])),
+            'Statement number' => show($statement['statement_number']),
+            'SOA file'         => related_link($statement['attachment_document_id'], $statement['original_filename'], 'pages/documents/view.php'),
+            'Notes'            => show_multiline($statement['notes']),
+            'Recorded'         => e(format_datetime($statement['created_at'])),
+            'Last updated'     => e(format_datetime($statement['updated_at'])),
+        ]) ?>
+        <?php if ($history): ?>
+            <p class="field-help">Earlier SOA comparisons (kept as history):
+                <?php foreach ($history as $h): ?>
+                    <br><?= e(format_datetime($h['created_at'])) ?> — bank <?= e(format_money($h['bank_statement_balance'])) ?>, system then <?= e(format_money($h['system_statement_balance'])) ?> <?= reconciliation_badge($h['status']) ?>
+                <?php endforeach; ?></p>
+        <?php endif; ?>
+        <?php if ($usage['total'] === 0 && !$history): ?>
+            <div class="no-print">
+                <?= post_button(url('pages/statements/delete.php'), ['id' => $statement['id']], 'Delete this SOA', 'trash', 'btn btn--sm btn--outline',
+                    'Delete this recorded SOA? The transactions are not affected.') ?>
+            </div>
+        <?php endif; ?>
+    </section>
+<?php endif; ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

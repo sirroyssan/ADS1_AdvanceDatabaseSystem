@@ -65,7 +65,7 @@ require APP_ROOT . '/includes/header.php';
                     <?php $pct = max(0, min(100, (float) $row['utilization_percentage'])); ?>
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
-                        <td data-label="Card"><a class="table-link" href="<?= e(url('pages/credit_cards/view.php', ['id' => $row['id']])) ?>"><?= e($row['card_nickname']) ?></a> •••• <?= e($row['last_four']) ?></td>
+                        <td data-label="Card"><a data-modal-form class="table-link" href="<?= e(url('pages/credit_cards/view.php', ['id' => $row['id']])) ?>"><?= e($row['card_nickname']) ?></a> •••• <?= e($row['last_four']) ?></td>
                         <td data-label="Issuer"><?= e($row['issuer']) ?></td>
                         <td data-label="Limit" class="num"><?= e(format_money($row['credit_limit'])) ?></td>
                         <td data-label="Used" class="num"><?= e(format_money($row['outstanding'])) ?></td>

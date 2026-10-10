@@ -78,7 +78,7 @@ require APP_ROOT . '/includes/header.php';
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
                         <td data-label="Borrower #"><?= e($row['borrower_number']) ?></td>
-                        <td data-label="Name"><a class="table-link" href="<?= e(url('pages/borrowers/view.php', ['id' => $row['borrower_id']])) ?>"><?= e(borrower_name($row)) ?></a></td>
+                        <td data-label="Name"><a data-modal-form class="table-link" href="<?= e(url('pages/borrowers/view.php', ['id' => $row['borrower_id']])) ?>"><?= e(borrower_name($row)) ?></a></td>
                         <td data-label="Status"><?= badge($row['status']) ?></td>
                         <td data-label="Charged" class="num"><?= e(format_money($row['total_charged'])) ?></td>
                         <td data-label="Paid" class="num"><?= e(format_money($row['total_paid'])) ?></td>

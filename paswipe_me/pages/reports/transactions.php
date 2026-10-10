@@ -106,7 +106,7 @@ require APP_ROOT . '/includes/header.php';
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
                         <td data-label="Date"><?= e(format_date($row['transaction_date'])) ?></td>
-                        <td data-label="Transaction #"><a class="table-link" href="<?= e(url('pages/transactions/view.php', ['id' => $row['id']])) ?>"><?= e($row['transaction_number']) ?></a></td>
+                        <td data-label="Transaction #"><a data-modal-form class="table-link" href="<?= e(url('pages/transactions/view.php', ['id' => $row['id']])) ?>"><?= e($row['transaction_number']) ?></a></td>
                         <td data-label="Card"><?= e($row['card_nickname']) ?> •••• <?= e($row['last_four']) ?></td>
                         <td data-label="Merchant"><?= show($row['merchant_name']) ?></td>
                         <td data-label="Borrower"><?= $row['first_name'] ? e(borrower_name($row)) : '<span class="text-muted">Owner</span>' ?></td>

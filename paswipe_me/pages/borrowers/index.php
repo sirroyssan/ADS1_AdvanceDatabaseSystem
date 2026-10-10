@@ -74,7 +74,7 @@ require APP_ROOT . '/includes/header.php';
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
                         <td data-label="Borrower #"><?= e($row['borrower_number']) ?></td>
                         <td data-label="Name">
-                            <a class="table-link" href="<?= e(url('pages/borrowers/view.php', ['id' => $row['id']])) ?>"><?= e($name) ?></a>
+                            <a data-modal-form class="table-link" href="<?= e(url('pages/borrowers/view.php', ['id' => $row['id']])) ?>"><?= e($name) ?></a>
                             <?php if ($row['nickname']): ?><br><span class="text-muted">“<?= e($row['nickname']) ?>”</span><?php endif; ?>
                         </td>
                         <td data-label="Mobile / Email"><?= show($row['primary_mobile']) ?><?php if ($row['primary_email']): ?><br><span class="text-muted"><?= e($row['primary_email']) ?></span><?php endif; ?></td>
