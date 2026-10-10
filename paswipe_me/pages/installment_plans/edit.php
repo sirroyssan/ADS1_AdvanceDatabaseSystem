@@ -15,7 +15,7 @@ $locked = plan_is_locked($plan['id']);
 $fields = plan_fields(false, $plan);
 if ($locked) {
     foreach ($fields as $name => &$f) {
-        if ($name !== 'status') {
+        if (!in_array($name, ['status', 'first_due_date', 'frequency'], true)) {   // dates can still move
             $f['readonly'] = true;
         }
     }
@@ -36,12 +36,26 @@ if (is_post()) {
     if (!$errors) {
         try {
             $planCards = [$plan['credit_card_id'], isset($data['transaction_id']) ? db_value('SELECT credit_card_id FROM transactions WHERE id = :id', [':id' => $data['transaction_id']]) : null];
-            card_usage_apply($planCards, function () use ($plan, $data, $locked) {
+            $moved = null;
+            card_usage_apply($planCards, function () use ($plan, &$data, $locked, &$moved) {
+                if ($locked && (($data['first_due_date'] ?? $plan['first_due_date']) !== $plan['first_due_date'] || ($data['frequency'] ?? $plan['frequency']) !== $plan['frequency'])) {
+                    // Payments exist: keep every amount, move the due dates only.
+                    $newEnd = schedule_shift_dates('installment_schedules', 'installment_plan_id', $plan['id'], $data['first_due_date'], $data['frequency'] ?? $plan['frequency']);
+                    $data['end_date'] = $newEnd;
+                    $moved = [$plan['end_date'], $newEnd];
+                }
                 db_update('installment_plans', $data, $plan['id']);
                 if (!$locked) {
                     plan_generate_schedule($plan['id'], $data);
                 }
+                if ($moved) {
+                    schedule_move_obligations(array_column(db_all(
+                        "SELECT id FROM borrower_obligations WHERE transaction_id = :t AND status <> 'cancelled'", [':t' => $plan['transaction_id']]), 'id'), $moved[0], $moved[1]);
+                }
             });
+            if ($moved) {
+                flash('info', 'The installment due dates moved with the new first due date (now ending ' . format_date($moved[1]) . '). Amounts and payments were kept.');
+            }
             log_activity('update', 'installment_plan', $plan['id'], $locked ? 'Changed plan status' : 'Updated plan terms and regenerated schedule',
                 array_intersect_key($plan, $data), $data);
             flash('success', $locked ? 'Plan status was updated.' : 'Plan updated and schedule regenerated.');
@@ -67,7 +81,7 @@ require APP_ROOT . '/includes/header.php';
     <div>
         <h2 class="page-header__title">Edit installment plan</h2>
         <p class="page-header__subtitle"><?= $locked
-            ? 'Payments are already recorded on this schedule, so only the status can change.'
+            ? 'Payments are already recorded on this schedule: the amounts stay, but you can move the due dates (first due date, frequency) and change the status.'
             : 'Saving regenerates the payment schedule from the new terms.' ?></p>
     </div>
 </section>

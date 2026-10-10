@@ -55,8 +55,13 @@ $payments = $statement ? db_all(
       WHERE p.statement_id = :s ORDER BY p.payment_date, p.created_at',
     [':s' => $statement['id']]
 ) : [];
-[$expected, $previousSoa] = $statement ? statement_expected($statement, $summary) : [null, null];
+$calc = $statement ? statement_expected($statement, $summary) : null;
+$expected = $calc['expected'] ?? null;
 $difference = $statement ? round((float) $statement['total_amount_due'] - $expected, 2) : null;
+$autoPayments = $statement ? (float) db_value(
+    "SELECT COALESCE(SUM(amount), 0) FROM credit_card_payments WHERE credit_card_id = :c AND payment_date BETWEEN :s AND :e AND payment_type LIKE 'Borrower payment%'",
+    [':c' => $card['id'], ':s' => $period['start'], ':e' => $period['end']]
+) : 0.0;
 $history = $statement ? db_all('SELECT * FROM statement_reconciliations WHERE statement_id = :s ORDER BY created_at DESC', [':s' => $statement['id']]) : [];
 $usage = $statement ? statement_usage($statement['id']) : ['total' => 0];
 $month = statement_month_label($period['end']);
@@ -110,10 +115,12 @@ $missingButtons .= '</div>';
         <div class="figure"><p class="figure__label">Status</p><p class="figure__value"><?= statement_status_badge($statement['pay_status'], $statement['due_date']) ?></p></div>
     </section>
 
+    <?php $formula = e(format_money($calc['previous'])) . ' <span class="text-muted">(' . e($calc['basis']) . ')</span> + charges ' . e(format_money($summary['charges']))
+        . ' − payments and credits ' . e(format_money($summary['payments'])) . ' = <strong>' . e(format_money($expected)) . '</strong>'; ?>
     <?php if (abs($difference) < 0.005): ?>
         <div class="recon-result recon-result--balanced" role="status">
             <h3><?= icon('check') ?> The SOA amount matches your records</h3>
-            <p><?= $previousSoa ? 'Previous SOA ' . e(format_money($previousSoa['total_amount_due'])) . ' + ' : '' ?>charges <?= e(format_money($summary['charges'])) ?> − payments and credits <?= e(format_money($summary['payments'])) ?> = <?= e(format_money($expected)) ?>.</p>
+            <p>Previous balance <?= $formula ?>.</p>
         </div>
     <?php else: ?>
         <div class="recon-result recon-result--difference" role="status">
@@ -123,9 +130,22 @@ $missingButtons .= '</div>';
                 <div><dt>From your records</dt><dd><?= e(format_money($expected)) ?></dd></div>
                 <div><dt>Difference</dt><dd class="text-danger"><?= e(format_money($difference)) ?></dd></div>
             </dl>
-            <p class="recon-help">From your records = <?= $previousSoa ? 'previous SOA ' . e(format_money($previousSoa['total_amount_due'])) : '<strong>previous SOA not recorded (counted as ₱0.00)</strong>' ?>
-                + charges <?= e(format_money($summary['charges'])) ?> − payments and credits <?= e(format_money($summary['payments'])) ?>.
-                The SOA amount you entered is kept as it is. Compare the transactions below with the SOA.</p>
+            <p class="recon-help">From your records = previous balance <?= $formula ?>. The SOA amount you entered is kept as it is.</p>
+            <div class="recon-steps">
+                <p><strong>How to balance it</strong> — compare the SOA line by line:</p>
+                <ol>
+                    <?php if ($statement['soa_previous_balance'] === null): ?>
+                        <li><strong>Previous balance:</strong> the SOA's "Previous balance" includes what was not paid on earlier statements (e.g. unpaid installments).
+                            Your records carry <?= e(format_money($calc['carried'])) ?> into this period. <a data-modal-form href="<?= e(url('pages/statements/edit.php', ['id' => $statement['id']])) ?>">Enter the SOA's previous balance</a> so only this month is compared.</li>
+                    <?php else: ?>
+                        <li><strong>Previous balance:</strong> using the SOA's <?= e(format_money($statement['soa_previous_balance'])) ?> (your records carry <?= e(format_money($calc['carried'])) ?>; a difference there is from earlier months).</li>
+                    <?php endif; ?>
+                    <li><strong>Late payment fee, finance charge, interest</strong> printed on the SOA: add each with <em>Annual fee, interest or charge</em> below, dated as on the SOA.</li>
+                    <li><strong>Payments:</strong> the bank only counts payments it received.<?= $autoPayments > 0 ? ' ' . e(format_money($autoPayments)) . ' in this period was recorded automatically from borrower payments — if that money did not reach the bank, correct those card payments (Edit).' : '' ?>
+                        A payment the bank shows that is missing here: add it with <em>Payment or credit</em>.</li>
+                    <li>Anything left (a bank adjustment): explain it in the SOA notes.</li>
+                </ol>
+            </div>
             <a href="#review" class="btn btn--sm btn--primary no-print"><?= icon('search') ?> <span>Review transactions and add a missing one</span></a>
         </div>
     <?php endif; ?>

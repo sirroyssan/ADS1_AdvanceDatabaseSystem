@@ -29,6 +29,7 @@ defined('APP_ROOT') or exit('No direct access.');
 const STATEMENT_UPGRADE_MARKER = 'storage/upgrade_statements.done';
 const STATEMENT_UPGRADE_V2_MARKER = 'storage/upgrade_statements_v2.done';
 const STATEMENT_UPGRADE_V3_MARKER = 'storage/upgrade_statements_v3.done';
+const STATEMENT_UPGRADE_V4_MARKER = 'storage/upgrade_statements_v4.done';
 /** Days ahead that count as an upcoming payment. */
 const STATEMENT_UPCOMING_DAYS = 7;
 
@@ -85,6 +86,10 @@ function statement_schema_upgrade(): void
         // Every statement that exists before this upgrade is a recorded SOA.
         db()->exec('UPDATE credit_card_statements SET soa_recorded_at = created_at WHERE soa_recorded_at IS NULL AND prepared_at IS NULL');
         @file_put_contents(APP_ROOT . '/' . STATEMENT_UPGRADE_V3_MARKER, date('c'), LOCK_EX);
+    }
+    if (!is_file(APP_ROOT . '/' . STATEMENT_UPGRADE_V4_MARKER)) {
+        run_sql_file(APP_ROOT . '/db/upgrade_statements_v4.sql');
+        @file_put_contents(APP_ROOT . '/' . STATEMENT_UPGRADE_V4_MARKER, date('c'), LOCK_EX);
     }
 }
 
@@ -607,18 +612,42 @@ function statement_status_badge(string $status, ?string $dueDate = null): string
 
 /**
  * What the records say the bank should show for a recorded SOA:
- * previous SOA amount (when the previous period's SOA is recorded) + charges
- * − payments and credits. Returns [expected|null, previous SOA row|null].
+ * previous balance + this period's charges − payments and credits.
+ * The previous balance comes from, in order:
+ *   1. the "Previous balance" printed on this SOA (entered with it);
+ *   2. the previous period's recorded SOA amount;
+ *   3. what the records carry over: every charge minus every payment before
+ *      this period (e.g. installments billed earlier and not paid to the bank).
+ * Returns ['expected', 'previous', 'basis' (text), 'carried' (records), 'previous_soa'].
  */
 function statement_expected(array $statement, array $summary): array
 {
-    $previous = $statement['period_start_date'] ? db_row(
+    $start = $statement['period_start_date'];
+    $previousSoa = $start ? db_row(
         'SELECT id, total_amount_due, cutoff_date FROM credit_card_statements WHERE credit_card_id = :c AND COALESCE(cutoff_date, statement_date) = :d AND soa_recorded_at IS NOT NULL',
-        [':c' => $statement['credit_card_id'], ':d' => date_add_days($statement['period_start_date'], -1)]
+        [':c' => $statement['credit_card_id'], ':d' => date_add_days($start, -1)]
     ) : null;
-    $base = $previous ? (float) $previous['total_amount_due'] : 0.0;
 
-    return [round($base + $summary['charges'] - $summary['payments'], 2), $previous];
+    // Carried over by the records (all periods before this one).
+    $carried = 0.0;
+    $first = $start ? card_first_activity($statement['credit_card_id']) : null;
+    if ($start && $first && $first < $start) {
+        $before = statement_lines_summary(statement_period_lines($statement['credit_card_id'], $first, date_add_days($start, -1)));
+        $carried = round($before['charges'] - $before['payments'], 2);
+    }
+
+    if (($statement['soa_previous_balance'] ?? null) !== null) {
+        [$previous, $basis] = [(float) $statement['soa_previous_balance'], 'previous balance printed on this SOA'];
+    } elseif ($previousSoa) {
+        [$previous, $basis] = [(float) $previousSoa['total_amount_due'], 'previous SOA you recorded (' . statement_month_label($previousSoa['cutoff_date']) . ')'];
+    } else {
+        [$previous, $basis] = [$carried, 'carried over by your records (charges − payments before this period)'];
+    }
+
+    return [
+        'expected' => round($previous + $summary['charges'] - $summary['payments'], 2),
+        'previous' => round($previous, 2), 'basis' => $basis, 'carried' => $carried, 'previous_soa' => $previousSoa,
+    ];
 }
 
 /* ------------------------------------------------------------------

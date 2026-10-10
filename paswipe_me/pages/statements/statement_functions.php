@@ -20,6 +20,8 @@ function statement_fields(?array $current = null, bool $lockedCard = false): arr
                                      'help' => 'Last day of the billing period on the SOA. It decides the statement month.'],
         'total_amount_due'       => ['label' => 'Actual SOA amount (statement balance)', 'type' => 'decimal', 'required' => true,
                                      'help' => 'Exactly as printed on the bank\'s SOA. Kept as entered even if your records add up differently.'],
+        'soa_previous_balance'   => ['label' => 'Previous balance on the SOA', 'type' => 'decimal',
+                                     'help' => 'Optional: the "Previous balance" line of the SOA (what was carried from earlier statements, e.g. unpaid installments). With it, the comparison shows only what is missing from this month.'],
         'minimum_amount_due'     => ['label' => 'Minimum amount due', 'type' => 'decimal', 'min' => 0, 'required' => true],
         'due_date'               => ['label' => 'Payment due date', 'type' => 'date', 'required' => true],
         'statement_date'         => ['label' => 'Statement date', 'type' => 'date', 'help' => 'Date printed on the SOA. Leave blank to use the cutoff date.', 'section' => 'Optional'],

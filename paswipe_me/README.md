@@ -849,6 +849,26 @@ Every Edit button (list row pencil icons, detail page "Edit", Transaction → ed
 - **Installment progress:** the statement lists show "n/N", how many installments are left after it, and the amount not billed yet.
 - **Duplicate buttons fixed:** the four "Add missing transaction" buttons were printed twice in the statement view (inside the difference warning and above the transaction list). They now appear once, above the transaction list, and the warning links down to them.
 
+**Balancing an SOA with the records (`db/upgrade_statements_v4.sql`: `soa_previous_balance`):**
+
+- **What the records give:** previous balance + this period's charges − payments and credits.
+- **Where the previous balance comes from**, in this order:
+  1. the "Previous balance" printed on the SOA (optional field on Record/Edit SOA);
+  2. the previous period's recorded SOA;
+  3. what the records carry over (all charges − all payments before the period, e.g. installments billed earlier and not paid to the bank).
+- **When the SOA differs**, the statement shows a checklist:
+  - enter the SOA's previous balance;
+  - add the late fee / finance charge / interest lines of the SOA;
+  - check the payments, including those recorded automatically from borrower payments;
+  - explain any bank adjustment in the notes.
+
+**Moving due dates:**
+
+- **Cash loan:** changing the first due date (or frequency) moves its repayment schedule.
+- **Installment plan:** changing the first due date (or frequency) moves the schedule. This also works after payments; only the dates move.
+- **In both cases:** amounts and payments are kept, each status follows its new date, and borrower obligations that ended on the old last date move with it (`schedule_shift_dates`).
+- **Cash loan obligation:** changing its due date moves its monthly months (same number of installments, ending on the new date).
+
 **View buttons in the modal:** every View (eye icons, record links in lists, the dashboard, reports and the borrower portal) opens the record in the shared modal. The record's own actions (Edit, Pay, Approve, …) appear at the top of the modal; Back and Print stay on the full page. Add, Edit and View now all use the modal.
 
 ## DATABASE LIMITATIONS (no schema changes were made)

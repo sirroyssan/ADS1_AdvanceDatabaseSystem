@@ -225,3 +225,44 @@ function apply_schedule_payment(string $table, string $parentColumn, string $par
         return null;
     });
 }
+
+/**
+ * Move an existing schedule to new due dates after its first due date or
+ * frequency changed: row n is due on (first due date + n−1 periods). Amounts
+ * and what was already paid stay exactly as they are; each open row's status
+ * follows its new date. Returns the new last due date (null: no rows).
+ */
+function schedule_shift_dates(string $table, string $parentColumn, string $parentId, string $firstDue, ?string $frequency): ?string
+{
+    $rows = db_all(
+        'SELECT id, installment_number, amount_due, amount_paid, status FROM ' . db_identifier($table)
+        . ' WHERE ' . db_identifier($parentColumn) . ' = :p ORDER BY installment_number',
+        [':p' => $parentId]
+    );
+    $last = null;
+    foreach ($rows as $r) {
+        $due = schedule_due_date($firstDue, (int) $r['installment_number'] - 1, $frequency ?: 'monthly');
+        $update = ['due_date' => $due, 'updated_at' => date('Y-m-d H:i:s')];
+        if (!in_array($r['status'], ['waived', 'cancelled'], true)) {
+            $update['status'] = schedule_status_after_payment((float) $r['amount_due'], (float) $r['amount_paid'], $due);
+        }
+        db_update($table, $update, $r['id']);
+        $last = $due;
+    }
+
+    return $last;
+}
+
+/**
+ * After a schedule moved: borrower obligations that ended on the old last
+ * date now end on the new one, and their paid / overdue figures are re-derived.
+ */
+function schedule_move_obligations(array $obligationIds, ?string $oldEnd, ?string $newEnd): void
+{
+    foreach ($obligationIds as $oid) {
+        if ($newEnd && $oldEnd && db_value('SELECT due_date FROM borrower_obligations WHERE id = :id', [':id' => $oid]) === $oldEnd) {
+            db_update('borrower_obligations', ['due_date' => $newEnd], $oid);
+        }
+        schedule_sync_obligation($oid);
+    }
+}

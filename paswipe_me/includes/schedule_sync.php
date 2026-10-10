@@ -261,6 +261,18 @@ function obligation_monthly_dates(array $o): array
         if ($dates && end($dates) === $o['due_date']) {
             return $dates;
         }
+        if ($dates) {
+            // The obligation's due date was changed: same number of monthly installments, ending on it.
+            $to = new DateTimeImmutable($o['due_date']);
+            $day = (int) $to->format('j');
+            $moved = [];
+            for ($k = count($dates) - 1; $k >= 0; $k--) {
+                $month = $to->modify('first day of this month')->modify('-' . $k . ' months');
+                $moved[] = $month->setDate((int) $month->format('Y'), (int) $month->format('n'), min($day, (int) $month->format('t')))->format('Y-m-d');
+            }
+
+            return $moved;
+        }
     }
 
     $from = new DateTimeImmutable($o['obligation_date'] ?: $o['due_date']);
