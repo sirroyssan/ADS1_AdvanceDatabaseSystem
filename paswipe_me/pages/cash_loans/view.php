@@ -132,7 +132,7 @@ require APP_ROOT . '/includes/header.php';
     <header class="panel__header">
         <h3><?= icon('users') ?> Borrower allocations</h3>
         <?php if ($isOpen): ?>
-            <button type="button" class="btn btn--sm btn--outline no-print" data-toggle-panel="add-allocation"><?= icon('plus') ?> <span>Add allocation</span></button>
+            <button type="button" class="btn btn--sm btn--outline no-print" data-modal-panel="add-allocation"><?= icon('plus') ?> <span>Add allocation</span></button>
         <?php endif; ?>
     </header>
     <?php if ($isOpen): ?>

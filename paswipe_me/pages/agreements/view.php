@@ -114,7 +114,7 @@ require APP_ROOT . '/includes/header.php';
     <header class="panel__header">
         <h3><?= icon('users') ?> Signatories</h3>
         <?php if (!$locked): ?>
-            <button type="button" class="btn btn--sm btn--outline" data-toggle-panel="add-signatory"><?= icon('plus') ?> <span>Add signatory</span></button>
+            <button type="button" class="btn btn--sm btn--outline" data-modal-panel="add-signatory"><?= icon('plus') ?> <span>Add signatory</span></button>
         <?php endif; ?>
     </header>
     <?php if (!$locked): ?>

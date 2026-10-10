@@ -108,7 +108,7 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel">
             <header class="panel__header">
                 <h3>Cash loans on this card</h3>
-                <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/cash_loans/create.php', ['credit_card_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
+                <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/cash_loans/create.php', ['credit_card_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
             </header>
             <?php if (!$cashLoans): ?>
                 <p class="empty-inline">No cash loans on this card.</p>
@@ -142,7 +142,7 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel">
             <header class="panel__header">
                 <h3>Recent statements</h3>
-                <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/statements/create.php', ['credit_card_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
+                <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/statements/create.php', ['credit_card_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
             </header>
             <?php if (!$statements): ?>
                 <p class="empty-inline">No statements recorded.</p>
@@ -176,7 +176,7 @@ require APP_ROOT . '/includes/header.php';
 <section class="panel subpanel">
     <header class="panel__header">
         <h3>Billing cycles</h3>
-        <button type="button" class="btn btn--sm btn--outline no-print" data-toggle-panel="add-cycle"><?= icon('plus') ?> <span>Add cycle</span></button>
+        <button type="button" class="btn btn--sm btn--outline no-print" data-modal-panel="add-cycle"><?= icon('plus') ?> <span>Add cycle</span></button>
     </header>
     <form method="post" action="<?= e($related) ?>" class="inline-panel no-print" id="add-cycle" hidden novalidate data-validate>
         <?= csrf_field() ?>

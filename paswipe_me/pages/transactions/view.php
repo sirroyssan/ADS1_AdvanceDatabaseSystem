@@ -119,7 +119,7 @@ require APP_ROOT . '/includes/header.php';
                 <p><?= related_link($plan['id'], $plan['number_of_installments'] . ' × ' . format_money($plan['installment_amount']) . ' (' . $plan['frequency'] . ')', 'pages/installment_plans/view.php') ?> <?= badge($plan['status']) ?></p>
             <?php elseif (!$isLocked): ?>
                 <p class="field-help">No installment plan.</p>
-                <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/installment_plans/create.php', ['transaction_id' => $id])) ?>"><?= icon('plus') ?> <span>Create plan</span></a>
+                <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/installment_plans/create.php', ['transaction_id' => $id])) ?>"><?= icon('plus') ?> <span>Create plan</span></a>
             <?php else: ?>
                 <p class="field-help">No installment plan.</p>
             <?php endif; ?>
@@ -129,7 +129,7 @@ require APP_ROOT . '/includes/header.php';
             <header class="panel__header">
                 <h3>Borrower obligations</h3>
                 <?php if (!$isLocked && $txn['borrower_id']): ?>
-                    <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/obligations/create.php', ['borrower_id' => $txn['borrower_id'], 'transaction_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
+                    <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/obligations/create.php', ['borrower_id' => $txn['borrower_id'], 'transaction_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
                 <?php endif; ?>
             </header>
             <?php if (!$obligations): ?>
@@ -163,7 +163,7 @@ require APP_ROOT . '/includes/header.php';
     <header class="panel__header">
         <h3><?= icon('layers') ?> Purchased items</h3>
         <?php if (!$itemsLocked): ?>
-            <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/transactions/item.php', ['transaction_id' => $id])) ?>"><?= icon('plus') ?> <span>Add item</span></a>
+            <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/transactions/item.php', ['transaction_id' => $id])) ?>"><?= icon('plus') ?> <span>Add item</span></a>
         <?php endif; ?>
     </header>
     <?php if (!$items): ?>

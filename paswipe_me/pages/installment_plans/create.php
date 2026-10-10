@@ -55,7 +55,7 @@ require APP_ROOT . '/includes/header.php';
 </section>
 
 <?php if (!$fields['transaction_id']['options']): ?>
-    <div class="alert alert--info"><?= icon('info') ?><span>Every open transaction already has a plan. <a href="<?= e(url('pages/transactions/create.php')) ?>">Record a transaction</a> first.</span></div>
+    <div class="alert alert--info"><?= icon('info') ?><span>Every open transaction already has a plan. <a data-modal-form href="<?= e(url('pages/transactions/create.php')) ?>">Record a transaction</a> first.</span></div>
 <?php endif; ?>
 
 <?= render_record_form(url('pages/installment_plans/create.php'), $fields, $data, $errors, 'Create plan', url('pages/installment_plans/index.php')) ?>

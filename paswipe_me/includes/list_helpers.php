@@ -180,7 +180,7 @@ function render_list_header(array $state, string $subtitle, ?string $createUrl, 
         . icon('printer') . ' <span>Print</span></a>';
 
     if ($createUrl !== null) {
-        $html .= '<a href="' . e($createUrl) . '" class="btn btn--primary">' . icon('plus') . ' <span>' . e($createLabel) . '</span></a>';
+        $html .= '<a href="' . e($createUrl) . '" class="btn btn--primary" data-modal-form>' . icon('plus') . ' <span>' . e($createLabel) . '</span></a>';
     }
 
     return $html . '</div></section>';
@@ -348,7 +348,7 @@ function render_empty_state(array $state, ?string $createUrl, string $emptyMessa
     } else {
         $html .= '<h3>No records available.</h3><p class="text-muted">' . e($emptyMessage) . '</p>';
         if ($createUrl !== null) {
-            $html .= '<a href="' . e($createUrl) . '" class="btn btn--primary no-print">' . icon('plus') . ' <span>Add New</span></a>';
+            $html .= '<a href="' . e($createUrl) . '" class="btn btn--primary no-print" data-modal-form>' . icon('plus') . ' <span>Add New</span></a>';
         }
     }
 

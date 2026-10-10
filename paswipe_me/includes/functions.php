@@ -79,7 +79,44 @@ function url(string $path = '', array $query = []): string
  */
 function redirect(string $path, array $query = []): void
 {
+    if (is_modal_request()) {
+        modal_response(url($path, $query));
+    }
     header('Location: ' . url($path, $query));
+    exit;
+}
+
+/**
+ * True when the request comes from a modal form (assets/js/modal-form.js).
+ * The same pages and handlers serve both the full page and the modal.
+ */
+function is_modal_request(): bool
+{
+    return ($_SERVER['HTTP_X_MODAL_FORM'] ?? '') === '1';
+}
+
+/**
+ * Answer a modal form instead of redirecting: {ok, redirect, error}.
+ * Error messages are taken out of the flash queue and shown inside the
+ * modal (which stays open); success messages stay queued and appear when
+ * the page content is refreshed.
+ */
+function modal_response(string $location): never
+{
+    $errors = [];
+    $keep = [];
+    foreach ($_SESSION['flash'] ?? [] as $message) {
+        if ($message['type'] === 'error') {
+            $errors[] = $message['message'];
+        } else {
+            $keep[] = $message;
+        }
+    }
+    $_SESSION['flash'] = $keep;
+
+    header('Content-Type: application/json; charset=UTF-8');
+    header('Cache-Control: no-store');
+    echo json_encode(['ok' => !$errors, 'redirect' => $location, 'error' => implode(' ', $errors)], JSON_UNESCAPED_SLASHES);
     exit;
 }
 

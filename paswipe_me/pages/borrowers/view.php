@@ -120,14 +120,14 @@ require APP_ROOT . '/includes/header.php';
                     <button type="submit" class="btn btn--primary" data-loading-text="Linking…"><?= icon('check') ?> <span class="btn__label">Link</span></button>
                 </form>
             <?php else: ?>
-                <p class="field-help">No sign-in account. Create a user with the Borrower role in <a href="<?= e(url('pages/users/create.php')) ?>">Users &amp; Roles</a>, then link it here.</p>
+                <p class="field-help">No sign-in account. Create a user with the Borrower role in <a data-modal-form href="<?= e(url('pages/users/create.php')) ?>">Users &amp; Roles</a>, then link it here.</p>
             <?php endif; ?>
         </section>
 
         <section class="panel">
             <header class="panel__header">
                 <h3>Payment methods</h3>
-                <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/payment_methods/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
+                <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/payment_methods/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
             </header>
             <?php if (!$methods): ?>
                 <p class="empty-inline">No payment methods.</p>
@@ -161,7 +161,7 @@ require APP_ROOT . '/includes/header.php';
 <section class="panel subpanel">
     <header class="panel__header">
         <h3>Addresses</h3>
-        <button type="button" class="btn btn--sm btn--outline no-print" data-toggle-panel="add-address"><?= icon('plus') ?> <span>Add address</span></button>
+        <button type="button" class="btn btn--sm btn--outline no-print" data-modal-panel="add-address"><?= icon('plus') ?> <span>Add address</span></button>
     </header>
     <form method="post" action="<?= e($related) ?>" class="inline-panel no-print" id="add-address" hidden novalidate data-validate>
         <?= csrf_field() ?>
@@ -203,7 +203,7 @@ require APP_ROOT . '/includes/header.php';
 <section class="panel subpanel">
     <header class="panel__header">
         <h3>Contacts</h3>
-        <button type="button" class="btn btn--sm btn--outline no-print" data-toggle-panel="add-contact"><?= icon('plus') ?> <span>Add contact</span></button>
+        <button type="button" class="btn btn--sm btn--outline no-print" data-modal-panel="add-contact"><?= icon('plus') ?> <span>Add contact</span></button>
     </header>
     <form method="post" action="<?= e($related) ?>" class="inline-panel no-print" id="add-contact" hidden novalidate data-validate>
         <?= csrf_field() ?>
@@ -245,7 +245,7 @@ require APP_ROOT . '/includes/header.php';
     <section class="panel subpanel">
         <header class="panel__header">
             <h3>Recent obligations</h3>
-            <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/obligations/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
+            <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/obligations/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
         </header>
         <?php if (!$obligations): ?>
             <p class="empty-inline">No obligations.</p>
@@ -272,7 +272,7 @@ require APP_ROOT . '/includes/header.php';
     <section class="panel subpanel">
         <header class="panel__header">
             <h3>Recent payments</h3>
-            <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/borrower_payments/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Record</span></a>
+            <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/borrower_payments/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Record</span></a>
         </header>
         <?php if (!$payments): ?>
             <p class="empty-inline">No payments.</p>

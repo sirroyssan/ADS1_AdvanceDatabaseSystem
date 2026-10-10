@@ -65,7 +65,7 @@ require APP_ROOT . '/includes/header.php';
         <a href="<?= e(url('portal/obligations.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
         <?php if ((float) $o['outstanding_amount'] > 0): ?>
-            <a href="<?= e(url('portal/pay.php')) ?>" class="btn btn--primary"><?= icon('wallet') ?> <span>Submit a payment</span></a>
+            <a data-modal-form href="<?= e(url('portal/pay.php')) ?>" class="btn btn--primary"><?= icon('wallet') ?> <span>Submit a payment</span></a>
         <?php endif; ?>
     </div>
 </section>

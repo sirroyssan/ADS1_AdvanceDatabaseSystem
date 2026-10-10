@@ -38,7 +38,7 @@ require APP_ROOT . '/includes/header.php';
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/statements/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
-        <a href="<?= e(url('pages/card_payments/create.php', ['credit_card_id' => $statement['credit_card_id'], 'statement_id' => $id])) ?>" class="btn btn--outline"><?= icon('banknote') ?> <span>Record payment</span></a>
+        <a data-modal-form href="<?= e(url('pages/card_payments/create.php', ['credit_card_id' => $statement['credit_card_id'], 'statement_id' => $id])) ?>" class="btn btn--outline"><?= icon('banknote') ?> <span>Record payment</span></a>
         <a href="<?= e(url('pages/statements/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
     </div>
 </section>

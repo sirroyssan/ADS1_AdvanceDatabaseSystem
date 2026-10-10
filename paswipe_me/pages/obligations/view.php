@@ -65,7 +65,7 @@ require APP_ROOT . '/includes/header.php';
         <a href="<?= e(url('pages/obligations/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
         <?php if (!$isClosed): ?>
-            <a href="<?= e(url('pages/borrower_payments/create.php', ['borrower_id' => $obligation['borrower_id']])) ?>" class="btn btn--outline"><?= icon('receipt') ?> <span>Record payment</span></a>
+            <a data-modal-form href="<?= e(url('pages/borrower_payments/create.php', ['borrower_id' => $obligation['borrower_id']])) ?>" class="btn btn--outline"><?= icon('receipt') ?> <span>Record payment</span></a>
             <a href="<?= e(url('pages/obligations/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
         <?php endif; ?>
     </div>
@@ -156,7 +156,7 @@ require APP_ROOT . '/includes/header.php';
         <?php if (!$isClosed): ?>
             <div class="action-bar no-print">
                 <?= post_button($related, ['id' => $id, 'action' => 'run_penalties'], 'Check penalties now', 'repeat', 'btn btn--sm btn--outline') ?>
-                <button type="button" class="btn btn--sm btn--outline" data-toggle-panel="add-penalty"><?= icon('plus') ?> <span>Apply penalty</span></button>
+                <button type="button" class="btn btn--sm btn--outline" data-modal-panel="add-penalty"><?= icon('plus') ?> <span>Apply penalty</span></button>
             </div>
         <?php endif; ?>
     </header>
@@ -178,7 +178,7 @@ require APP_ROOT . '/includes/header.php';
             <input type="hidden" name="id" value="<?= e($id) ?>">
             <input type="hidden" name="action" value="add_penalty">
             <?php if (!penalty_rule_options()): ?>
-                <p class="field-help">No active penalty rules. <a href="<?= e(url('pages/penalty_rules/create.php')) ?>">Create a rule</a> first.</p>
+                <p class="field-help">No active penalty rules. <a data-modal-form href="<?= e(url('pages/penalty_rules/create.php')) ?>">Create a rule</a> first.</p>
             <?php else: ?>
                 <?= render_fields(penalty_fields(), $penaltyDefaults, []) ?>
                 <div class="inline-panel__actions">

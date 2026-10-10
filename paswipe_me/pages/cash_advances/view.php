@@ -97,7 +97,7 @@ require APP_ROOT . '/includes/header.php';
     <header class="panel__header">
         <h3><?= icon('users') ?> Given to borrowers</h3>
         <?php if ($advance['status'] !== 'cancelled' && $remaining > 0.004): ?>
-            <button type="button" class="btn btn--sm btn--primary no-print" data-toggle-panel="give-borrower"><?= icon('plus') ?> <span>Give to a borrower</span></button>
+            <button type="button" class="btn btn--sm btn--primary no-print" data-modal-panel="give-borrower"><?= icon('plus') ?> <span>Give to a borrower</span></button>
         <?php endif; ?>
     </header>
     <section class="figure-grid">

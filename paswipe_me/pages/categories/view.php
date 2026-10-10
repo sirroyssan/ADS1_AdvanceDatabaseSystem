@@ -107,7 +107,7 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel" aria-labelledby="children-title">
             <header class="panel__header">
                 <h3 id="children-title">Sub-categories</h3>
-                <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/categories/create.php', ['parent_id' => $category['id']])) ?>">
+                <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/categories/create.php', ['parent_id' => $category['id']])) ?>">
                     <?= icon('plus') ?> <span>Add</span>
                 </a>
             </header>

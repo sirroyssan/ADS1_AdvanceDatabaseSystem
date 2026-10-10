@@ -131,15 +131,15 @@ if (($layout ?? 'admin') === 'portal') {
                     <p class="nav-group__label"><?= e($group['label']) ?></p>
                 <?php endif; ?>
                 <ul>
-                    <?php foreach ($group['items'] as $item): ?>
-                        <?php $isActive = $item['key'] === $activeNav; ?>
+                    <?php foreach ($group['items'] as $navItem): ?>
+                        <?php $isActive = $navItem['key'] === $activeNav; ?>
                         <li>
-                            <a href="<?= e(url($item['path'])) ?>"
+                            <a href="<?= e(url($navItem['path'])) ?>"
                                class="nav-link<?= $isActive ? ' is-active' : '' ?>"
                                <?= $isActive ? 'aria-current="page"' : '' ?>
-                               title="<?= e($item['label']) ?>">
-                                <?= icon($item['icon']) ?>
-                                <span class="nav-link__label"><?= e($item['label']) ?></span>
+                               title="<?= e($navItem['label']) ?>">
+                                <?= icon($navItem['icon']) ?>
+                                <span class="nav-link__label"><?= e($navItem['label']) ?></span>
                             </a>
                         </li>
                     <?php endforeach; ?>

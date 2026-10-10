@@ -154,8 +154,8 @@
     };
 
     /* Flash messages from the server -> one sweet dialog. */
-    function showFlashes() {
-        var alerts = Array.prototype.slice.call(document.querySelectorAll('.toast-stack [data-alert]'));
+    function showFlashes(scope) {
+        var alerts = Array.prototype.slice.call((scope && scope.querySelectorAll ? scope : document).querySelectorAll('.toast-stack [data-alert]'));
         if (!alerts.length) return;
 
         var rank = { error: 4, warning: 3, info: 2, success: 1 };
@@ -181,6 +181,9 @@
             timer: type === 'success' ? 3500 : 0
         });
     }
+
+    // Also used after a modal form refreshes the page content.
+    window.Sweet.showFlashes = showFlashes;
 
     if (document.readyState === 'loading') {
         document.addEventListener('DOMContentLoaded', showFlashes);

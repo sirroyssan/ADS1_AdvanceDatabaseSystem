@@ -21,6 +21,7 @@ $pageScripts = $pageScripts ?? [];
 <script src="<?= e(asset('assets/js/sweet.js')) ?>"></script>
 <script src="<?= e(asset('assets/js/dashboard.js')) ?>"></script>
 <script src="<?= e(asset('assets/js/modules.js')) ?>"></script>
+<script src="<?= e(asset('assets/js/modal-form.js')) ?>"></script>
 <?php foreach ($pageScripts as $script): ?>
     <script src="<?= e(asset($script)) ?>"></script>
 <?php endforeach; ?>

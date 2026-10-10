@@ -10,6 +10,29 @@
     var body = document.body;
 
     /* ------------------------------------------------------------------
+     * Content set-up that must also run on content added later (a modal
+     * form, or a list refreshed after saving): App.register(fn) runs fn on
+     * the page now and on every App.init(scope) call. App.once() keeps an
+     * element from being set up twice.
+     * ------------------------------------------------------------------ */
+    var inits = [];
+    window.App = {
+        register: function (fn) {
+            inits.push(fn);
+            fn(document);
+        },
+        init: function (scope) {
+            inits.forEach(function (fn) { fn(scope || document); });
+        },
+        once: function (el, key) {
+            var name = 'bound' + key;
+            if (el.dataset[name]) return false;
+            el.dataset[name] = '1';
+            return true;
+        }
+    };
+
+    /* ------------------------------------------------------------------
      * Sidebar: off-canvas drawer on mobile, collapse on desktop
      * ------------------------------------------------------------------ */
     var sidebar = document.getElementById('sidebar');
@@ -69,7 +92,8 @@
     /* ------------------------------------------------------------------
      * Profile dropdown
      * ------------------------------------------------------------------ */
-    document.querySelectorAll('[data-dropdown]').forEach(function (dropdown) {
+    App.register(function (scope) { scope.querySelectorAll('[data-dropdown]').forEach(function (dropdown) {
+        if (!App.once(dropdown, 'Dropdown')) return;
         var toggle = dropdown.querySelector('[data-dropdown-toggle]');
         var menu = dropdown.querySelector('[data-dropdown-menu]');
 
@@ -95,7 +119,7 @@
                 toggle.focus();
             }
         });
-    });
+    }); });
 
     /* ------------------------------------------------------------------
      * Notifications: dismiss button, success messages fade after 6s
@@ -107,7 +131,8 @@
         }, 260);
     }
 
-    document.querySelectorAll('[data-alert]').forEach(function (alert) {
+    App.register(function (scope) { scope.querySelectorAll('[data-alert]').forEach(function (alert) {
+        if (!App.once(alert, 'Alert')) return;
         var close = alert.querySelector('[data-alert-close]');
         if (close) {
             close.addEventListener('click', function () {
@@ -119,7 +144,7 @@
                 if (document.body.contains(alert)) dismissAlert(alert);
             }, 6000);
         }
-    });
+    }); });
 
     /* ------------------------------------------------------------------
      * Loading state for submit buttons with data-loading-text
@@ -202,11 +227,12 @@
     /* ------------------------------------------------------------------
      * Print
      * ------------------------------------------------------------------ */
-    document.querySelectorAll('[data-print]').forEach(function (button) {
+    App.register(function (scope) { scope.querySelectorAll('[data-print]').forEach(function (button) {
+        if (!App.once(button, 'Print')) return;
         button.addEventListener('click', function () {
             window.print();
         });
-    });
+    }); });
 
     // Print preview pages open the print dialog automatically once.
     if (document.querySelector('[data-auto-print]')) {
@@ -218,7 +244,8 @@
     /* ------------------------------------------------------------------
      * Filters that apply as soon as they change
      * ------------------------------------------------------------------ */
-    document.querySelectorAll('select[data-auto-submit]').forEach(function (select) {
+    App.register(function (scope) { scope.querySelectorAll('select[data-auto-submit]').forEach(function (select) {
+        if (!App.once(select, 'AutoSubmit')) return;
         select.addEventListener('change', function () {
             var form = select.form;
             if (!form) return;
@@ -231,5 +258,8 @@
                 form.submit();
             }
         });
-    });
+    }); });
+
+    window.App.setLoading = setLoading;
+    window.App.resetLoading = resetLoading;
 })();

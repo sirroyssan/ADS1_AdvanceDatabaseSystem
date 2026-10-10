@@ -24,7 +24,9 @@ if (!$errors && $data['first_due_date'] <= $data['given_date']) {
 }
 if ($errors) {
     flash('error', 'Not saved: ' . reset($errors));
-    $_SESSION['give_form'] = $_POST;
+    if (!is_modal_request()) {
+        $_SESSION['give_form'] = $_POST;   // reopen the inline form with what was typed
+    }
     redirect($back . '#give-borrower');
 }
 
@@ -40,7 +42,9 @@ try {
     flash('success', 'Obligation ' . $number . ' was created: ' . format_money($t['total']) . ' (' . (int) $data['months'] . ' × ' . format_money($t['monthly']) . ').');
 } catch (DomainException $e) {
     flash('error', $e->getMessage());
-    $_SESSION['give_form'] = $_POST;
+    if (!is_modal_request()) {
+        $_SESSION['give_form'] = $_POST;   // reopen the inline form with what was typed
+    }
     redirect($back . '#give-borrower');
 } catch (PDOException $e) {
     flash('error', db_error_message($e));

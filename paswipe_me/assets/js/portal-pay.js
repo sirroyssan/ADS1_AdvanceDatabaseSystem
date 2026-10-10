@@ -6,9 +6,11 @@
 (function () {
     'use strict';
 
-    var box = document.querySelector('[data-pay-for]');
-    var paidInput = document.querySelector('[name="amount"]');
-    if (!box || !paidInput) return;
+    // Also runs when Submit Payment is opened in a modal (assets/js/modal-form.js).
+    window.App.register(function (scope) {
+    var box = scope.querySelector('[data-pay-for]');
+    var paidInput = box && box.closest('form') ? box.closest('form').querySelector('[name="amount"]') : null;
+    if (!box || !paidInput || !window.App.once(box, 'PayFor')) return;
 
     var rows = Array.prototype.slice.call(box.querySelectorAll('[data-pay-check]')).map(function (check) {
         var tr = check.closest('tr');
@@ -57,4 +59,5 @@
     });
     paidInput.addEventListener('input', refresh);
     refresh();
+    });
 })();

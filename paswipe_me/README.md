@@ -742,6 +742,35 @@ Shared SQL in `includes/penalties.php`: `penalty_totals_join()`, `borrower_total
 - **Submit Payment:** the open months are listed under each such item.
 - **Penalties:** unchanged. They are still charged per installment on installment purchases, and on the whole balance after the final due date otherwise.
 
+## "Add" forms open in a modal (all modules)
+
+Every add/create action now opens one shared modal on the current page instead of going to a separate create page.
+
+| Where | Buttons |
+|---|---|
+| List pages (`render_list_header` / `render_empty_state`) | Add New / Add User / Record Payment / Upload File / Send Notification in Categories, Merchants, Payment Methods, Penalty Rules, Borrowers, Obligations, Borrower Payments, Credit Cards, Statements, Card Payments, Bank Charges, Transactions, Installment Plans, Cash Loans, Cash Advances, Agreements, Agreement Templates, Demand Letters, Letter Templates, Documents, Notifications, Users |
+| Detail pages (links) | Borrower → Add payment method / obligation / Record payment, Create user; Transaction → Create plan / Add obligation / Add item; Credit card → Add cash loan / statement; Statement → Record payment; Obligation → Record payment, Create a rule; Category → Add sub-category |
+| Detail pages (inline add panels) | Borrower → Add address / contact; Agreement → Add signatory; Credit card → Add cycle; Obligation → Apply penalty; Cash loan → Add allocation; Cash advance → Give to a borrower |
+| Borrower portal | Submit a payment |
+
+How it works (no duplicated forms, the existing pages and handlers do the work):
+
+- **Triggers:** `a[data-modal-form]` loads that page's form into the modal, and `[data-modal-panel="id"]` moves the inline add panel into the modal. All of this is in `assets/js/modal-form.js`.
+- **Requests:** they carry `X-Modal-Form: 1`. For such requests `redirect()` (`includes/functions.php`) answers `{ok, redirect, error}` instead of a redirect.
+- **Validation:**
+  - Required fields are checked in the browser (`data-validate`).
+  - Server validation errors re-render the form inside the modal, and what was typed is kept.
+  - An error message from a handler (e.g. "Only ₱X of the loan is not yet allocated") is shown in the modal, which stays open.
+- **Saved:** the modal closes, the page content (list, totals, related tables) is reloaded in place without a full page load, and the success message appears.
+- **Closing:** use the X, Cancel, Esc or the backdrop. If something was typed, a confirmation ("Discard what you entered?") prevents accidental loss.
+- **Behaviour:**
+  - Focus stays inside the modal.
+  - Save/Cancel stay visible at the bottom.
+  - The modal is full-screen on phones.
+- **Shared scripts:** `dashboard.js`, `modules.js`, `categories.js` and `portal-pay.js` now register their set-up with `App.register()`, so they also work on content added later.
+- **Unchanged:** Edit, View, Delete and other actions work as before. The create pages still work on their own (e.g. without JavaScript).
+- **Fixed on the way:** the sidebar loop variable `$item` overwrote the item page's own `$item`, so Transaction → Add item showed "Edit item" and could not save.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |

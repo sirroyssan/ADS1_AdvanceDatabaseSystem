@@ -58,7 +58,7 @@ require APP_ROOT . '/includes/header.php';
         <p class="page-header__subtitle">Borrower <?= e($borrower['borrower_number']) ?> · <?= badge($borrower['status']) ?> · as of <?= e(date('F j, Y g:i A')) ?></p>
     </div>
     <div class="page-header__actions">
-        <a href="<?= e(url('portal/pay.php')) ?>" class="btn btn--primary"><?= icon('wallet') ?> <span>Submit a payment</span></a>
+        <a data-modal-form href="<?= e(url('portal/pay.php')) ?>" class="btn btn--primary"><?= icon('wallet') ?> <span>Submit a payment</span></a>
     </div>
 </section>
 

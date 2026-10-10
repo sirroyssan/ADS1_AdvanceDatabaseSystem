@@ -174,7 +174,7 @@ require APP_ROOT . '/includes/header.php';
         <a href="<?= e($listUrl(['print' => '1'])) ?>" class="btn btn--outline" title="Print all records that match the current filters">
             <?= icon('printer') ?> <span>Print</span>
         </a>
-        <a href="<?= e(url('pages/categories/create.php')) ?>" class="btn btn--primary">
+        <a data-modal-form href="<?= e(url('pages/categories/create.php')) ?>" class="btn btn--primary">
             <?= icon('plus') ?> <span>Add New</span>
         </a>
     </div>
@@ -239,7 +239,7 @@ require APP_ROOT . '/includes/header.php';
             <?php else: ?>
                 <h3>No records available.</h3>
                 <p class="text-muted">Create the first category to start classifying merchants and transactions.</p>
-                <a href="<?= e(url('pages/categories/create.php')) ?>" class="btn btn--primary no-print"><?= icon('plus') ?> <span>Add New</span></a>
+                <a data-modal-form href="<?= e(url('pages/categories/create.php')) ?>" class="btn btn--primary no-print"><?= icon('plus') ?> <span>Add New</span></a>
             <?php endif; ?>
         </div>
     <?php else: ?>

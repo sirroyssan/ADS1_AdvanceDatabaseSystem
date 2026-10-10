@@ -9,12 +9,14 @@
     /* ------------------------------------------------------------------
      * Create / edit form
      * ------------------------------------------------------------------ */
-    var form = document.getElementById('category-form');
+    // Also runs when the form is opened in a modal (assets/js/modal-form.js).
+    window.App.register(function (scope) {
+    var form = scope.querySelector('#category-form');
 
-    if (form) {
-        var name = document.getElementById('name');
-        var nameError = document.getElementById('name-error');
-        var counter = document.getElementById(name.getAttribute('data-counter'));
+    if (form && window.App.once(form, 'Category')) {
+        var name = form.querySelector('#name');
+        var nameError = form.querySelector('#name-error');
+        var counter = form.querySelector('#' + name.getAttribute('data-counter'));
         var maxLength = parseInt(name.getAttribute('maxlength'), 10) || 150;
 
         function updateCounter() {
@@ -67,13 +69,14 @@
     /* ------------------------------------------------------------------
      * Search box: Escape clears it
      * ------------------------------------------------------------------ */
-    var search = document.getElementById('search');
+    var search = scope.querySelector('#search');
 
-    if (search) {
+    if (search && window.App.once(search, 'CategorySearch')) {
         search.addEventListener('keydown', function (event) {
             if (event.key === 'Escape' && search.value !== '') {
                 search.value = '';
             }
         });
     }
+    });
 })();
