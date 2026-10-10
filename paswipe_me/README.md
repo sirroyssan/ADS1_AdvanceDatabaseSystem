@@ -868,6 +868,7 @@ Every Edit button (list row pencil icons, detail page "Edit", Transaction → ed
 - **Installment plan:** changing the first due date (or frequency) moves the schedule. This also works after payments; only the dates move.
 - **In both cases:** amounts and payments are kept, each status follows its new date, and borrower obligations that ended on the old last date move with it (`schedule_shift_dates`).
 - **Cash loan obligation:** changing its due date moves its monthly months (same number of installments, ending on the new date).
+- **Change due dates button:** on the Repayment schedule of a cash loan and the Payment schedule of an installment plan. It opens a modal (new first due date + frequency) and moves every installment to the new monthly due day in one step (`related.php` action `shift_dates`), with the same rules as above. The change is logged.
 
 **View buttons in the modal:** every View (eye icons, record links in lists, the dashboard, reports and the borrower portal) opens the record in the shared modal. The record's own actions (Edit, Pay, Approve, …) appear at the top of the modal; Back and Print stay on the full page. Add, Edit and View now all use the modal.
 

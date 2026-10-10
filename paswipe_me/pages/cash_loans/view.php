@@ -185,7 +185,14 @@ require APP_ROOT . '/includes/header.php';
         <?php if ($canGenerate && $isOpen): ?>
             <?= post_button($related, ['id' => $id, 'action' => 'generate_schedule'], 'Generate schedule', 'repeat', 'btn btn--sm btn--primary no-print') ?>
         <?php endif; ?>
+        <?php if ($schedule && $isOpen): ?>
+            <button type="button" class="btn btn--sm btn--outline no-print" data-modal-panel="shift-dates"
+                    data-modal-subtitle="The bank changed the due date? Move every installment to the new monthly due day."><?= icon('calendar') ?> <span>Change due dates</span></button>
+        <?php endif; ?>
     </header>
+    <?php if ($schedule && $isOpen): ?>
+        <?= render_schedule_shift_form($related, $id, $schedule[0]['due_date'], $loan['payment_frequency'], count($schedule)) ?>
+    <?php endif; ?>
     <?php if (!$schedule && !$canGenerate): ?>
         <p class="field-help">Enter the term (months), first due date and total repayment on the loan to generate its schedule.</p>
     <?php endif; ?>

@@ -26,6 +26,33 @@ $scheduleId = input_string($_POST, 'schedule_id');
 
 try {
     switch (input_string($_POST, 'action')) {
+        case 'shift_dates':
+            // "Change due dates": move the existing schedule to a new monthly due day.
+            [$data, $errors] = validate_fields(schedule_shift_fields(), $_POST);
+            if ($errors) {
+                flash('error', 'Due dates not changed: ' . reset($errors));
+                break;
+            }
+            $moved = db_transaction(static function () use ($plan, $data) {
+                $newEnd = schedule_shift_dates('installment_schedules', 'installment_plan_id', $plan['id'], $data['first_due_date'], $data['frequency']);
+                if ($newEnd === null) {
+                    return null;
+                }
+                db_update('installment_plans', ['first_due_date' => $data['first_due_date'], 'frequency' => $data['frequency'], 'end_date' => $newEnd], $plan['id']);
+                schedule_move_obligations(array_column(db_all(
+                    "SELECT id FROM borrower_obligations WHERE transaction_id = :t AND status <> 'cancelled'", [':t' => $plan['transaction_id']]), 'id'), $plan['end_date'], $newEnd);
+
+                return $newEnd;
+            });
+            if ($moved === null) {
+                flash('error', 'This plan has no schedule.');
+                break;
+            }
+            log_activity('shift_dates', 'installment_plan', $plan['id'], 'Due dates moved: first ' . $data['first_due_date'] . ', last ' . $moved,
+                ['first_due_date' => $plan['first_due_date'], 'end_date' => $plan['end_date']], ['first_due_date' => $data['first_due_date'], 'end_date' => $moved]);
+            flash('success', 'Due dates updated: first installment due ' . format_date($data['first_due_date']) . ', last ' . format_date($moved) . '. Amounts and payments were kept.');
+            break;
+
         case 'record_payment':
         case 'schedule_status':
             // Installments are paid only through borrower payments (applied automatically).

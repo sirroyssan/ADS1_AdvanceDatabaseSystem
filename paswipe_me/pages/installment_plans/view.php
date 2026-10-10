@@ -90,7 +90,16 @@ require APP_ROOT . '/includes/header.php';
 </div>
 
 <section class="panel subpanel">
-    <header class="panel__header"><h3><?= icon('calendar') ?> Payment schedule</h3></header>
+    <header class="panel__header">
+        <h3><?= icon('calendar') ?> Payment schedule</h3>
+        <?php if ($schedule && $plan['status'] === 'active'): ?>
+            <button type="button" class="btn btn--sm btn--outline no-print" data-modal-panel="shift-dates"
+                    data-modal-subtitle="The bank changed the due date? Move every installment to the new monthly due day."><?= icon('calendar') ?> <span>Change due dates</span></button>
+        <?php endif; ?>
+    </header>
+    <?php if ($schedule && $plan['status'] === 'active'): ?>
+        <?= render_schedule_shift_form(url('pages/installment_plans/related.php'), $plan['id'], $schedule[0]['due_date'], $plan['frequency'], count($schedule)) ?>
+    <?php endif; ?>
     <p class="field-help no-print">Updated automatically from the borrower's approved payments (oldest installment first); statuses follow today's date. The amount paid toward the bank installments is recorded as a card payment automatically.</p>
     <?= render_schedule_table($schedule, '', [], false) ?>
 </section>

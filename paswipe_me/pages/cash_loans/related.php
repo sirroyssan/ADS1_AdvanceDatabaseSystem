@@ -26,6 +26,34 @@ $itemId = input_string($_POST, 'item_id');
 
 try {
     switch (input_string($_POST, 'action')) {
+        case 'shift_dates':
+            // "Change due dates": move the existing schedule to a new monthly due day.
+            [$data, $errors] = validate_fields(schedule_shift_fields(), $_POST);
+            if ($errors) {
+                flash('error', 'Due dates not changed: ' . reset($errors));
+                break;
+            }
+            $moved = db_transaction(static function () use ($loan, $data) {
+                $newEnd = schedule_shift_dates('cash_loan_schedules', 'cash_loan_id', $loan['id'], $data['first_due_date'], $data['frequency']);
+                if ($newEnd === null) {
+                    return null;
+                }
+                db_update('cash_loans', ['first_due_date' => $data['first_due_date'], 'payment_frequency' => $data['frequency'], 'end_date' => $newEnd], $loan['id']);
+                schedule_move_obligations(array_column(db_all(
+                    "SELECT o.id FROM borrower_obligations o JOIN cash_loan_allocations a ON a.id = o.cash_loan_allocation_id
+                      WHERE a.cash_loan_id = :l AND o.status <> 'cancelled'", [':l' => $loan['id']]), 'id'), $loan['end_date'], $newEnd);
+
+                return $newEnd;
+            });
+            if ($moved === null) {
+                flash('error', 'This loan has no repayment schedule yet. Generate it first.');
+                break;
+            }
+            log_activity('shift_dates', 'cash_loan', $loan['id'], 'Due dates moved: first ' . $data['first_due_date'] . ', last ' . $moved,
+                ['first_due_date' => $loan['first_due_date'], 'end_date' => $loan['end_date']], ['first_due_date' => $data['first_due_date'], 'end_date' => $moved]);
+            flash('success', 'Due dates updated: first installment due ' . format_date($data['first_due_date']) . ', last ' . format_date($moved) . '. Amounts and payments were kept.');
+            break;
+
         case 'generate_schedule':
             if ((int) db_value('SELECT COUNT(*) FROM cash_loan_schedules WHERE cash_loan_id = :id', [':id' => $loan['id']]) > 0) {
                 flash('error', 'A schedule already exists.');

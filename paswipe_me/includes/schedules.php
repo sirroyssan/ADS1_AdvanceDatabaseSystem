@@ -266,3 +266,32 @@ function schedule_move_obligations(array $obligationIds, ?string $oldEnd, ?strin
         schedule_sync_obligation($oid);
     }
 }
+
+/** Fields of the "Change due dates" form of a schedule. */
+function schedule_shift_fields(): array
+{
+    return [
+        'first_due_date' => ['label' => 'New first due date', 'type' => 'date', 'required' => true,
+                             'help' => 'Installment 1 is due on this date; every next one on the same day of the following month(s).'],
+        'frequency'      => ['label' => 'Frequency', 'type' => 'select', 'options' => array_intersect_key(enum_options(ENUM_FREQUENCY), array_flip(['monthly', 'quarterly', 'weekly', 'biweekly'])),
+                             'required' => true, 'initial' => 'monthly'],
+    ];
+}
+
+/**
+ * The inline form (opened in the modal) that moves a schedule's due dates.
+ * Amounts and payments are kept.
+ */
+function render_schedule_shift_form(string $actionUrl, string $id, string $firstDue, ?string $frequency, int $rows): string
+{
+    $fields = schedule_shift_fields();
+
+    return '<form method="post" action="' . e($actionUrl) . '" class="inline-panel no-print" id="shift-dates" hidden novalidate data-validate>'
+        . csrf_field() . '<input type="hidden" name="id" value="' . e($id) . '"><input type="hidden" name="action" value="shift_dates">'
+        . '<p class="field-help">Moves all ' . e($rows) . ' installments to the new monthly due day. Amounts and what was already paid stay exactly the same;'
+        . ' each status follows its new date, and borrower obligations ending on the old last date move with it.</p>'
+        . render_fields($fields, form_defaults($fields, ['first_due_date' => $firstDue, 'frequency' => $frequency ?: 'monthly']), [])
+        . '<div class="inline-panel__actions"><button type="button" class="btn btn--outline" data-toggle-panel="shift-dates">Cancel</button>'
+        . '<button type="submit" class="btn btn--primary" data-loading-text="Updating…">' . icon('repeat') . ' <span class="btn__label">Update due dates</span></button></div>'
+        . '</form>';
+}
