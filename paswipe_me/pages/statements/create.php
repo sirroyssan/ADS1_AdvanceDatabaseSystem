@@ -35,12 +35,27 @@ if (is_post()) {
 
     if (!$errors) {
         try {
-            $id = new_uuid();
-            $row = ['id' => $id, 'source' => 'manual', 'due_date_status' => 'manual', 'minimum_due_status' => 'manual'] + $data;
+            $row = ['source' => 'manual', 'due_date_status' => 'manual', 'minimum_due_status' => 'manual', 'soa_recorded_at' => date('Y-m-d H:i:s')] + $data;
             if ($card) {
                 $row['credit_card_id'] = $card['id'];
             }
-            db_insert('credit_card_statements', $row);
+            // The period may already have a prepared statement: the SOA is recorded into it (never a second row).
+            $prepared = db_row(
+                'SELECT id FROM credit_card_statements WHERE credit_card_id = :c AND soa_recorded_at IS NULL
+                    AND (cutoff_date = :d OR :d2 BETWEEN COALESCE(period_start_date, cutoff_date) AND cutoff_date) ORDER BY cutoff_date = :d3 DESC LIMIT 1',
+                [':c' => $row['credit_card_id'], ':d' => $data['cutoff_date'], ':d2' => $data['cutoff_date'], ':d3' => $data['cutoff_date']]
+            );
+            $id = db_transaction(static function () use ($row, $prepared) {
+                if ($prepared) {
+                    db_update('credit_card_statements', $row + ['updated_at' => date('Y-m-d H:i:s')], $prepared['id']);
+
+                    return $prepared['id'];
+                }
+                $id = new_uuid();
+                db_insert('credit_card_statements', ['id' => $id] + $row);
+
+                return $id;
+            });
             log_activity('create', 'statement', $id, 'Recorded SOA ' . format_money($data['total_amount_due']) . ' cut off ' . $data['cutoff_date'], null, $row);
             flash('success', 'SOA for ' . statement_month_label($data['cutoff_date']) . ' was recorded: ' . format_money($data['total_amount_due'])
                 . ', minimum ' . format_money($data['minimum_amount_due']) . ', due ' . format_date($data['due_date']) . '.');

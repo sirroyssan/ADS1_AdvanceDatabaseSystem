@@ -16,6 +16,10 @@ $currentUser = require_admin();
 $statement = find_or_redirect(statement_find(request_id()), 'pages/statements/index.php', 'Statement');
 $id = $statement['id'];
 $card = db_row('SELECT * FROM credit_cards WHERE id = :c', [':c' => $statement['credit_card_id']]);
+if ($statement['soa_recorded_at'] === null) {
+    flash('error', 'Record the bank\'s SOA for this statement first; payments are made against the SOA amount.');
+    redirect('pages/statements/view.php', ['id' => $id]);
+}
 
 $allFields = card_payment_fields();
 $shown = ['amount', 'payment_date', 'payment_method_id', 'reference_number', 'payment_channel', 'notes'];

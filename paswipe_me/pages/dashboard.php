@@ -113,7 +113,7 @@ $dueSoon = db_all(
     'SELECT s.id, s.cutoff_date, s.statement_date, s.due_date, s.total_amount_due, s.minimum_amount_due, c.card_nickname, c.issuer, c.last_four,
             COALESCE(sp.paid, 0) AS paid, ' . statement_remaining_sql() . ' AS remaining, ' . statement_status_sql() . ' AS pay_status
        FROM credit_card_statements s JOIN credit_cards c ON c.id = s.credit_card_id ' . statement_paid_join() . '
-      WHERE ' . statement_remaining_sql() . ' > 0.004 AND s.due_date <= CURDATE() + INTERVAL ' . STATEMENT_UPCOMING_DAYS . ' DAY
+      WHERE s.soa_recorded_at IS NOT NULL AND ' . statement_remaining_sql() . ' > 0.004 AND s.due_date <= CURDATE() + INTERVAL ' . STATEMENT_UPCOMING_DAYS . ' DAY
       ORDER BY s.due_date
       LIMIT 10'
 );
@@ -143,6 +143,7 @@ require APP_ROOT . '/includes/header.php';
             ['Partially paid statements', $cardPay['partial'], 'payment recorded, balance left', url('pages/statements/index.php', ['status' => 'partially_paid']), 'info', 'wallet'],
             ['Total outstanding statement balance', format_money($cardPay['outstanding']), 'left to pay on recorded SOAs', url('pages/statements/index.php', ['status' => 'unpaid', 'sort' => 'amount']), 'primary', 'banknote'],
             ['Upcoming payments', $cardPay['upcoming'], 'due in the next ' . STATEMENT_UPCOMING_DAYS . ' days', url('pages/statements/index.php', ['status' => 'upcoming']), 'warning', 'calendar'],
+            ['SOA to record', $cardPay['awaiting_soa'], 'closed periods prepared, bank SOA not entered yet', url('pages/statements/index.php'), 'info', 'file-text'],
             ['Overdue payments', $cardPay['overdue'], $cardPay['overdue'] ? format_money($cardPay['overdue_amount']) . ' on ' . $cardPay['overdue_cards'] . ' card(s)' : 'nothing overdue', url('pages/statements/index.php', ['status' => 'overdue']), 'danger', 'alert'],
         ];
         foreach ($payCards as [$label, $value, $meta, $href, $tone, $iconName]): ?>

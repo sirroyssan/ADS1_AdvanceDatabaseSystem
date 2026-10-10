@@ -54,7 +54,7 @@ function statement_validate(array $fields, array $input, ?string $id = null, ?st
             $ctx['soas'] = array_values(array_filter($ctx['soas'], static fn ($s) => $s['id'] !== $id));
             $period = card_period_containing($ctx, $data['cutoff_date']);
             $taken = db_row(
-                'SELECT cutoff_date FROM credit_card_statements WHERE credit_card_id = :c AND id <> :id
+                'SELECT cutoff_date FROM credit_card_statements WHERE credit_card_id = :c AND id <> :id AND soa_recorded_at IS NOT NULL
                     AND (COALESCE(cutoff_date, statement_date) = :d OR statement_date = :sd OR (period_start_date IS NOT NULL AND :d2 BETWEEN period_start_date AND cutoff_date))',
                 [':c' => $cardId, ':id' => $id ?? '', ':d' => $data['cutoff_date'], ':sd' => $data['statement_date'], ':d2' => $data['cutoff_date']]
             );
@@ -126,7 +126,7 @@ function statement_missing_links(string $cardId, string $end): array
 /** Record SOA (or edit it when recorded) for a period. */
 function statement_soa_url(string $cardId, array $period): string
 {
-    return $period['statement_id']
+    return $period['statement_id'] && $period['recorded']
         ? url('pages/statements/edit.php', ['id' => $period['statement_id']])
         : url('pages/statements/create.php', ['credit_card_id' => $cardId, 'cutoff' => $period['end']]);
 }
@@ -189,5 +189,5 @@ function statement_period_of(array $statement, array $card): array
     $end = $statement['cutoff_date'] ?: $statement['statement_date'];
     $start = $statement['period_start_date'] ?: card_period_containing(card_period_context($card), $end)['start'];
 
-    return ['start' => $start, 'end' => $end, 'statement_id' => $statement['id']];
+    return ['start' => $start, 'end' => $end, 'statement_id' => $statement['id'], 'recorded' => $statement['soa_recorded_at'] !== null];
 }

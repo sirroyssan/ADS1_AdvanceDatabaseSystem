@@ -31,6 +31,21 @@ if (input_string($_GET, 'id') !== '') {
     }
 }
 
+// A prepared statement (no bank SOA yet) shows like any period without an SOA.
+$prepared = null;
+if ($statement && $statement['soa_recorded_at'] === null) {
+    [$prepared, $statement] = [$statement, null];
+}
+if (!$statement && !$prepared) {
+    $prepared = db_row('SELECT * FROM credit_card_statements WHERE credit_card_id = :c AND cutoff_date = :e AND soa_recorded_at IS NULL',
+        [':c' => $card['id'], ':e' => $period['end']]);
+}
+// Keep the card's upcoming statements current (writes only when its records changed).
+if ($period['end'] >= date('Y-m-d') && $card['status'] === 'active') {
+    statement_prepare_card($card['id']);
+    $prepared = $prepared ? db_row('SELECT * FROM credit_card_statements WHERE id = :id', [':id' => $prepared['id']]) : $prepared;
+}
+
 $lines = statement_period_lines($card['id'], $period['start'], $period['end']);
 $summary = statement_lines_summary($lines);
 $missing = statement_missing_links($card['id'], $period['end']);
@@ -69,7 +84,7 @@ $missingButtons .= '</div>';
     <div>
         <h2 class="page-header__title"><?= e($card['card_nickname']) ?> — <?= e($month) ?> statement</h2>
         <p class="page-header__subtitle"><?= e($card['issuer']) ?> •••• <?= e($card['last_four']) ?> · period <?= e(format_date($period['start'])) ?> – <?= e(format_date($period['end'])) ?>
-            · <?= statement_status_badge($statement ? $statement['pay_status'] : 'unrecorded', $statement['due_date'] ?? null) ?></p>
+            · <?= statement_status_badge($statement ? $statement['pay_status'] : ($prepared ? 'prepared' : 'unrecorded'), $statement['due_date'] ?? null) ?></p>
     </div>
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/statements/index.php', ['card' => $card['id']])) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
@@ -110,14 +125,15 @@ $missingButtons .= '</div>';
             </dl>
             <p class="recon-help">From your records = <?= $previousSoa ? 'previous SOA ' . e(format_money($previousSoa['total_amount_due'])) : '<strong>previous SOA not recorded (counted as ₱0.00)</strong>' ?>
                 + charges <?= e(format_money($summary['charges'])) ?> − payments and credits <?= e(format_money($summary['payments'])) ?>.
-                The SOA amount you entered is kept as it is. Compare the transactions below with the SOA; if one is missing, add it here.</p>
-            <?= $missingButtons ?>
+                The SOA amount you entered is kept as it is. Compare the transactions below with the SOA.</p>
+            <a href="#review" class="btn btn--sm btn--primary no-print"><?= icon('search') ?> <span>Review transactions and add a missing one</span></a>
         </div>
     <?php endif; ?>
 <?php else: ?>
     <div class="recon-result recon-result--pending" role="status">
         <h3>SOA not recorded yet</h3>
-        <p>These are the records already in the system for this period. When the bank's SOA arrives, click <strong>Record SOA</strong> and type its amount, minimum due and due date.</p>
+        <p><?= $prepared ? 'Prepared automatically ' . e(format_datetime($prepared['prepared_at'])) . ' from the records already in the system' : 'These are the records already in the system for this period' ?>
+            — installments and loan repayments are listed by their schedule. When the bank's SOA arrives, click <strong>Record SOA</strong> and type its amount, minimum due and due date.</p>
     </div>
     <section class="figure-grid">
         <div class="figure"><p class="figure__label">Records</p><p class="figure__value"><?= e($summary['count']) ?></p></div>
@@ -135,14 +151,14 @@ $missingButtons .= '</div>';
     <header class="panel__header">
         <h3><?= icon('layers') ?> Transactions in this period (<?= e($summary['count']) ?>)</h3>
     </header>
-    <p class="field-help">From your records, by their own dates (<?= e(format_date($period['start'])) ?> – <?= e(format_date($period['end'])) ?>). Missing one from the bank's SOA? Add it:</p>
-    <?= $missingButtons ?>
+    <p class="field-help">From your records, by their own dates (<?= e(format_date($period['start'])) ?> – <?= e(format_date($period['end'])) ?>); each installment or loan repayment appears in the period of its scheduled date.</p>
+    <div class="add-missing no-print"><span class="add-missing__label"><?= icon('plus') ?> Add missing transaction:</span><?= $missingButtons ?></div>
     <?php if (!$lines['lines'] && $summary['opening'] == 0): ?>
         <p class="empty-inline">No records dated in this period.</p>
     <?php else: ?>
         <div class="table-wrap">
             <table class="table table--cards table--compact">
-                <thead><tr><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Category</th><th scope="col">Installment / details</th><th scope="col">Status</th><th scope="col" class="num">Amount</th><th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <thead><tr><th scope="col">Date</th><th scope="col">Description</th><th scope="col">Category</th><th scope="col">Installment progress</th><th scope="col">Status</th><th scope="col" class="num">Amount</th><th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th></tr></thead>
                 <tbody>
                 <?php if ($summary['opening'] > 0): ?>
                     <tr><td data-label="Date">—</td><td data-label="Description">Opening balance</td><td data-label="Category">Opening balance</td><td></td><td></td>
@@ -153,7 +169,7 @@ $missingButtons .= '</div>';
                         <td data-label="Date"><?= e(format_date($l['date'])) ?></td>
                         <td data-label="Description"><?= e($l['description']) ?></td>
                         <td data-label="Category"><?= e(STATEMENT_PARTS[$l['part']]) ?><?= $l['category'] && $l['category'] !== STATEMENT_PARTS[$l['part']] ? '<br><span class="text-muted">' . e($l['category']) . '</span>' : '' ?></td>
-                        <td data-label="Installment / details"><?= $l['note'] ? '<span class="text-muted">' . e($l['note']) . '</span>' : '' ?></td>
+                        <td data-label="Installment progress"><?= $l['progress'] ? '<strong class="progress-pill">' . e($l['progress']) . '</strong> ' : '' ?><?= $l['note'] ? '<span class="text-muted">' . e($l['note']) . '</span>' : '' ?></td>
                         <td data-label="Status"><?= $l['status'] ? badge($l['status']) : '' ?></td>
                         <td data-label="Amount" class="num"><?= $credit ? '− ' : '' ?><?= e(format_money($l['amount'])) ?></td>
                         <td class="actions no-print"><div class="row-actions">

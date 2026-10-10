@@ -31,7 +31,7 @@ $statements = db_all(
     'SELECT s.id, s.statement_date, s.cutoff_date, s.due_date, s.total_amount_due, s.minimum_amount_due,
             COALESCE(sp.paid, 0) AS paid, ' . statement_remaining_sql() . ' AS remaining, ' . statement_status_sql() . ' AS pay_status
        FROM credit_card_statements s ' . statement_paid_join() . '
-      WHERE s.credit_card_id = :id ORDER BY COALESCE(s.cutoff_date, s.statement_date) DESC LIMIT 6',
+      WHERE s.credit_card_id = :id AND s.soa_recorded_at IS NOT NULL ORDER BY COALESCE(s.cutoff_date, s.statement_date) DESC LIMIT 6',
     [':id' => $id]
 );
 $statementPeriods = db_all('SELECT period_start_date, cutoff_date FROM credit_card_statements WHERE credit_card_id = :id', [':id' => $id]);

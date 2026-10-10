@@ -22,11 +22,17 @@ try {
         if ($usage['total'] > 0) {
             throw new DomainException('This statement cannot be deleted because it is linked to ' . usage_text($usage) . '.');
         }
-        db_exec('DELETE FROM credit_card_statements WHERE id = :id', [':id' => $statement['id']]);
+        if ((int) db_value('SELECT COUNT(*) FROM statement_items WHERE statement_id = :id', [':id' => $statement['id']]) > 0) {
+            // A prepared statement whose SOA is removed goes back to "prepared" (its items stay).
+            db_update('credit_card_statements', ['soa_recorded_at' => null, 'total_amount_due' => '0.00', 'minimum_amount_due' => '0.00',
+                'notes' => null, 'statement_number' => null, 'prepared_signature' => null, 'updated_at' => date('Y-m-d H:i:s')], $statement['id']);
+        } else {
+            db_exec('DELETE FROM credit_card_statements WHERE id = :id', [':id' => $statement['id']]);
+        }
     });
 
     log_activity('delete', 'statement', $statement['id'], 'Deleted statement ' . statement_label($statement), $statement);
-    flash('success', 'Statement was deleted.');
+    flash('success', 'The recorded SOA was removed.');
     redirect('pages/statements/index.php');
 } catch (DomainException $e) {
     flash('error', $e->getMessage());

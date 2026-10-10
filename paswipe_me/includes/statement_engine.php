@@ -28,6 +28,7 @@ defined('APP_ROOT') or exit('No direct access.');
 
 const STATEMENT_UPGRADE_MARKER = 'storage/upgrade_statements.done';
 const STATEMENT_UPGRADE_V2_MARKER = 'storage/upgrade_statements_v2.done';
+const STATEMENT_UPGRADE_V3_MARKER = 'storage/upgrade_statements_v3.done';
 /** Days ahead that count as an upcoming payment. */
 const STATEMENT_UPCOMING_DAYS = 7;
 
@@ -48,6 +49,7 @@ const STATEMENT_PARTS = [
 const STATEMENT_CREDIT_PARTS = ['payments', 'credits'];
 
 const STATEMENT_PAY_STATUSES = [
+    'prepared'       => 'Prepared · SOA not recorded',
     'unrecorded'     => 'Unrecorded SOA',
     'pending'        => 'Pending',
     'partially_paid' => 'Partially paid',
@@ -77,6 +79,12 @@ function statement_schema_upgrade(): void
     if (!is_file(APP_ROOT . '/' . STATEMENT_UPGRADE_V2_MARKER)) {
         statement_schema_upgrade_v2();
         @file_put_contents(APP_ROOT . '/' . STATEMENT_UPGRADE_V2_MARKER, date('c'), LOCK_EX);
+    }
+    if (!is_file(APP_ROOT . '/' . STATEMENT_UPGRADE_V3_MARKER)) {
+        run_sql_file(APP_ROOT . '/db/upgrade_statements_v3.sql');
+        // Every statement that exists before this upgrade is a recorded SOA.
+        db()->exec('UPDATE credit_card_statements SET soa_recorded_at = created_at WHERE soa_recorded_at IS NULL AND prepared_at IS NULL');
+        @file_put_contents(APP_ROOT . '/' . STATEMENT_UPGRADE_V3_MARKER, date('c'), LOCK_EX);
     }
 }
 
@@ -233,7 +241,7 @@ function ordinal(int $n): string
 function card_period_context(array $card): array
 {
     $soas = db_all(
-        'SELECT id, period_start_date, cutoff_date, statement_date FROM credit_card_statements
+        'SELECT id, period_start_date, cutoff_date, statement_date, soa_recorded_at FROM credit_card_statements
           WHERE credit_card_id = :c ORDER BY COALESCE(cutoff_date, statement_date)',
         [':c' => $card['id']]
     );
@@ -245,9 +253,13 @@ function card_period_context(array $card): array
             $start = $previousEnd ? date_add_days($previousEnd, 1)
                 : ($card['billing_cycle_day'] ? date_add_days(cutoff_before((int) $card['billing_cycle_day'], $end), 1) : substr($end, 0, 8) . '01');
         }
-        $soas[$i] = ['id' => $s['id'], 'start' => $start, 'end' => $end];
+        $soas[$i] = ['id' => $s['id'], 'start' => $start, 'end' => $end, 'recorded' => $s['soa_recorded_at'] !== null];
         $previousEnd = $end;
     }
+    // A prepared statement that is not closed yet follows the card's current rules (it moves if the
+    // cutoff day changes); recorded SOAs and closed periods keep their own dates.
+    $today = date('Y-m-d');
+    $soas = array_values(array_filter($soas, static fn ($x) => $x['recorded'] || $x['end'] < $today));
     $cycles = db_all('SELECT cycle_start_date AS start, cycle_end_date AS end FROM card_billing_cycles WHERE credit_card_id = :c', [':c' => $card['id']]);
 
     return ['card' => $card, 'soas' => $soas, 'cycles' => $cycles];
@@ -258,7 +270,7 @@ function card_period_containing(array $ctx, string $date): array
 {
     foreach ($ctx['soas'] as $s) {
         if ($date >= $s['start'] && $date <= $s['end']) {
-            return ['start' => $s['start'], 'end' => $s['end'], 'statement_id' => $s['id']];
+            return ['start' => $s['start'], 'end' => $s['end'], 'statement_id' => $s['id'], 'recorded' => $s['recorded']];
         }
     }
     $start = null;
@@ -288,7 +300,7 @@ function card_period_containing(array $ctx, string $date): array
         }
     }
 
-    return ['start' => $start, 'end' => $end, 'statement_id' => null];
+    return ['start' => $start, 'end' => $end, 'statement_id' => null, 'recorded' => false];
 }
 
 /** Earliest record date of a card (for how far back periods go). */
@@ -316,14 +328,16 @@ function card_periods_page(array $ctx, int $page, int $perPage = 6, ?string $tod
 {
     $today ??= date('Y-m-d');
     $first = card_first_activity($ctx['card']['id']) ?? $today;
-    $periods = [];
+    // Start with the next period (prepared ahead), then the open one, then back in time.
+    $current = card_period_containing($ctx, $today);
+    $periods = [card_period_containing($ctx, date_add_days($current['end'], 1))];
     $date = $today;
     // Walk back period by period (each step is computed in memory; 240 = 20 years).
     for ($i = 0; $i < 240; $i++) {
         $p = card_period_containing($ctx, $date);
         $periods[] = $p;
-        // At least a year of periods (for SOAs of months without records), further back to the first record.
-        if ($p['start'] <= $first && $i >= 11) {
+        // Back to the first record (at least 6 periods, to record an SOA for a month without records).
+        if ($p['start'] <= $first && $i >= 4) {
             break;
         }
         $date = date_add_days($p['start'], -1);
@@ -349,9 +363,10 @@ function statement_period_lines(string $cardId, string $start, string $end): arr
     $charged = sql_in_list(CARD_TXN_CHARGED);
     $linked = "((t.payment_type = 'cash_loan' AND EXISTS (SELECT 1 FROM cash_loans xl WHERE xl.credit_card_id = t.credit_card_id AND xl.loan_reference = t.reference_number))
              OR (t.payment_type = 'cash_advance' AND EXISTS (SELECT 1 FROM cash_advances xa WHERE xa.credit_card_id = t.credit_card_id AND xa.reference_number = t.reference_number)))";
-    $line = static fn (string $part, string $date, string $text, float $amount, string $link, string $kind, string $note = '', ?string $category = null, ?string $status = null) =>
-        ['part' => $part, 'date' => $date, 'description' => $text, 'amount' => round($amount, 2), 'link' => $link, 'kind' => $kind, 'note' => $note,
-         'category' => $category, 'status' => $status];
+    // Every line carries its source (type + id): the stable key used by statement_items.
+    $line = static fn (string $part, string $date, string $text, float $amount, string $link, string $kind, string $note = '', ?string $category = null, ?string $status = null, array $extra = []) =>
+        $extra + ['part' => $part, 'date' => $date, 'description' => $text, 'amount' => round($amount, 2), 'link' => $link, 'kind' => $kind, 'note' => $note,
+         'category' => $category, 'status' => $status, 'source_type' => $kind, 'source_id' => null, 'progress' => null, 'remaining_count' => null, 'remaining_after' => null];
 
     // Purchases and cash-type transactions without a loan / advance record.
     foreach (db_all(
@@ -373,35 +388,46 @@ function statement_period_lines(string $cardId, string $start, string $end): arr
             $note = 'Installment purchase without a schedule: counted in full. Create its installment plan to bill it monthly.';
             $warnings[] = $t['transaction_number'] . ' is an installment purchase without a schedule.';
         }
-        $lines[] = $line($part, $t['transaction_date'], $text, (float) $t['amount'], $link, 'transaction', $note, $t['category_name'], $t['status']);
+        $lines[] = $line($part, $t['transaction_date'], $text, (float) $t['amount'], $link, 'transaction', $note, $t['category_name'], $t['status'], ['source_id' => $t['id']]);
         if ($t['status'] === 'refunded') {
-            $lines[] = $line('credits', $t['transaction_date'], 'Refund · ' . $text, (float) $t['amount'], $link, 'transaction');
+            $lines[] = $line('credits', $t['transaction_date'], 'Refund · ' . $text, (float) $t['amount'], $link, 'transaction', '', null, null,
+                ['source_type' => 'refund', 'source_id' => $t['id']]);
         }
     }
 
     // Installment charges of installment purchases, by due date.
     foreach (db_all(
-        "SELECT s.installment_number, s.due_date, s.amount_due, s.status, p.id AS plan_id, p.number_of_installments, t.id AS txn_id, t.transaction_number,
+        "SELECT s.id, s.installment_number, s.due_date, s.amount_due, s.status, p.id AS plan_id, p.number_of_installments, t.id AS txn_id, t.transaction_number,
+                m.merchant_name, (SELECT ti.product_name FROM transaction_items ti WHERE ti.transaction_id = t.id ORDER BY ti.created_at LIMIT 1) AS product_name,
+                (SELECT COUNT(*) FROM installment_schedules y WHERE y.installment_plan_id = p.id AND y.status NOT IN ('waived', 'cancelled')) AS total_rows,
+                (SELECT COUNT(*) FROM installment_schedules x
+                  WHERE x.installment_plan_id = p.id AND x.installment_number > s.installment_number AND x.status NOT IN ('waived', 'cancelled')) AS remaining_count,
                 (SELECT COALESCE(SUM(x.amount_due), 0) FROM installment_schedules x
                   WHERE x.installment_plan_id = p.id AND x.installment_number > s.installment_number AND x.status NOT IN ('waived', 'cancelled')) AS remaining_after
            FROM installment_schedules s
            JOIN installment_plans p ON p.id = s.installment_plan_id AND p.status <> 'cancelled'
            JOIN transactions t ON t.id = p.transaction_id
+           LEFT JOIN merchants m ON m.id = t.merchant_id
           WHERE t.credit_card_id = :c AND t.payment_type = 'installment' AND t.status IN ($charged) AND t.status <> 'refunded'
             AND s.due_date BETWEEN :s AND :e AND s.status NOT IN ('waived', 'cancelled')
           ORDER BY s.due_date, t.transaction_number",
         $p
     ) as $s) {
-        $lines[] = $line('installment_charges', $s['due_date'],
-            'Installment ' . $s['installment_number'] . ' of ' . $s['number_of_installments'] . ' · ' . $s['transaction_number'],
+        $what = $s['product_name'] ?: ($s['merchant_name'] ?: $s['transaction_number']);
+        $lines[] = $line('installment_charges', $s['due_date'], $what . ' installment · ' . $s['transaction_number'],
             (float) $s['amount_due'], url('pages/installment_plans/view.php', ['id' => $s['plan_id']]), 'installment',
-            'Installment purchase · not billed yet after this: ' . format_money($s['remaining_after']), 'Installment', $s['status']);
+            $s['remaining_count'] . ' left after this · ' . format_money($s['remaining_after']) . ' not billed yet', 'Installment', $s['status'],
+            ['source_type' => 'installment_schedule', 'source_id' => $s['id'], 'progress' => $s['installment_number'] . '/' . max((int) $s['number_of_installments'], (int) $s['total_rows']),
+             'installment_number' => (int) $s['installment_number'], 'installment_count' => max((int) $s['number_of_installments'], (int) $s['total_rows']),
+             'remaining_count' => (int) $s['remaining_count'], 'remaining_after' => (float) $s['remaining_after']]);
     }
 
     // Cash loans: monthly installments by due date, fees on the card when the loan started.
     foreach (db_all(
-        "SELECT s.installment_number, s.due_date, s.amount_due, s.status, l.id AS loan_id, l.loan_reference,
-                (SELECT COUNT(*) FROM cash_loan_schedules y WHERE y.cash_loan_id = l.id) AS total_rows,
+        "SELECT s.id, s.installment_number, s.due_date, s.amount_due, s.status, l.id AS loan_id, l.loan_reference,
+                (SELECT COUNT(*) FROM cash_loan_schedules y WHERE y.cash_loan_id = l.id AND y.status NOT IN ('waived', 'cancelled')) AS total_rows,
+                (SELECT COUNT(*) FROM cash_loan_schedules x
+                  WHERE x.cash_loan_id = l.id AND x.installment_number > s.installment_number AND x.status NOT IN ('waived', 'cancelled')) AS remaining_count,
                 (SELECT COALESCE(SUM(x.amount_due), 0) FROM cash_loan_schedules x
                   WHERE x.cash_loan_id = l.id AND x.installment_number > s.installment_number AND x.status NOT IN ('waived', 'cancelled')) AS remaining_after
            FROM cash_loan_schedules s JOIN cash_loans l ON l.id = s.cash_loan_id
@@ -410,10 +436,12 @@ function statement_period_lines(string $cardId, string $start, string $end): arr
           ORDER BY s.due_date",
         $p
     ) as $s) {
-        $lines[] = $line('installment_charges', $s['due_date'],
-            'Cash loan ' . $s['loan_reference'] . ' · installment ' . $s['installment_number'] . ' of ' . $s['total_rows'],
+        $lines[] = $line('installment_charges', $s['due_date'], 'Cash loan ' . $s['loan_reference'] . ' repayment',
             (float) $s['amount_due'], url('pages/cash_loans/view.php', ['id' => $s['loan_id']]), 'cash_loan',
-            'Cash loan · not billed yet after this: ' . format_money($s['remaining_after']), 'Cash loan', $s['status']);
+            $s['remaining_count'] . ' left after this · ' . format_money($s['remaining_after']) . ' not billed yet', 'Cash loan', $s['status'],
+            ['source_type' => 'cash_loan_schedule', 'source_id' => $s['id'], 'progress' => $s['installment_number'] . '/' . $s['total_rows'],
+             'installment_number' => (int) $s['installment_number'], 'installment_count' => (int) $s['total_rows'],
+             'remaining_count' => (int) $s['remaining_count'], 'remaining_after' => (float) $s['remaining_after']]);
     }
     foreach (db_all(
         "SELECT l.* FROM cash_loans l
@@ -425,7 +453,7 @@ function statement_period_lines(string $cardId, string $start, string $end): arr
         $date = $loan['start_date'] ?: ($loan['first_due_date'] ?: substr($loan['created_at'], 0, 10));
         if ($charge['fees'] > 0) {
             $lines[] = $line('other_charges', $date, 'Cash loan ' . $loan['loan_reference'] . ' · fees', $charge['fees'],
-                url('pages/cash_loans/view.php', ['id' => $loan['id']]), 'cash_loan');
+                url('pages/cash_loans/view.php', ['id' => $loan['id']]), 'cash_loan', '', null, null, ['source_type' => 'cash_loan_fee', 'source_id' => $loan['id']]);
         }
         if ((int) db_value('SELECT COUNT(*) FROM cash_loan_schedules WHERE cash_loan_id = :l', [':l' => $loan['id']]) === 0) {
             $warnings[] = 'Cash loan ' . $loan['loan_reference'] . ' has no repayment schedule, so its monthly installments are not billed. Generate its schedule.';
@@ -440,12 +468,13 @@ function statement_period_lines(string $cardId, string $start, string $end): arr
     ) as $a) {
         $link = url('pages/cash_advances/view.php', ['id' => $a['id']]);
         $text = 'Cash advance' . ($a['reference_number'] ? ' ' . $a['reference_number'] : '');
-        $lines[] = $line('cash_advances', $a['advance_date'], $text, (float) $a['amount'], $link, 'cash_advance');
+        $lines[] = $line('cash_advances', $a['advance_date'], $text, (float) $a['amount'], $link, 'cash_advance', 'Billed in full on the statement of its date', null, $a['status'],
+            ['source_id' => $a['id']]);
         if ((float) $a['fee'] > 0) {
-            $lines[] = $line('other_charges', $a['advance_date'], $text . ' · fee', (float) $a['fee'], $link, 'cash_advance');
+            $lines[] = $line('other_charges', $a['advance_date'], $text . ' · fee', (float) $a['fee'], $link, 'cash_advance', '', null, null, ['source_type' => 'cash_advance_fee', 'source_id' => $a['id']]);
         }
         if ((float) $a['interest'] > 0) {
-            $lines[] = $line('interest', $a['advance_date'], $text . ' · interest', (float) $a['interest'], $link, 'cash_advance');
+            $lines[] = $line('interest', $a['advance_date'], $text . ' · interest', (float) $a['interest'], $link, 'cash_advance', '', null, null, ['source_type' => 'cash_advance_interest', 'source_id' => $a['id']]);
         }
     }
 
@@ -463,13 +492,13 @@ function statement_period_lines(string $cardId, string $start, string $end): arr
             default                         => 'other_charges',
         };
         $lines[] = $line($part, $b['charge_date'], $b['charge_type'] . ($b['description'] ? ' · ' . excerpt($b['description'], 60) : ''),
-            (float) $b['amount'], url('pages/bank_charges/view.php', ['id' => $b['id']]), 'bank_charge');
+            (float) $b['amount'], url('pages/bank_charges/view.php', ['id' => $b['id']]), 'bank_charge', '', null, null, ['source_id' => $b['id']]);
     }
 
     // Payments to the bank.
     foreach (db_all('SELECT * FROM credit_card_payments WHERE credit_card_id = :c AND payment_date BETWEEN :s AND :e ORDER BY payment_date', $p) as $pay) {
         $lines[] = $line('payments', $pay['payment_date'], 'Payment' . ($pay['reference_number'] ? ' ' . $pay['reference_number'] : '') . ($pay['payment_type'] ? ' · ' . $pay['payment_type'] : ''),
-            (float) $pay['amount'], url('pages/card_payments/view.php', ['id' => $pay['id']]), 'payment');
+            (float) $pay['amount'], url('pages/card_payments/view.php', ['id' => $pay['id']]), 'payment', '', null, null, ['source_type' => 'card_payment', 'source_id' => $pay['id']]);
     }
 
     usort($lines, static fn ($a, $b) => [$a['date'], $a['part']] <=> [$b['date'], $b['part']]);
@@ -533,7 +562,8 @@ function statement_paid_join(string $alias = 's'): string
 /** SQL: payment status of statement alias s joined with statement_paid_join(). */
 function statement_status_sql(string $alias = 's'): string
 {
-    return "(CASE WHEN $alias.total_amount_due - COALESCE(sp.paid, 0) <= 0.004 THEN 'paid'
+    return "(CASE WHEN $alias.soa_recorded_at IS NULL THEN 'prepared'
+                  WHEN $alias.total_amount_due - COALESCE(sp.paid, 0) <= 0.004 THEN 'paid'
                   WHEN $alias.due_date < CURDATE() THEN 'overdue'
                   WHEN COALESCE(sp.paid, 0) > 0 THEN 'partially_paid'
                   ELSE 'pending' END)";
@@ -541,7 +571,7 @@ function statement_status_sql(string $alias = 's'): string
 
 function statement_remaining_sql(string $alias = 's'): string
 {
-    return "GREATEST($alias.total_amount_due - COALESCE(sp.paid, 0), 0)";
+    return "IF($alias.soa_recorded_at IS NULL, 0, GREATEST($alias.total_amount_due - COALESCE(sp.paid, 0), 0))";
 }
 
 /** One recorded SOA with card details, paid, remaining and status. */
@@ -566,9 +596,9 @@ function statement_soa_find(string $id): ?array
 
 function statement_status_badge(string $status, ?string $dueDate = null): string
 {
-    $tone = ['unrecorded' => 'muted', 'pending' => 'warning', 'partially_paid' => 'info', 'paid' => 'success', 'overdue' => 'danger'][$status] ?? 'muted';
+    $tone = ['prepared' => 'info', 'unrecorded' => 'muted', 'pending' => 'warning', 'partially_paid' => 'info', 'paid' => 'success', 'overdue' => 'danger'][$status] ?? 'muted';
     $text = STATEMENT_PAY_STATUSES[$status] ?? humanize($status);
-    if ($status !== 'paid' && $status !== 'unrecorded' && $dueDate && $dueDate >= date('Y-m-d') && $dueDate <= date_add_days(date('Y-m-d'), STATEMENT_UPCOMING_DAYS)) {
+    if (!in_array($status, ['paid', 'unrecorded', 'prepared'], true) && $dueDate && $dueDate >= date('Y-m-d') && $dueDate <= date_add_days(date('Y-m-d'), STATEMENT_UPCOMING_DAYS)) {
         $text .= ' · due soon';
     }
 
@@ -583,7 +613,7 @@ function statement_status_badge(string $status, ?string $dueDate = null): string
 function statement_expected(array $statement, array $summary): array
 {
     $previous = $statement['period_start_date'] ? db_row(
-        'SELECT id, total_amount_due, cutoff_date FROM credit_card_statements WHERE credit_card_id = :c AND COALESCE(cutoff_date, statement_date) = :d',
+        'SELECT id, total_amount_due, cutoff_date FROM credit_card_statements WHERE credit_card_id = :c AND COALESCE(cutoff_date, statement_date) = :d AND soa_recorded_at IS NOT NULL',
         [':c' => $statement['credit_card_id'], ':d' => date_add_days($statement['period_start_date'], -1)]
     ) : null;
     $base = $previous ? (float) $previous['total_amount_due'] : 0.0;
@@ -635,7 +665,7 @@ function statement_move_notice(string $oldCard, string $oldDate, string $newCard
     if ($oldCard === $newCard && $from['period'] && $to['period'] && $from['period']['end'] === $to['period']['end']) {
         return;
     }
-    $recorded = ($from['period']['statement_id'] ?? null) || ($to['period']['statement_id'] ?? null);
+    $recorded = ($from['period']['recorded'] ?? false) || ($to['period']['recorded'] ?? false);
     flash($recorded ? 'warning' : 'info', 'The record moved from ' . $from['label'] . ' to ' . $to['label'] . '.'
         . ($recorded ? ' A recorded SOA is affected: its difference from the records changed — check it again.' : ''));
 }
@@ -704,7 +734,187 @@ function statement_payment_summary(): array
                 COALESCE(SUM($remaining > 0.004 AND s.due_date BETWEEN CURDATE() AND $upcoming), 0) AS upcoming,
                 COALESCE(SUM($remaining > 0.004 AND s.due_date < CURDATE()), 0) AS overdue,
                 COUNT(DISTINCT IF($remaining > 0.004 AND s.due_date < CURDATE(), s.credit_card_id, NULL)) AS overdue_cards,
-                COALESCE(SUM(IF($remaining > 0.004 AND s.due_date < CURDATE(), $remaining, 0)), 0) AS overdue_amount
-           FROM credit_card_statements s " . statement_paid_join()
+                COALESCE(SUM(IF($remaining > 0.004 AND s.due_date < CURDATE(), $remaining, 0)), 0) AS overdue_amount,
+                (SELECT COUNT(*) FROM credit_card_statements x WHERE x.soa_recorded_at IS NULL AND x.cutoff_date < CURDATE()) AS awaiting_soa
+           FROM credit_card_statements s " . statement_paid_join() . ' WHERE s.soa_recorded_at IS NOT NULL'
     ) ?: [];
+}
+
+/* ------------------------------------------------------------------
+ * Preparing upcoming statements (current and next billing period)
+ * ------------------------------------------------------------------ */
+
+/** The billing period open today and the next one. */
+function card_upcoming_periods(array $ctx, string $today): array
+{
+    $current = card_period_containing($ctx, $today);
+
+    return [$current, card_period_containing($ctx, date_add_days($current['end'], 1))];
+}
+
+/** Fingerprint of a period's items: unchanged records mean nothing to write. */
+function statement_items_signature(array $period, array $lines): string
+{
+    return md5(json_encode([$period['start'], $period['end'], array_map(
+        static fn ($l) => [$l['source_type'], $l['source_id'], $l['amount'], $l['date'], $l['part'], $l['progress']], $lines)]));
+}
+
+/**
+ * Prepare a card's upcoming statements from its existing records: the period
+ * open today and the next one. Never touches earlier periods, never copies a
+ * record, never changes a recorded SOA. Safe to run any number of times:
+ * nothing is written when the records did not change since the last run.
+ * Returns the number of periods that were (re)written.
+ */
+function statement_prepare_card(string $cardId, ?string $today = null): int
+{
+    $today ??= date('Y-m-d');
+    $card = db_row('SELECT * FROM credit_cards WHERE id = :id', [':id' => $cardId]);
+    // Only cards with a statement cutoff day: without it the periods would be guesses.
+    if (!$card || $card['status'] !== 'active' || !$card['billing_cycle_day']) {
+        return 0;
+    }
+    $ctx = card_period_context($card);
+    $written = 0;
+    $keep = [];
+    foreach (card_upcoming_periods($ctx, $today) as $period) {
+        if ($period['recorded']) {
+            continue;   // inside a recorded SOA (also an older one without a cutoff date)
+        }
+        $existing = db_row(
+            'SELECT id, soa_recorded_at, prepared_signature FROM credit_card_statements WHERE credit_card_id = :c AND cutoff_date = :e',
+            [':c' => $cardId, ':e' => $period['end']]
+        );
+        if ($existing && $existing['soa_recorded_at'] !== null) {
+            continue;   // the bank's SOA is recorded: left exactly as it is
+        }
+        $lines = array_values(array_filter(statement_period_lines($cardId, $period['start'], $period['end'])['lines'], static fn ($l) => $l['source_id'] !== null));
+        $signature = statement_items_signature($period, $lines);
+        if ($existing && $existing['prepared_signature'] === $signature) {
+            $keep[] = $existing['id'];
+            continue;   // nothing changed since it was prepared
+        }
+        $keep[] = db_transaction(static fn () => statement_prepare_period($card, $period, $lines, $signature, $today));
+        $written++;
+    }
+
+    // A prepared future statement left over from an earlier cutoff day (no SOA, no payment) is removed.
+    $keep = array_filter($keep);
+    $stale = db_all(
+        'SELECT s.id FROM credit_card_statements s WHERE s.credit_card_id = :c AND s.soa_recorded_at IS NULL AND s.cutoff_date >= :t
+            AND NOT EXISTS (SELECT 1 FROM credit_card_payments p WHERE p.statement_id = s.id)',
+        [':c' => $cardId, ':t' => $today]
+    );
+    foreach ($stale as $row) {
+        if (!in_array($row['id'], $keep, true)) {
+            db_exec('DELETE FROM credit_card_statements WHERE id = :id AND soa_recorded_at IS NULL', [':id' => $row['id']]);
+            $written++;
+        }
+    }
+
+    return $written;
+}
+
+/**
+ * Create or update one prepared statement and its items. Runs in a transaction;
+ * the card row lock keeps two requests from preparing the same period at once.
+ */
+function statement_prepare_period(array $card, array $period, array $lines, string $signature, string $today): ?string
+{
+    db_row('SELECT id FROM credit_cards WHERE id = :id FOR UPDATE', [':id' => $card['id']]);
+
+    $row = db_row('SELECT * FROM credit_card_statements WHERE credit_card_id = :c AND cutoff_date = :e', [':c' => $card['id'], ':e' => $period['end']]);
+    if (!$row) {
+        // Reuse a prepared row of the same period made with an earlier cutoff day.
+        $row = db_row(
+            'SELECT * FROM credit_card_statements WHERE credit_card_id = :c AND soa_recorded_at IS NULL AND cutoff_date >= :t
+                AND COALESCE(period_start_date, cutoff_date) <= :e AND cutoff_date >= :s ORDER BY cutoff_date LIMIT 1',
+            [':c' => $card['id'], ':t' => $today, ':s' => $period['start'], ':e' => $period['end']]
+        );
+    }
+    if ($row && $row['soa_recorded_at'] !== null) {
+        return null;
+    }
+    [$due] = card_due_date($card, $period['end']);
+    $now = date('Y-m-d H:i:s');
+    if (!$row) {
+        $id = new_uuid();
+        db_insert('credit_card_statements', [
+            'id' => $id, 'credit_card_id' => $card['id'], 'period_start_date' => $period['start'], 'source' => 'generated',
+            'statement_date' => $period['end'], 'cutoff_date' => $period['end'], 'due_date' => $due ?? $period['end'],
+            'due_date_status' => $due ? 'rule' : 'unconfirmed', 'minimum_due_status' => 'unconfirmed',
+            'total_amount_due' => '0.00', 'minimum_amount_due' => '0.00', 'prepared_at' => $now, 'prepared_signature' => $signature,
+        ]);
+    } else {
+        $id = $row['id'];
+        db_update('credit_card_statements', [
+            'period_start_date' => $period['start'], 'cutoff_date' => $period['end'], 'statement_date' => $period['end'],
+            'due_date' => $due ?? $period['end'], 'due_date_status' => $due ? 'rule' : 'unconfirmed',
+            'prepared_at' => $now, 'prepared_signature' => $signature, 'updated_at' => $now,
+        ], $id);
+    }
+
+    // Items: one per source record (UNIQUE source_type + source_id).
+    $current = [];
+    foreach (db_all(
+        'SELECT i.id, i.statement_id, i.source_type, i.source_id, s.soa_recorded_at FROM statement_items i
+           JOIN credit_card_statements s ON s.id = i.statement_id WHERE s.credit_card_id = :c',
+        [':c' => $card['id']]
+    ) as $i) {
+        $current[$i['source_type'] . '|' . $i['source_id']] = $i;
+    }
+    $mine = [];
+    foreach ($lines as $l) {
+        $key = $l['source_type'] . '|' . $l['source_id'];
+        $item = [
+            'statement_id' => $id, 'item_date' => $l['date'], 'part' => $l['part'], 'description' => mb_substr($l['description'], 0, 255),
+            'amount' => number_format($l['amount'], 2, '.', ''), 'installment_number' => $l['installment_number'] ?? null,
+            'installment_count' => $l['installment_count'] ?? null,
+        ];
+        $found = $current[$key] ?? db_row(
+            'SELECT i.id, i.statement_id, s.soa_recorded_at FROM statement_items i JOIN credit_card_statements s ON s.id = i.statement_id
+              WHERE i.source_type = :t AND i.source_id = :s',
+            [':t' => $l['source_type'], ':s' => $l['source_id']]
+        );
+        if ($found && $found['statement_id'] !== $id && $found['soa_recorded_at'] !== null) {
+            continue;   // already on a recorded SOA: never moved off it
+        }
+        if ($found) {
+            db_update('statement_items', $item + ['updated_at' => date('Y-m-d H:i:s')], $found['id']);
+        } else {
+            db_insert('statement_items', ['id' => new_uuid(), 'credit_card_id' => $card['id'], 'source_type' => $l['source_type'], 'source_id' => $l['source_id']] + $item);
+        }
+        $mine[$key] = true;
+    }
+    // Records that no longer belong to this period (date, schedule or cutoff changed).
+    foreach (db_all('SELECT id, source_type, source_id FROM statement_items WHERE statement_id = :s', [':s' => $id]) as $i) {
+        if (!isset($mine[$i['source_type'] . '|' . $i['source_id']])) {
+            db_exec('DELETE FROM statement_items WHERE id = :id', [':id' => $i['id']]);
+        }
+    }
+
+    return $id;
+}
+
+/** Prepare the upcoming statements of every active card (daily run; idempotent). */
+function statement_prepare_all(?string $today = null): int
+{
+    $today ??= date('Y-m-d');
+    // Cards no longer prepared (no cutoff day, not active): drop their open prepared statements (no SOA, no payment).
+    $written = db_exec(
+        "DELETE s FROM credit_card_statements s JOIN credit_cards c ON c.id = s.credit_card_id
+          WHERE s.soa_recorded_at IS NULL AND s.cutoff_date >= :t AND (c.billing_cycle_day IS NULL OR c.status <> 'active')
+            AND NOT EXISTS (SELECT 1 FROM credit_card_payments p WHERE p.statement_id = s.id)",
+        [':t' => $today]
+    );
+    foreach (db_all("SELECT id FROM credit_cards WHERE status = 'active' AND billing_cycle_day IS NOT NULL") as $c) {
+        try {
+            $written += statement_prepare_card($c['id'], $today);
+        } catch (PDOException $e) {
+            // One card's problem never stops the others; it is logged and retried next run.
+            error_log('[' . APP_NAME . '] Statement preparation for card ' . $c['id'] . ': ' . $e->getMessage());
+        }
+    }
+
+    return $written;
 }

@@ -11,6 +11,10 @@ $currentUser = require_admin();
 
 $statement = find_or_redirect(statement_find(request_id()), 'pages/statements/index.php', 'Statement');
 $card = db_row('SELECT * FROM credit_cards WHERE id = :c', [':c' => $statement['credit_card_id']]);
+if ($statement['soa_recorded_at'] === null) {
+    // A prepared statement has no SOA yet: record it instead.
+    redirect('pages/statements/create.php', ['credit_card_id' => $statement['credit_card_id'], 'cutoff' => $statement['cutoff_date']]);
+}
 $fields = statement_fields($statement, true);
 $data = form_data_from_row($fields, $statement);
 if (!$data['cutoff_date']) {

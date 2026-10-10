@@ -324,6 +324,15 @@ function penalty_run_if_due(): void
         @unlink($marker);
         error_log('[' . APP_NAME . '] Daily penalty check failed: ' . $e->getMessage());
     }
+    // Once a day: prepare each card's current and next statement from its records (idempotent).
+    try {
+        $prepared = statement_prepare_all($today);
+        if ($prepared > 0) {
+            log_activity('prepare_statements', 'system', null, 'Upcoming statements prepared or updated: ' . $prepared);
+        }
+    } catch (Throwable $e) {
+        error_log('[' . APP_NAME . '] Statement preparation failed: ' . $e->getMessage());
+    }
 }
 
 /**

@@ -825,6 +825,30 @@ Every Edit button (list row pencil icons, detail page "Edit", Transaction → ed
   - generated statements with no input from you were removed, with the billing cycles created for them.
 - The earlier SOA comparisons (`statement_reconciliations`) stay as read-only history on the statement.
 
+**Upcoming statements are prepared automatically (`db/upgrade_statements_v3.sql`):**
+
+- **What is prepared:** for every active card with a statement cutoff day, the **current and the next billing period** each get one statement row with `soa_recorded_at` NULL, marked "Prepared · SOA not recorded".
+- **Its contents:** the period's items, linked in `statement_items` to their source record:
+  - purchases;
+  - each installment schedule row ("Laptop installment 8/12");
+  - each cash loan repayment ("Cash loan … repayment 5/12");
+  - cash advances (billed in full on the statement of their date) and their fee/interest;
+  - bank charges and payments.
+- **No history rebuilt:** earlier months are never generated; past periods are only displayed, read-only. Installments that began earlier simply continue at their scheduled number, because the schedule rows already exist. Nothing is copied or recreated.
+- **When it runs:**
+  - once a day (with the daily penalty check);
+  - when the Statements list or a current/next statement is opened.
+- **Writes only on change:** each prepared statement stores a signature of its items, so when the records have not changed, nothing is written (tested: repeated loads and two runs in a row write nothing).
+- **Safeguards:**
+  - UNIQUE (card, cutoff) means one statement per card and period;
+  - UNIQUE (source_type, source_id) in `statement_items` means an installment or record can be on only one statement;
+  - a lock on the card row stops two requests from preparing the same period at once;
+  - an item on a recorded SOA is never moved off it.
+- **Cutoff or schedule changes:** prepared (not recorded) statements follow a cutoff-day change, reusing the same rows, and a schedule regeneration (plan edit) re-links the items without duplicates. Recorded SOAs keep their periods and items.
+- **Recording the SOA:** Record SOA writes the bank's amount, minimum and due date into the **same** prepared row. Removing a recorded SOA turns it back into the prepared statement.
+- **Installment progress:** the statement lists show "n/N", how many installments are left after it, and the amount not billed yet.
+- **Duplicate buttons fixed:** the four "Add missing transaction" buttons were printed twice in the statement view (inside the difference warning and above the transaction list). They now appear once, above the transaction list, and the warning links down to them.
+
 **View buttons in the modal:** every View (eye icons, record links in lists, the dashboard, reports and the borrower portal) opens the record in the shared modal. The record's own actions (Edit, Pay, Approve, …) appear at the top of the modal; Back and Print stay on the full page. Add, Edit and View now all use the modal.
 
 ## DATABASE LIMITATIONS (no schema changes were made)

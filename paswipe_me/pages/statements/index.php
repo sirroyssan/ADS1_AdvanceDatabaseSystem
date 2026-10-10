@@ -59,6 +59,7 @@ if ($listMode) {
         'paid'           => "$remaining <= 0.004",
         default          => '1 = 1',
     };
+    $where[] = 's.soa_recorded_at IS NOT NULL';   // prepared statements have no bank figures yet
     $from = 'credit_card_statements s JOIN credit_cards c ON c.id = s.credit_card_id ' . statement_paid_join();
     $result = run_list($state,
         "s.id, s.credit_card_id, s.cutoff_date, s.statement_date, s.period_start_date, s.due_date, s.total_amount_due, s.minimum_amount_due, s.statement_number,
@@ -76,7 +77,7 @@ if ($listMode) {
                 COALESCE(SUM(IF($remaining > 0.004 AND s.due_date < CURDATE(), 1, 0)), 0) AS overdue,
                 COALESCE(SUM($remaining), 0) AS outstanding
            FROM credit_cards c
-           LEFT JOIN credit_card_statements s ON s.credit_card_id = c.id
+           LEFT JOIN credit_card_statements s ON s.credit_card_id = c.id AND s.soa_recorded_at IS NOT NULL
            " . statement_paid_join() . '
           GROUP BY c.id
           ORDER BY c.status = \'active\' DESC, c.card_nickname'
@@ -94,14 +95,20 @@ if ($listMode) {
     $periodPage = 1;
     $buckets = [];
     $soaRows = [];
+    $preparedRows = [];
     if ($selected) {
+        // Current and next statement of this card, prepared from its records (no writes when nothing changed).
+        statement_prepare_card($selected['id']);
+        foreach (db_all('SELECT id, cutoff_date, prepared_at FROM credit_card_statements WHERE credit_card_id = :c AND soa_recorded_at IS NULL', [':c' => $selected['id']]) as $r) {
+            $preparedRows[$r['cutoff_date']] = $r;
+        }
         $card = db_row('SELECT * FROM credit_cards WHERE id = :c', [':c' => $selected['id']]);
         [$periods, $periodPages, $periodPage] = card_periods_page(card_period_context($card), input_int($_GET, 'pp', 1));
         if ($periods) {
             // All records of the shown periods in one pass, then split by period.
             $range = statement_period_lines($card['id'], end($periods)['start'], $periods[0]['end']);
             $buckets = statement_bucket_lines($range, $periods);
-            $ids = array_filter(array_column($periods, 'statement_id'));
+            $ids = array_column(array_filter($periods, static fn ($p) => $p['statement_id'] && $p['recorded']), 'statement_id');
             if ($ids) {
                 $in = implode(',', array_map(static fn ($id) => db()->quote($id), $ids));
                 foreach (db_all("SELECT s.id, s.total_amount_due, s.minimum_amount_due, s.due_date, $paid AS paid, $remaining AS remaining, "
@@ -167,19 +174,21 @@ require APP_ROOT . '/includes/header.php';
                     <th scope="col">Status</th><th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th>
                 </tr></thead>
                 <tbody>
-                <?php foreach ($periods as $p): $sum = statement_lines_summary($buckets[$p['end']]); $s = $p['statement_id'] ? ($soaRows[$p['statement_id']] ?? null) : null; $open = $p['end'] >= date('Y-m-d'); ?>
+                <?php foreach ($periods as $p): $sum = statement_lines_summary($buckets[$p['end']]); $s = $p['statement_id'] && $p['recorded'] ? ($soaRows[$p['statement_id']] ?? null) : null; $open = $p['end'] >= date('Y-m-d');
+                    $prep = $preparedRows[$p['end']] ?? null; $isNext = $p['start'] > date('Y-m-d'); ?>
                     <tr>
                         <td data-label="Statement month"><a data-modal-form class="table-link" href="<?= e(statement_view_url($selected['id'], $p)) ?>"><?= e(statement_month_label($p['end'])) ?></a>
-                            <br><span class="text-muted"><?= e(format_date($p['start'])) ?> – <?= e(format_date($p['end'])) ?><?= $open ? ' · current cycle' : '' ?></span></td>
+                            <br><span class="text-muted"><?= e(format_date($p['start'])) ?> – <?= e(format_date($p['end'])) ?><?= $isNext ? ' · next cycle' : ($open ? ' · current cycle' : '') ?></span></td>
                         <td data-label="Your records" class="num"><?= e(format_money($sum['charges'] - $sum['payments'])) ?><br><span class="text-muted"><?= e($sum['count']) ?> record(s)</span></td>
                         <td data-label="Actual SOA amount" class="num"><?= $s ? '<strong>' . e(format_money($s['total_amount_due'])) . '</strong>' : '<span class="text-muted">—</span>' ?></td>
                         <td data-label="Minimum due" class="num"><?= $s ? e(format_money($s['minimum_amount_due'])) : '—' ?></td>
                         <td data-label="Due date"><?= $s ? e(format_date($s['due_date'])) : '—' ?></td>
                         <td data-label="Paid" class="num"><?= $s ? e(format_money($s['paid'])) : '—' ?></td>
                         <td data-label="Remaining" class="num"><?= $s ? e(format_money($s['remaining'])) : '—' ?></td>
-                        <td data-label="Status"><?= $s ? statement_status_badge($s['pay_status'], $s['due_date']) : ($open ? '<span class="status status--muted">Current cycle</span>' : statement_status_badge('unrecorded')) ?></td>
+                        <td data-label="Status"><?= $s ? statement_status_badge($s['pay_status'], $s['due_date'])
+                            : ($prep ? statement_status_badge('prepared') : ($open ? '<span class="status status--muted">' . ($isNext ? 'Next cycle' : 'Current cycle') . '</span>' : statement_status_badge('unrecorded'))) ?></td>
                         <td class="actions no-print"><div class="row-actions">
-                            <a data-modal-form href="<?= e(statement_view_url($selected['id'], $p)) ?>" class="icon-button" title="View" aria-label="View <?= e(statement_month_label($p['end'])) ?>"><?= icon('eye') ?></a>
+                            <a data-modal-form href="<?= e($prep ? url('pages/statements/view.php', ['id' => $prep['id']]) : statement_view_url($selected['id'], $p)) ?>" class="icon-button" title="View" aria-label="View <?= e(statement_month_label($p['end'])) ?>"><?= icon('eye') ?></a>
                             <?php if ($s): ?>
                                 <?= icon_link(url('pages/statements/edit.php', ['id' => $s['id']]), 'edit', 'Edit SOA') ?>
                                 <?php if ((float) $s['remaining'] > 0.004): ?>

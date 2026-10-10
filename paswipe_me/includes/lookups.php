@@ -145,6 +145,7 @@ function statement_options(): array
                 CONCAT(c.card_nickname, ' •••• ', c.last_four, ' — ', DATE_FORMAT(s.statement_date, '%b %e, %Y'),
                        IFNULL(CONCAT(' (#', s.statement_number, ')'), '')) AS label
            FROM credit_card_statements s JOIN credit_cards c ON c.id = s.credit_card_id
+          WHERE s.soa_recorded_at IS NOT NULL
           ORDER BY s.statement_date DESC"
     );
 

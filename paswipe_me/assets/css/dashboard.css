@@ -2692,3 +2692,9 @@ html.has-modal-form {
 .pay-card__value { font-size: 24px; font-weight: 700; }
 .pay-card__meta { font-size: 12px; color: var(--text-muted); }
 .pay-summary__title { margin: 4px 0 8px; font-size: 15px; }
+
+/* Statement view: one "Add missing transaction" group, installment progress */
+.add-missing { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin: 8px 0 14px; }
+.add-missing__label { display: inline-flex; align-items: center; gap: 4px; font-size: 14px; font-weight: 600; }
+.add-missing .missing-actions { margin: 0; }
+.progress-pill { display: inline-block; padding: 1px 8px; border-radius: 999px; background: var(--primary-soft); color: var(--primary); font-size: 13px; }
