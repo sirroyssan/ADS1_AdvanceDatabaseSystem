@@ -767,6 +767,7 @@ How it works (no duplicated forms, the existing pages and handlers do the work):
   - Focus stays inside the modal.
   - Save/Cancel stay visible at the bottom.
   - The modal is full-screen on phones.
+- **Form only:** modals show just the form. Side panels (`.detail-side`) are hidden and layouts become one column. Submit Payment no longer has the "Where to pay" / "What happens next" side panels; the owner's accounts are still listed in "How did you pay?".
 - **Shared scripts:** `dashboard.js`, `modules.js`, `categories.js` and `portal-pay.js` now register their set-up with `App.register()`, so they also work on content added later.
 - **Unchanged:** Edit, View, Delete and other actions work as before. The create pages still work on their own (e.g. without JavaScript).
 - **Fixed on the way:** the sidebar loop variable `$item` overwrote the item page's own `$item`, so Transaction → Add item showed "Edit item" and could not save.

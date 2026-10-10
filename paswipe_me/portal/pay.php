@@ -154,11 +154,6 @@ if (is_post()) {
     }
 }
 
-$receiving = db_all(
-    'SELECT display_name, method_type, account_name, masked_account_number FROM payment_methods
-      WHERE borrower_id IS NULL AND owner_user_id IS NOT NULL AND is_active = 1 ORDER BY display_name'
-);
-
 $pageTitle = $payment ? 'Fix Payment' : 'Submit Payment';
 $pageScripts = ['assets/js/portal-pay.js'];
 $activeNav = $payment ? 'portal_payments' : 'portal_pay';
@@ -183,8 +178,7 @@ $action = $payment ? url('portal/pay.php', ['id' => $payment['id']]) : url('port
         <span><strong>What to fix:</strong> <?= e($payment['correction_reason']) ?></span></div>
 <?php endif; ?>
 
-<div class="detail-layout">
-    <form method="post" action="<?= e($action) ?>" enctype="multipart/form-data" class="form-card form-card--wide" novalidate data-validate>
+<form method="post" action="<?= e($action) ?>" enctype="multipart/form-data" class="form-card form-card--wide" novalidate data-validate>
         <?= csrf_field() ?>
         <input type="hidden" name="MAX_FILE_SIZE" value="<?= e(DOCUMENT_MAX_BYTES) ?>">
         <?php if ($errors): ?>
@@ -257,29 +251,5 @@ $action = $payment ? url('portal/pay.php', ['id' => $payment['id']]) : url('port
         </div>
     </form>
 
-    <div class="detail-side">
-        <section class="panel">
-            <header class="panel__header"><h3>Where to pay</h3></header>
-            <?php if (!$receiving): ?>
-                <p class="empty-inline">Ask the owner where to send your payment.</p>
-            <?php else: ?>
-                <ul class="child-list">
-                    <?php foreach ($receiving as $m): ?>
-                        <li><span><strong><?= e($m['display_name']) ?></strong><?= $m['account_name'] ? '<br><span class="text-muted">' . e($m['account_name']) . '</span>' : '' ?></span>
-                            <span><?= e(humanize($m['method_type'])) ?><?= $m['masked_account_number'] ? ' · ' . e($m['masked_account_number']) : '' ?></span></li>
-                    <?php endforeach; ?>
-                </ul>
-            <?php endif; ?>
-        </section>
-        <section class="panel">
-            <header class="panel__header"><h3>What happens next</h3></header>
-            <ol class="steps-list">
-                <li>The owner checks the amount, reference and proof.</li>
-                <li>Approved payments are applied to what you owe.</li>
-                <li>If something is wrong, you will be asked to fix it here.</li>
-            </ol>
-        </section>
-    </div>
-</div>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

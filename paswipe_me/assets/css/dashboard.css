@@ -2531,3 +2531,13 @@ html.has-modal-form body {
 @media print {
     .modal-form { display: none !important; }
 }
+
+/* Modals show only the form: side panels are left out, layouts are one column. */
+.modal-form__body .detail-side,
+.modal-form__body aside {
+    display: none;
+}
+
+.modal-form__body .detail-layout {
+    display: block;
+}
