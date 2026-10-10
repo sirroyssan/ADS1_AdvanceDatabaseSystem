@@ -1,7 +1,7 @@
 <?php
 /**
  * Borrower portal - one obligation: what it is for, payments applied,
- * installment schedule (when the purchase is on installment) and charges.
+ * monthly schedule (installment purchase or cash loan) and charges.
  */
 
 require_once __DIR__ . '/../includes/auth_check.php';
@@ -26,11 +26,7 @@ $items = $o['transaction_id'] ? db_all(
     'SELECT product_name, brand, model, quantity, total_amount FROM transaction_items WHERE transaction_id = :t ORDER BY created_at',
     [':t' => $o['transaction_id']]
 ) : [];
-$schedule = $o['transaction_id'] ? db_all(
-    'SELECT s.* FROM installment_schedules s JOIN installment_plans p ON p.id = s.installment_plan_id
-      WHERE p.transaction_id = :t AND p.status <> \'cancelled\' ORDER BY s.installment_number',
-    [':t' => $o['transaction_id']]
-) : [];
+[$schedule, $scheduleTitle, $scheduleNote] = obligation_schedule_view($o);
 $applied = db_all(
     'SELECT a.allocated_amount, a.allocation_type, a.created_at, p.id AS payment_id, p.payment_number, p.payment_date
        FROM borrower_payment_allocations a JOIN borrower_payments p ON p.id = a.borrower_payment_id
@@ -142,7 +138,8 @@ require APP_ROOT . '/includes/header.php';
 
 <?php if ($schedule): ?>
     <section class="panel subpanel">
-        <header class="panel__header"><h3><?= icon('calendar') ?> Installment schedule</h3></header>
+        <header class="panel__header"><h3><?= icon('calendar') ?> <?= e($scheduleTitle) ?></h3></header>
+        <?php if ($scheduleNote): ?><p class="field-help"><?= e($scheduleNote) ?></p><?php endif; ?>
         <?= render_schedule_table($schedule, '', [], false) ?>
     </section>
 <?php endif; ?>

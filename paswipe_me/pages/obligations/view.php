@@ -17,6 +17,7 @@ $allocations = db_all(
       WHERE a.obligation_id = :id ORDER BY a.created_at',
     [':id' => $id]
 );
+[$schedule, $scheduleTitle, $scheduleNote] = obligation_schedule_view($obligation);
 $penalties = db_all(
     'SELECT ap.*, r.name AS rule_name FROM applied_penalties ap JOIN penalty_rules r ON r.id = ap.penalty_rule_id
       WHERE ap.obligation_id = :id ORDER BY ap.applied_date',
@@ -140,6 +141,14 @@ require APP_ROOT . '/includes/header.php';
         </section>
     </div>
 </div>
+
+<?php if ($schedule): ?>
+    <section class="panel subpanel">
+        <header class="panel__header"><h3><?= icon('calendar') ?> <?= e($scheduleTitle) ?></h3></header>
+        <?php if ($scheduleNote): ?><p class="field-help"><?= e(str_replace('your share', "this borrower's share", $scheduleNote)) ?></p><?php endif; ?>
+        <?= render_schedule_table($schedule, '', [], false) ?>
+    </section>
+<?php endif; ?>
 
 <section class="panel subpanel">
     <header class="panel__header">

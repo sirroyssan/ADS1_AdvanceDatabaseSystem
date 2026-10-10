@@ -2359,3 +2359,8 @@ input[type="file"] {
 .detail-layout > * {
     min-width: 0;
 }
+
+/* Cash loan months listed on Submit Payment */
+.pay-for__months td { font-size: .85rem; }
+.pay-for__month { display: inline-block; margin: 0 .75rem .25rem 0; }
+.form-grid > * { min-width: 0; }

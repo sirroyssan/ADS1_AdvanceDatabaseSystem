@@ -231,6 +231,63 @@ function obligation_overdue_amount(array $o, ?string $today = null): float
 }
 
 /**
+ * The monthly schedule of one obligation, for display: the installment plan of
+ * its transaction, or its share of the cash loan's installments. A shared cash
+ * loan shows this borrower's part of each installment, filled oldest-first
+ * from what this obligation has been paid. Returns [rows, title, note].
+ */
+function obligation_schedule_view(array $o): array
+{
+    $target = obligation_schedule_target($o);
+    if (!$target) {
+        return [[], '', ''];
+    }
+    $table = db_identifier($target['table']);
+    $rows = db_all(
+        "SELECT * FROM $table WHERE " . db_identifier($target['parent']) . ' = :p ORDER BY installment_number',
+        [':p' => $target['parent_id']]
+    );
+    if ($target['table'] === 'installment_schedules') {
+        return [$rows, 'Installment schedule', ''];
+    }
+
+    $counted = array_filter($rows, static fn ($r) => !in_array($r['status'], ['waived', 'cancelled'], true));
+    $loanTotal = array_sum(array_column($counted, 'amount_due'));
+    $share = $loanTotal > 0 ? min(1, (float) $o['total_amount_due'] / $loanTotal) : 1.0;
+    $pool = (float) $o['total_paid'];
+    $lastKey = array_key_last($counted);
+    $left = ['principal_amount' => 0.0, 'interest_amount' => 0.0, 'fee_amount' => 0.0];
+    foreach ($left as $k => $v) {
+        $left[$k] = round(array_sum(array_column($counted, $k)) * $share, 2);
+    }
+
+    foreach ($rows as $i => $r) {
+        if (in_array($r['status'], ['waived', 'cancelled'], true)) {
+            continue;
+        }
+        foreach ($left as $k => $v) {
+            // The last installment takes the rounding so the parts add up to the share.
+            $part = $i === $lastKey ? $v : round((float) $r[$k] * $share, 2);
+            $rows[$i][$k] = $part;
+            $left[$k] = round($v - $part, 2);
+        }
+        $due = round($rows[$i]['principal_amount'] + $rows[$i]['interest_amount'] + $rows[$i]['fee_amount'], 2);
+        $paid = round(min($due, $pool), 2);
+        $pool = round($pool - $paid, 2);
+        $rows[$i]['amount_due'] = $due;
+        $rows[$i]['amount_paid'] = $paid;
+        $rows[$i]['remaining_amount'] = round($due - $paid, 2);
+        $rows[$i]['status'] = schedule_status_after_payment($due, $paid, $r['due_date']);
+    }
+
+    $note = $share < 0.9999
+        ? 'This cash loan is shared. The amounts are your share (' . rtrim(rtrim(number_format($share * 100, 2), '0'), '.') . '%) of each monthly installment; payments fill the oldest installment first.'
+        : 'Monthly installments of the cash loan. Payments fill the oldest installment first.';
+
+    return [$rows, 'Monthly schedule', $note];
+}
+
+/**
  * Store the live overdue amount on every open obligation (cheap; runs with
  * the status refresh on each signed-in page load).
  */

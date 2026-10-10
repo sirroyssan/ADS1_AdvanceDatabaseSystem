@@ -730,6 +730,12 @@ Shared SQL in `includes/penalties.php`: `penalty_totals_join()`, `borrower_total
 - **Schedules:** amounts aimed at a specific installment are credited there first; the rest of an item's payments fill its installments oldest first.
 - **Upgrade:** the table is created automatically on first load (marker `storage/upgrade_payment_selections.done`); the same SQL is in `db/upgrade_payment_selections.sql`.
 
+## Monthly schedule for cash loans (no schema change)
+
+- A cash-loan obligation now shows its **Monthly schedule** like an installment purchase does: on the borrower's item page (`portal/obligation.php`) and on the admin obligation page (`pages/obligations/view.php`).
+- `obligation_schedule_view()` in `includes/schedule_sync.php` builds it from `cash_loan_schedules`. For a shared loan, each month shows the borrower's share (their amount due ÷ the loan's total), with rounding taken by the last month. Months are filled oldest-first from that obligation's paid amount, and status is paid / overdue / partially paid / due / upcoming. The figures match the obligation's overdue amount.
+- Submit Payment lists a cash loan's open months (with Overdue badges) under the item. The borrower still pays the cash loan as one item, because payments go to its oldest month first.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |
