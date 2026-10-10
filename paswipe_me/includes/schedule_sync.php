@@ -212,6 +212,15 @@ function obligation_overdue_amount(array $o, ?string $today = null): float
     }
 
     $target = obligation_schedule_target($o);
+    if (!$target || $target['table'] !== 'installment_schedules') {
+        // Own monthly schedule: what was due by today minus what was paid.
+        $rows = obligation_monthly_rows($o);
+        if ($rows) {
+            $dueByToday = array_sum(array_map(static fn ($r) => $r['due_date'] < $today ? (float) $r['amount_due'] : 0.0, $rows));
+
+            return round(max(0, min($outstanding, $dueByToday - (float) $o['total_paid'])), 2);
+        }
+    }
     if ($target) {
         $table = db_identifier($target['table']);
         $sums = db_row(
@@ -231,60 +240,93 @@ function obligation_overdue_amount(array $o, ?string $today = null): float
 }
 
 /**
- * The monthly schedule of one obligation, for display: the installment plan of
- * its transaction, or its share of the cash loan's installments. A shared cash
- * loan shows this borrower's part of each installment, filled oldest-first
- * from what this obligation has been paid. Returns [rows, title, note].
+ * Monthly due dates of an obligation that has no installment plan: the cash
+ * loan's installment dates when the loan ends on the obligation's due date,
+ * otherwise one date a month counted back from the due date to the month
+ * after the obligation date. No due date means nothing to schedule.
+ *
+ * @return string[]
+ */
+function obligation_monthly_dates(array $o): array
+{
+    if (!$o['due_date']) {
+        return [];
+    }
+    if ($o['cash_loan_allocation_id']) {
+        $dates = array_column(db_all(
+            "SELECT s.due_date FROM cash_loan_allocations a JOIN cash_loan_schedules s ON s.cash_loan_id = a.cash_loan_id
+              WHERE a.id = :a AND s.status NOT IN ('waived', 'cancelled') ORDER BY s.installment_number",
+            [':a' => $o['cash_loan_allocation_id']]
+        ), 'due_date');
+        if ($dates && end($dates) === $o['due_date']) {
+            return $dates;
+        }
+    }
+
+    $from = new DateTimeImmutable($o['obligation_date'] ?: $o['due_date']);
+    $to = new DateTimeImmutable($o['due_date']);
+    $diff = $from->diff($to);
+    $count = $diff->invert ? 1 : max(1, min(120, $diff->y * 12 + $diff->m));
+    $day = (int) $to->format('j');
+    $dates = [];
+    for ($k = $count - 1; $k >= 0; $k--) {
+        $month = $to->modify('first day of this month')->modify('-' . $k . ' months');
+        $dates[] = $month->setDate((int) $month->format('Y'), (int) $month->format('n'), min($day, (int) $month->format('t')))->format('Y-m-d');
+    }
+
+    return $dates;
+}
+
+/**
+ * Monthly schedule of an obligation without an installment plan (cash loans,
+ * cash advances, straight purchases, manual items): its own total - principal,
+ * agreed interest and agreed fees - split evenly over its monthly due dates,
+ * filled oldest-first from what the borrower has paid. Nothing is stored; the
+ * status of each month follows its due date automatically.
+ */
+function obligation_monthly_rows(array $o): array
+{
+    $dates = obligation_monthly_dates($o);
+    if (!$dates) {
+        return [];
+    }
+    $interest = (float) $o['agreed_interest'];
+    $fees = (float) $o['agreed_fees'];
+    $principal = max(0, (float) $o['total_amount_due'] - $interest - $fees);
+    $rows = build_schedule($principal, $interest, $fees, count($dates), $dates[0], 'monthly');
+
+    $pool = (float) $o['total_paid'];
+    foreach ($rows as $i => $row) {
+        $due = (float) $row['amount_due'];
+        $paid = round(min($due, $pool), 2);
+        $pool = round($pool - $paid, 2);
+        $rows[$i]['id'] = null;
+        $rows[$i]['due_date'] = $dates[$i];
+        $rows[$i]['amount_paid'] = $paid;
+        $rows[$i]['remaining_amount'] = round($due - $paid, 2);
+        $rows[$i]['status'] = in_array($o['status'], ['written_off', 'cancelled'], true) && $paid < $due
+            ? $o['status'] : schedule_status_after_payment($due, $paid, $dates[$i]);
+    }
+
+    return $rows;
+}
+
+/**
+ * The monthly schedule of one obligation, for display: the installment plan
+ * of its transaction, or its own monthly schedule. Returns [rows, title, note].
  */
 function obligation_schedule_view(array $o): array
 {
     $target = obligation_schedule_target($o);
-    if (!$target) {
-        return [[], '', ''];
+    if ($target && $target['table'] === 'installment_schedules') {
+        return [db_all('SELECT * FROM installment_schedules WHERE installment_plan_id = :p ORDER BY installment_number', [':p' => $target['parent_id']]),
+            'Installment schedule', ''];
     }
-    $table = db_identifier($target['table']);
-    $rows = db_all(
-        "SELECT * FROM $table WHERE " . db_identifier($target['parent']) . ' = :p ORDER BY installment_number',
-        [':p' => $target['parent_id']]
-    );
-    if ($target['table'] === 'installment_schedules') {
-        return [$rows, 'Installment schedule', ''];
-    }
+    $rows = obligation_monthly_rows($o);
 
-    $counted = array_filter($rows, static fn ($r) => !in_array($r['status'], ['waived', 'cancelled'], true));
-    $loanTotal = array_sum(array_column($counted, 'amount_due'));
-    $share = $loanTotal > 0 ? min(1, (float) $o['total_amount_due'] / $loanTotal) : 1.0;
-    $pool = (float) $o['total_paid'];
-    $lastKey = array_key_last($counted);
-    $left = ['principal_amount' => 0.0, 'interest_amount' => 0.0, 'fee_amount' => 0.0];
-    foreach ($left as $k => $v) {
-        $left[$k] = round(array_sum(array_column($counted, $k)) * $share, 2);
-    }
-
-    foreach ($rows as $i => $r) {
-        if (in_array($r['status'], ['waived', 'cancelled'], true)) {
-            continue;
-        }
-        foreach ($left as $k => $v) {
-            // The last installment takes the rounding so the parts add up to the share.
-            $part = $i === $lastKey ? $v : round((float) $r[$k] * $share, 2);
-            $rows[$i][$k] = $part;
-            $left[$k] = round($v - $part, 2);
-        }
-        $due = round($rows[$i]['principal_amount'] + $rows[$i]['interest_amount'] + $rows[$i]['fee_amount'], 2);
-        $paid = round(min($due, $pool), 2);
-        $pool = round($pool - $paid, 2);
-        $rows[$i]['amount_due'] = $due;
-        $rows[$i]['amount_paid'] = $paid;
-        $rows[$i]['remaining_amount'] = round($due - $paid, 2);
-        $rows[$i]['status'] = schedule_status_after_payment($due, $paid, $r['due_date']);
-    }
-
-    $note = $share < 0.9999
-        ? 'This cash loan is shared. The amounts are your share (' . rtrim(rtrim(number_format($share * 100, 2), '0'), '.') . '%) of each monthly installment; payments fill the oldest installment first.'
-        : 'Monthly installments of the cash loan. Payments fill the oldest installment first.';
-
-    return [$rows, 'Monthly schedule', $note];
+    return [$rows, 'Monthly schedule', $rows
+        ? 'Amount to pay each month (principal + agreed interest and fees, split evenly). Payments fill the oldest month first; the status follows each due date automatically.'
+        : ''];
 }
 
 /**

@@ -299,8 +299,8 @@ function penalty_run_if_due(): void
     try {
         payment_selections_upgrade();
         schedule_sync_upgrade();
-        schedule_refresh_statuses();
         obligation_refresh_overdue();
+        schedule_refresh_statuses();
     } catch (PDOException $e) {
         error_log('[' . APP_NAME . '] Status refresh failed: ' . $e->getMessage());
     }

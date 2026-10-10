@@ -209,7 +209,7 @@ $action = $payment ? url('portal/pay.php', ['id' => $payment['id']]) : url('port
                                 <?= $g['obligation']['description'] ? ' · ' . e(excerpt($g['obligation']['description'], 60)) : '' ?>
                                 <span class="text-muted"> · total to pay <?= e(format_money($g['owed'])) ?><?= $g['penalties'] > 0 ? ' (incl. ' . e(format_money($g['penalties'])) . ' late charges)' : '' ?></span></td></tr>
                             <?php if ($g['months']): ?>
-                                <tr class="pay-for__months"><td colspan="5"><span class="text-muted">Monthly installments (paid oldest first):</span>
+                                <tr class="pay-for__months"><td colspan="5"><span class="text-muted">Monthly amounts (paid oldest month first):</span>
                                     <?php foreach (array_slice($g['months'], 0, 4) as $m): ?>
                                         <span class="pay-for__month">#<?= e($m['installment_number']) ?> · <?= e(format_date($m['due_date'])) ?> · <?= e(format_money($m['remaining_amount'])) ?><?= $m['status'] === 'overdue' ? ' <span class="status status--danger">Overdue</span>' : '' ?></span>
                                     <?php endforeach; ?>

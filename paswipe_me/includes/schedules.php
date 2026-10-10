@@ -99,7 +99,8 @@ function schedule_refresh_statuses(): void
                   WHERE status = 'overdue' AND remaining_amount > 0 AND due_date >= CURDATE()");
     }
 
-    $pastDue = "(o.due_date < CURDATE() OR EXISTS (
+    // overdue_amount is refreshed first (obligation_refresh_overdue), so a missed month counts too.
+    $pastDue = "(o.due_date < CURDATE() OR o.overdue_amount > 0 OR EXISTS (
                     SELECT 1 FROM installment_plans p JOIN installment_schedules s ON s.installment_plan_id = p.id
                      WHERE p.transaction_id = o.transaction_id AND p.status <> 'cancelled' AND s.status = 'overdue'
                        AND (SELECT COUNT(*) FROM borrower_obligations x WHERE x.transaction_id = o.transaction_id AND x.status <> 'cancelled') = 1))";

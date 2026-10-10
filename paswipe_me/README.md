@@ -730,11 +730,17 @@ Shared SQL in `includes/penalties.php`: `penalty_totals_join()`, `borrower_total
 - **Schedules:** amounts aimed at a specific installment are credited there first; the rest of an item's payments fill its installments oldest first.
 - **Upgrade:** the table is created automatically on first load (marker `storage/upgrade_payment_selections.done`); the same SQL is in `db/upgrade_payment_selections.sql`.
 
-## Monthly schedule for cash loans (no schema change)
+## Monthly schedule on every obligation (no schema change)
 
-- A cash-loan obligation now shows its **Monthly schedule** like an installment purchase does: on the borrower's item page (`portal/obligation.php`) and on the admin obligation page (`pages/obligations/view.php`).
-- `obligation_schedule_view()` in `includes/schedule_sync.php` builds it from `cash_loan_schedules`. For a shared loan, each month shows the borrower's share (their amount due ÷ the loan's total), with rounding taken by the last month. Months are filled oldest-first from that obligation's paid amount, and status is paid / overdue / partially paid / due / upcoming. The figures match the obligation's overdue amount.
-- Submit Payment lists a cash loan's open months (with Overdue badges) under the item. The borrower still pays the cash loan as one item, because payments go to its oldest month first.
+- When an owner, admin or borrower opens an obligation, they see the amount to pay each month. This is on `pages/obligations/view.php` and `portal/obligation.php`. There is no Pay button.
+- **Installment purchases:** the obligation shows its installment plan (`installment_schedules`), as before.
+- **Everything else** (cash loans, cash advances, straight purchases, manual items) gets a monthly schedule from `obligation_monthly_rows()` in `includes/schedule_sync.php`:
+  - **Amounts:** the obligation's own total (principal + agreed interest + agreed fees) is split evenly. Interest or fees added later on Edit Obligation are included, and the last month takes the rounding.
+  - **Dates:** the cash loan's installment dates are used when the loan ends on the obligation's due date. Otherwise there is one date a month, counted back from the due date to the month after the obligation date (e.g. obligation Oct 9, 2026, due Oct 16, 2028 → 24 months from Nov 16, 2026).
+  - **Paid and status:** the borrower's approved payments fill the oldest month first. Each month's status (Paid / Overdue / Partially paid / Due / Upcoming) follows its due date automatically. Nothing is stored.
+- **Overdue amount:** what was due by today minus what was paid. An obligation becomes **Overdue** as soon as one month is missed, not only after the final due date.
+- **Submit Payment:** the open months are listed under each such item.
+- **Penalties:** unchanged. They are still charged per installment on installment purchases, and on the whole balance after the final due date otherwise.
 
 ## DATABASE LIMITATIONS (no schema changes were made)
 

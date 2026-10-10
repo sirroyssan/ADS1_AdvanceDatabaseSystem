@@ -88,11 +88,11 @@ function payable_items(string $borrowerId): array
                 'owed' => $owed, 'overdue' => (float) $o['overdue_amount'] > 0,
             ]);
         }
-        // A cash loan is paid as a whole (oldest installment first); its open months are shown for reference.
-        $months = $target && $target['table'] === 'cash_loan_schedules'
-            ? array_values(array_filter(obligation_schedule_view($o)[0], static fn ($s) => (float) $s['remaining_amount'] > 0.004
-                && !in_array($s['status'], ['waived', 'cancelled'], true)))
-            : [];
+        // Without an installment plan the item is paid as a whole (oldest month first); its open months are shown for reference.
+        $months = $target && $target['table'] === 'installment_schedules' ? [] : array_values(array_filter(
+            obligation_monthly_rows($o), static fn ($s) => (float) $s['remaining_amount'] > 0.004
+        ));
+        $months = count($months) > 1 || ($months && $months[0]['due_date'] !== $o['due_date']) ? $months : [];
         $groups[] = ['obligation' => $o, 'penalties' => (float) $o['penalties_unpaid'], 'owed' => $owed, 'rows' => $rows, 'months' => $months];
     }
 
