@@ -1147,6 +1147,11 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - **Server side:** it removes the commas before checking and saving, so nothing changes in the database.
 - **Too many decimals:** a value with more decimals than allowed is left as typed, so the form's error shows instead of a silent rounding.
 
+**Credit cards: no duplicates; delete while unused** (`pages/credit_cards/`):
+- **No duplicates:** a card is never added twice. The same bank (matched by `same_bank()`, so "Bank of the Philippine Islands" = BPI) with the same last four digits as one of your cards that is not *closed* is refused on the form, and on Edit too, with the name of the existing card.
+- **Double clicks:** the check runs again at save time under a lock, so two saves at once (a double click) still add only one card.
+- **Deleting:** a card with no transactions, statements, cash loans, cash advances, card payments or bank charges (its opening balance does not count) shows **Delete**, both in the list (trash icon) and in the card page's header. Deleting removes it with its billing cycles. A card with records shows **Mark as inactive** instead, and the server refuses a forced delete. Staff never see these buttons.
+
 **Obligation form and status:**
 - **No Transaction field:** the obligation form has no *Transaction* field. Obligations are entered by hand or created from cash loans and cash advances. Card purchases and installments are tracked on the transaction itself, so the transaction page no longer has an *Add obligation* button. An existing link (a cash advance share) is kept when the obligation is edited.
 - **Change status:** this is now a button in the obligation page's header, next to *Record payment* and *Edit*. It opens a small modal (`pages/obligations/status.php`), which posts to the same `related.php` action, so the same rules are checked on the server.

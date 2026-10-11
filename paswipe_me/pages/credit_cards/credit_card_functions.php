@@ -51,6 +51,9 @@ function credit_card_validate(array $fields, array $input, ?string $id = null): 
     [$data, $errors] = validate_fields($fields, $input, $id);
     [$data, $errors] = bank_resolve($data, $errors, 'issuer');
 
+    if (!isset($errors['issuer']) && !isset($errors['last_four']) && ($message = credit_card_duplicate_message($data, $id)) !== null) {
+        $errors['last_four'] = $message;
+    }
     if ($data['opening_date'] && $data['expiration_date'] && $data['expiration_date'] < $data['opening_date']) {
         $errors['expiration_date'] = 'Expiration date must be after the opening date.';
     }
@@ -84,6 +87,11 @@ function credit_card_save(?string $id, array $data, ?string $existingId = null):
     $cardId = $existingId ?? $id;
 
     card_usage_apply([$cardId], function () use ($id, $existingId, $cardId, $data, $opening) {
+        // Checked again under a lock: two saves at once (a double click) cannot both add the card.
+        db_value('SELECT id FROM users WHERE id = :o FOR UPDATE', [':o' => owner_id()]);
+        if (($message = credit_card_duplicate_message($data, $existingId)) !== null) {
+            throw new DomainException($message);
+        }
         if ($existingId === null) {
             // Start at the full limit (schema CHECK); card_usage_apply then stores the real figure.
             // A card always belongs to the signed-in user; no form can set or change its owner.
@@ -93,6 +101,30 @@ function credit_card_save(?string $id, array $data, ?string $existingId = null):
         }
         card_set_opening_balance($cardId, $opening, $data['opening_date'] ?? null);
     });
+}
+
+/**
+ * The same card is never recorded twice: one of your cards (not closed) of
+ * the same bank with the same last four digits. Returns why, or null.
+ */
+function credit_card_duplicate_message(array $data, ?string $exceptId = null): ?string
+{
+    if (empty($data['last_four']) || empty($data['issuer'])) {
+        return null;
+    }
+    $same = db_all(
+        "SELECT cc.id, cc.card_nickname, cc.issuer, cc.last_four FROM credit_cards cc
+          WHERE cc.last_four = :l AND cc.status <> 'closed' AND cc.id <> :x AND " . owner_scope('credit_cards', 'cc'),
+        [':l' => $data['last_four'], ':x' => $exceptId ?? '']
+    );
+    foreach ($same as $card) {
+        if (same_bank($card['issuer'], $data['issuer'])) {
+            return 'You already have this card: "' . $card['card_nickname'] . '" (' . bank_canonical($card['issuer']) . ' •••• ' . $card['last_four']
+                . '). Open that card instead of adding it again.';
+        }
+    }
+
+    return null;
 }
 
 function credit_card_find(string $id): ?array

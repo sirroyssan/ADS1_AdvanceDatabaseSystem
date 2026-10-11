@@ -31,6 +31,8 @@ if (is_post()) {
             log_activity('update', 'credit_card', $card['id'], 'Updated card ' . $data['card_nickname'], array_intersect_key($card, $data), $data);
             flash('success', 'Card "' . $data['card_nickname'] . '" was updated successfully.');
             redirect('pages/credit_cards/view.php', ['id' => $card['id']]);
+        } catch (DomainException $e) {
+            $errors[str_starts_with($e->getMessage(), 'You already have this card') ? 'last_four' : '_form'] = $e->getMessage();
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
         }

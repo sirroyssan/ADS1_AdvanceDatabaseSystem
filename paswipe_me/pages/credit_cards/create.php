@@ -23,6 +23,8 @@ if (is_post()) {
             log_activity('create', 'credit_card', $id, 'Added card ' . $data['card_nickname'] . ' •••• ' . $data['last_four'], null, $data);
             flash('success', 'Card "' . $data['card_nickname'] . '" was added successfully.');
             redirect('pages/credit_cards/view.php', ['id' => $id]);
+        } catch (DomainException $e) {
+            $errors[str_starts_with($e->getMessage(), 'You already have this card') ? 'last_four' : '_form'] = $e->getMessage();
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
         }

@@ -64,6 +64,13 @@ require APP_ROOT . '/includes/header.php';
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/credit_cards/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
+        <?php if ($canManage && $usage['total'] > 0 && $card['status'] === 'active'): ?>
+            <?= post_button(url('pages/credit_cards/delete.php'), ['id' => $id, 'action' => 'deactivate'], 'Mark as inactive', 'power', 'btn btn--warning',
+                'This card has ' . usage_text($usage) . ', so it is kept. Mark it as inactive? Its history stays.', false, 'Deactivate card?') ?>
+        <?php elseif ($canManage && $usage['total'] === 0): ?>
+            <?= post_button(url('pages/credit_cards/delete.php'), ['id' => $id, 'action' => 'delete'], 'Delete', 'trash', 'btn btn--danger',
+                'No transactions or other records yet. Delete this card and its billing cycles? This cannot be undone.', false, 'Delete card?') ?>
+        <?php endif; ?>
         <?php if ($canManage): ?><a data-modal-form href="<?= e(url('pages/credit_cards/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a><?php endif; ?>
     </div>
 </section>
@@ -181,20 +188,6 @@ require APP_ROOT . '/includes/header.php';
             <?php endif; ?>
         </section>
 
-        <section class="panel panel--danger no-print"<?= $canManage ? '' : ' hidden' ?>>
-            <header class="panel__header"><h3>Delete or close</h3></header>
-            <?php if ($usage['total'] > 0): ?>
-                <p class="field-help">This card has <?= e(usage_text($usage)) ?>, so it must be kept. Change its status (closed, blocked, inactive) instead.</p>
-                <?php if ($card['status'] === 'active'): ?>
-                    <?= post_button(url('pages/credit_cards/delete.php'), ['id' => $id, 'action' => 'deactivate'], 'Mark as inactive', 'power', 'btn btn--warning btn--block',
-                        'Mark this card as inactive? Its history is kept.', false, 'Deactivate card?') ?>
-                <?php endif; ?>
-            <?php else: ?>
-                <p class="field-help">No transactions or statements yet. Deleting also removes its billing cycles.</p>
-                <?= post_button(url('pages/credit_cards/delete.php'), ['id' => $id, 'action' => 'delete'], 'Delete card', 'trash', 'btn btn--danger btn--block',
-                    'Are you sure you want to delete this card? This cannot be undone.') ?>
-            <?php endif; ?>
-        </section>
     </div>
 </div>
 

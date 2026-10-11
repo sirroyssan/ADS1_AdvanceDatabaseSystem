@@ -44,6 +44,14 @@ $result = run_list(
     $params
 );
 
+// Cards with nothing recorded on them yet can be deleted from the list.
+$deletable = [];
+if ($canManage) {
+    foreach ($result['rows'] as $row) {
+        $deletable[$row['id']] = credit_card_usage($row['id'])['total'] === 0;
+    }
+}
+
 $pageTitle = 'Credit Cards';
 $activeNav = 'credit_cards';
 require APP_ROOT . '/includes/header.php';
@@ -91,6 +99,8 @@ require APP_ROOT . '/includes/header.php';
                             <div class="row-actions">
                                 <?= icon_link(url('pages/credit_cards/view.php', ['id' => $row['id']]), 'eye', 'View ' . $row['card_nickname']) ?>
                                 <?= $canManage ? icon_link(url('pages/credit_cards/edit.php', ['id' => $row['id']]), 'edit', 'Edit ' . $row['card_nickname']) : '' ?>
+                                <?= !empty($deletable[$row['id']]) ? post_button(url('pages/credit_cards/delete.php'), ['id' => $row['id'], 'action' => 'delete'], 'Delete ' . $row['card_nickname'], 'trash',
+                                    'icon-button icon-button--danger', 'Delete "' . $row['card_nickname'] . '" •••• ' . $row['last_four'] . '? It has no transactions or other records yet. This cannot be undone.', true, 'Delete card?') : '' ?>
                             </div>
                         </td>
                     </tr>
