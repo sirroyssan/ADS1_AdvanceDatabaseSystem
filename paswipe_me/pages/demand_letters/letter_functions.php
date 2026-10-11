@@ -20,7 +20,7 @@ const LETTER_TRANSITIONS = [
 function letter_fields(?array $current = null): array
 {
     [$oblOptions, $oblData] = obligation_options($current['obligation_id'] ?? null);
-    $agreements = db_all("SELECT id, borrower_id, agreement_number FROM agreements WHERE status <> 'cancelled' OR id = :keep ORDER BY agreement_date DESC", [':keep' => $current['agreement_id'] ?? '']);
+    $agreements = db_all("SELECT id, borrower_id, agreement_number FROM agreements a WHERE (status <> 'cancelled' OR id = :keep) AND " . owner_scope('agreements', 'a') . ' ORDER BY agreement_date DESC', [':keep' => $current['agreement_id'] ?? '']);
 
     return [
         'letter_number'      => ['label' => 'Letter number', 'type' => 'text', 'max' => 50, 'required' => $current !== null,
@@ -73,7 +73,7 @@ function letter_find(string $id): ?array
            LEFT JOIN demand_letter_templates t ON t.id = l.template_id
            LEFT JOIN documents d ON d.id = l.document_id
            LEFT JOIN users u ON u.id = l.created_by
-          WHERE l.id = :id",
+          WHERE l.id = :id AND " . owner_scope('demand_letters', 'l'),
         [':id' => $id]
     );
 }
@@ -90,7 +90,7 @@ function letter_prefill(?string $obligationId, ?string $templateId, ?string $bor
         $o = db_row(
             'SELECT o.*, b.first_name, b.last_name, b.borrower_number,
                     (SELECT COALESCE(SUM(remaining_amount), 0) FROM applied_penalties p WHERE p.obligation_id = o.id) AS penalties
-               FROM borrower_obligations o JOIN borrowers b ON b.id = o.borrower_id WHERE o.id = :id',
+               FROM borrower_obligations o JOIN borrowers b ON b.id = o.borrower_id WHERE o.id = :id AND ' . owner_scope('borrower_obligations', 'o'),
             [':id' => $obligationId]
         );
         if ($o) {
@@ -106,7 +106,7 @@ function letter_prefill(?string $obligationId, ?string $templateId, ?string $bor
             ];
         }
     } elseif ($borrowerId && is_valid_uuid($borrowerId)) {
-        $b = db_row('SELECT first_name, last_name, borrower_number FROM borrowers WHERE id = :id', [':id' => $borrowerId]);
+        $b = db_row('SELECT first_name, last_name, borrower_number FROM borrowers b WHERE id = :id AND ' . owner_scope('borrowers', 'b'), [':id' => $borrowerId]);
         if ($b) {
             $data['borrower_id'] = $borrowerId;
             $values += ['borrower_name' => $b['first_name'] . ' ' . $b['last_name'], 'borrower_number' => $b['borrower_number']];
@@ -114,9 +114,9 @@ function letter_prefill(?string $obligationId, ?string $templateId, ?string $bor
     }
 
     if ($templateId && is_valid_uuid($templateId)) {
-        $body = db_value('SELECT template_body FROM demand_letter_templates WHERE id = :id AND is_active = 1', [':id' => $templateId]);
+        $body = db_value('SELECT template_body FROM demand_letter_templates t WHERE id = :id AND is_active = 1 AND ' . owner_scope('demand_letter_templates', 't'), [':id' => $templateId]);
         if ($body !== false) {
-            $owner = db_value("SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) FROM users u JOIN user_roles r ON r.user_id = u.id AND r.role = 'owner' LIMIT 1");
+            $owner = db_value("SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) FROM users u WHERE u.id = :u", [':u' => owner_id()]);
             $data['template_id'] = $templateId;
             $data['content'] = fill_template($body, $values + ['owner_name' => $owner ?: '']);
         }

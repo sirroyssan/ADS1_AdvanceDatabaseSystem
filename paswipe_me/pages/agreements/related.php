@@ -38,7 +38,7 @@ try {
                     $errors['user_id'] = 'Choose the user.';
                 } else {
                     $row['user_id'] = $data['user_id'];
-                    $data['name'] ??= admin_user_options()[$data['user_id']] ?? null;
+                    $data['name'] ??= signatory_user_options()[$data['user_id']] ?? null;
                 }
             }
             if (!$errors && !$data['name']) {

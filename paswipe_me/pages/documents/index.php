@@ -25,7 +25,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('documents', 'd')];
 $params = [];
 add_search_condition($state, ['d.original_filename'], $where, $params);
 if ($state['filters']['type'] !== '') {

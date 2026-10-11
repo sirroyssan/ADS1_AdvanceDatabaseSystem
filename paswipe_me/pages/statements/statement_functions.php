@@ -49,7 +49,7 @@ function statement_validate(array $fields, array $input, ?string $id = null, ?st
         $errors['due_date'] = 'The payment due date must be on or after the cutoff date.';
     }
     if (!isset($errors['cutoff_date']) && $cardId && $data['cutoff_date']) {
-        $card = db_row('SELECT * FROM credit_cards WHERE id = :c', [':c' => $cardId]);
+        $card = db_row('SELECT * FROM credit_cards c WHERE c.id = :c AND ' . owner_scope('credit_cards', 'c'), [':c' => $cardId]);
         if ($card) {
             // One SOA per card and billing period.
             $ctx = card_period_context($card);
@@ -73,7 +73,8 @@ function statement_validate(array $fields, array $input, ?string $id = null, ?st
 
 function statement_find(string $id): ?array
 {
-    return statement_soa_find($id);
+    // The engine's finder is unscoped (it also runs in background jobs).
+    return owns('credit_card_statements', $id) ? statement_soa_find($id) : null;
 }
 
 /**

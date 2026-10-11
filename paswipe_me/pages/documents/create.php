@@ -26,6 +26,7 @@ if (is_post()) {
     if (!$errors && $stored) {
         try {
             db_insert('documents', ['id' => $id, 'document_type' => $data['document_type']] + $stored + [
+                'owner_user_id' => owner_id(),
                 'uploaded_by' => $currentUser['id'],
                 'metadata'    => json_encode($data['description'] ? ['description' => $data['description']] : new stdClass(), JSON_UNESCAPED_UNICODE),
             ]);

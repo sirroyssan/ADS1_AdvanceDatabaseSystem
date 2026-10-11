@@ -24,7 +24,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('credit_card_payments', 'p')];
 $params = [];
 add_search_condition($state, ['p.reference_number', 'p.payment_channel', 'p.payment_type', 'c.card_nickname', 'c.last_four'], $where, $params);
 if ($state['filters']['card'] !== '') {
@@ -48,7 +48,7 @@ $result = run_list(
     $where,
     $params
 );
-$sum = db_value('SELECT COALESCE(SUM(p.amount), 0) FROM ' . $from . ($where ? ' WHERE ' . implode(' AND ', $where) : ''), $params);
+$sum = db_value('SELECT COALESCE(SUM(p.amount), 0) FROM ' . $from . ' WHERE ' . implode(' AND ', $where), $params);
 
 $pageTitle = 'Card Payments';
 $activeNav = 'card_payments';

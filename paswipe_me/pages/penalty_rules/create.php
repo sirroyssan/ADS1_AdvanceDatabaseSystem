@@ -19,7 +19,7 @@ if (is_post()) {
     if (!$errors) {
         try {
             $id = new_uuid();
-            db_insert('penalty_rules', ['id' => $id] + $data);
+            db_insert('penalty_rules', ['id' => $id] + $data + ['owner_user_id' => owner_id()]);
             log_activity('create', 'penalty_rule', $id, 'Created penalty rule "' . $data['name'] . '"', null, $data);
             flash('success', 'Penalty rule "' . $data['name'] . '" was added successfully.');
             redirect('pages/penalty_rules/view.php', ['id' => $id]);

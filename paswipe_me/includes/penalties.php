@@ -68,7 +68,8 @@ function obligation_card_issuer(array $o): ?string
 }
 
 /**
- * Active rules of the obligation's bank (issuer compared without case/spaces).
+ * Active rules of the obligation's bank (issuer compared without case/spaces),
+ * from the rules of the borrower's owner (every user keeps their own rules).
  */
 function penalty_rules_for_obligation(array $o): array
 {
@@ -81,7 +82,9 @@ function penalty_rules_for_obligation(array $o): array
         'SELECT r.*, GREATEST(COALESCE(r.effective_from, DATE(r.updated_at)), DATE(r.updated_at)) AS charges_from
            FROM penalty_rules r
           WHERE r.is_active = 1 AND r.applies_to_issuer IS NOT NULL
-          ORDER BY r.name'
+            AND r.owner_user_id = (SELECT b.owner_user_id FROM borrowers b WHERE b.id = :b)
+          ORDER BY r.name',
+        [':b' => $o['borrower_id']]
     );
 
     // Same bank list as the card's Issuer field; aliases match ("Unionbank" = "UnionBank").
@@ -261,7 +264,9 @@ function penalty_run_obligation(array $o, ?string $today = null): int
     db_update('borrower_obligations', ['overdue_amount' => number_format(obligation_overdue_amount($o, $today), 2, '.', '')], $o['id']);
 
     if ($created > 0) {
-        log_activity('auto_penalty', 'obligation', $o['id'], 'Charged ' . $created . ' automatic penalt' . ($created === 1 ? 'y' : 'ies') . ' on ' . $o['obligation_number']);
+        // Done by the daily job for the borrower's owner, so it shows in that owner's log.
+        log_activity('auto_penalty', 'obligation', $o['id'], 'Charged ' . $created . ' automatic penalt' . ($created === 1 ? 'y' : 'ies') . ' on ' . $o['obligation_number'],
+            null, null, (string) (db_value('SELECT owner_user_id FROM borrowers WHERE id = :b', [':b' => $o['borrower_id']]) ?: SYSTEM_ACTOR));
         notify_borrower($o['borrower_id'], 'penalty_charged', 'Late charge added: ' . $o['obligation_number'],
             'A late charge was added because ' . $o['obligation_number'] . ' is past due. Please pay as soon as possible.', 'obligation', $o['id']);
     }
@@ -299,6 +304,7 @@ function penalty_run_if_due(): void
     try {
         payment_selections_upgrade();
         statement_schema_upgrade();
+        multiuser_upgrade();
         schedule_sync_upgrade();
         obligation_refresh_overdue();
         schedule_refresh_statuses();
@@ -318,7 +324,7 @@ function penalty_run_if_due(): void
     try {
         [$checked, $created] = penalty_run_all($today);
         if ($created > 0) {
-            log_activity('penalty_run', 'system', null, 'Daily penalty check: ' . $created . ' new penalt' . ($created === 1 ? 'y' : 'ies') . ' on ' . $checked . ' open obligation(s)');
+            log_activity('penalty_run', 'system', null, 'Daily penalty check: ' . $created . ' new penalt' . ($created === 1 ? 'y' : 'ies') . ' on ' . $checked . ' open obligation(s)', null, null, SYSTEM_ACTOR);
         }
     } catch (Throwable $e) {
         @unlink($marker);
@@ -328,7 +334,7 @@ function penalty_run_if_due(): void
     try {
         $prepared = statement_prepare_all($today);
         if ($prepared > 0) {
-            log_activity('prepare_statements', 'system', null, 'Upcoming statements prepared or updated: ' . $prepared);
+            log_activity('prepare_statements', 'system', null, 'Upcoming statements prepared or updated: ' . $prepared, null, null, SYSTEM_ACTOR);
         }
     } catch (Throwable $e) {
         error_log('[' . APP_NAME . '] Statement preparation failed: ' . $e->getMessage());
@@ -554,7 +560,7 @@ function borrower_totals_sql(): string
 }
 
 /**
- * Grand totals across all borrowers (or one): outstanding, penalties, total_due.
+ * Grand totals across the signed-in user's borrowers (or one): outstanding, penalties, total_due.
  */
 function collection_totals(?string $borrowerId = null): array
 {
@@ -564,7 +570,7 @@ function collection_totals(?string $borrowerId = null): array
                 COALESCE(SUM(pen.penalties_charged), 0) AS penalties_charged,
                 COALESCE(SUM(pen.penalties_paid), 0) AS penalties_paid
            FROM borrower_obligations o " . penalty_totals_join() . "
-          WHERE o.status NOT IN ('cancelled', 'written_off')" . ($borrowerId ? ' AND o.borrower_id = :b' : ''),
+          WHERE o.status NOT IN ('cancelled', 'written_off') AND " . ($borrowerId ? 'o.borrower_id = :b' : owner_scope('borrower_obligations', 'o')),
         $borrowerId ? [':b' => $borrowerId] : []
     );
     $row['total_due'] = round((float) $row['outstanding'] + (float) $row['penalties'], 2);

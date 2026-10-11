@@ -10,7 +10,7 @@ $currentUser = require_admin();
 
 $fields = cash_loan_fields(true);
 $preset = input_string($_GET, 'credit_card_id');
-$data = form_defaults($fields, is_valid_uuid($preset) ? ['credit_card_id' => $preset] : []);
+$data = form_defaults($fields, owns('credit_cards', $preset) ? ['credit_card_id' => $preset] : []);
 $errors = [];
 
 if (is_post()) {

@@ -93,20 +93,20 @@ function borrower_options(?string $includeId = null, bool $activeOnly = true): a
 {
     $options = db_options(
         "SELECT id, CONCAT(last_name, ', ', first_name, ' (', borrower_number, ')') AS label
-           FROM borrowers " . ($activeOnly ? "WHERE status <> 'inactive' " : '') . 'ORDER BY last_name, first_name'
+           FROM borrowers b WHERE " . owner_scope('borrowers', 'b') . ($activeOnly ? " AND status <> 'inactive' " : ' ') . 'ORDER BY last_name, first_name'
     );
 
-    return keep_option($options, $includeId, "SELECT CONCAT(last_name, ', ', first_name, ' (', borrower_number, ')') FROM borrowers WHERE id = :id");
+    return keep_option($options, $includeId, "SELECT CONCAT(last_name, ', ', first_name, ' (', borrower_number, ')') FROM borrowers b WHERE id = :id AND " . owner_scope('borrowers', 'b'));
 }
 
 function credit_card_options(?string $includeId = null, bool $activeOnly = true): array
 {
     $options = db_options(
         "SELECT id, CONCAT(card_nickname, ' — ', issuer, ' •••• ', last_four) AS label
-           FROM credit_cards " . ($activeOnly ? "WHERE status = 'active' " : '') . 'ORDER BY card_nickname'
+           FROM credit_cards c WHERE " . owner_scope('credit_cards', 'c') . ($activeOnly ? " AND status = 'active' " : ' ') . 'ORDER BY card_nickname'
     );
 
-    return keep_option($options, $includeId, "SELECT CONCAT(card_nickname, ' — ', issuer, ' •••• ', last_four) FROM credit_cards WHERE id = :id");
+    return keep_option($options, $includeId, "SELECT CONCAT(card_nickname, ' — ', issuer, ' •••• ', last_four) FROM credit_cards c WHERE id = :id AND " . owner_scope('credit_cards', 'c'));
 }
 
 /**
@@ -145,8 +145,8 @@ function statement_options(): array
                 CONCAT(c.card_nickname, ' •••• ', c.last_four, ' — ', DATE_FORMAT(s.statement_date, '%b %e, %Y'),
                        IFNULL(CONCAT(' (#', s.statement_number, ')'), '')) AS label
            FROM credit_card_statements s JOIN credit_cards c ON c.id = s.credit_card_id
-          WHERE s.soa_recorded_at IS NOT NULL
-          ORDER BY s.statement_date DESC"
+          WHERE s.soa_recorded_at IS NOT NULL AND " . owner_scope('credit_card_statements', 's') . '
+          ORDER BY s.statement_date DESC'
     );
 
     $options = [];
@@ -163,10 +163,10 @@ function document_options(?string $includeId = null): array
 {
     $options = db_options(
         "SELECT id, CONCAT(original_filename, ' (', REPLACE(document_type, '_', ' '), ')') AS label
-           FROM documents WHERE is_deleted = 0 ORDER BY uploaded_at DESC"
+           FROM documents d WHERE is_deleted = 0 AND " . owner_scope('documents', 'd') . ' ORDER BY uploaded_at DESC'
     );
 
-    return keep_option($options, $includeId, 'SELECT original_filename FROM documents WHERE id = :id');
+    return keep_option($options, $includeId, 'SELECT original_filename FROM documents d WHERE id = :id AND ' . owner_scope('documents', 'd'));
 }
 
 /**
@@ -182,7 +182,7 @@ function payment_method_options(bool $ownerOnly = false, ?string $includeId = nu
                        IFNULL(CONCAT(' •••• ', pm.last_four), ''),
                        IF(pm.borrower_id IS NULL, ' (owner)', CONCAT(' (', b.first_name, ' ', b.last_name, ')'))) AS label
            FROM payment_methods pm LEFT JOIN borrowers b ON b.id = pm.borrower_id
-          WHERE (pm.is_active = 1 OR pm.id = :keep)" . ($ownerOnly ? ' AND pm.borrower_id IS NULL' : '') . '
+          WHERE (pm.is_active = 1 OR pm.id = :keep) AND " . owner_scope('payment_methods', 'pm') . ($ownerOnly ? ' AND pm.borrower_id IS NULL' : '') . '
           ORDER BY pm.display_name',
         [':keep' => $includeId ?? '']
     );
@@ -208,8 +208,8 @@ function transaction_options(?string $includeId = null): array
         "SELECT t.id, t.borrower_id,
                 CONCAT(t.transaction_number, ' — ', DATE_FORMAT(t.transaction_date, '%b %e, %Y'), ' — ₱', FORMAT(t.amount, 2)) AS label
            FROM transactions t
-          WHERE t.status <> 'cancelled' OR t.id = :keep
-          ORDER BY t.transaction_date DESC",
+          WHERE (t.status <> 'cancelled' OR t.id = :keep) AND " . owner_scope('transactions', 't') . '
+          ORDER BY t.transaction_date DESC',
         [':keep' => $includeId ?? '']
     );
 
@@ -234,9 +234,9 @@ function obligation_options(?string $includeId = null, bool $openOnly = false): 
         "SELECT o.id, o.borrower_id,
                 CONCAT(o.obligation_number, ' — outstanding ₱', FORMAT(o.outstanding_amount, 2)) AS label
            FROM borrower_obligations o
-          WHERE " . ($openOnly
+          WHERE (" . ($openOnly
             ? "(o.status NOT IN ('cancelled', 'paid', 'written_off') AND o.outstanding_amount > 0)"
-            : "o.status <> 'cancelled'") . ' OR o.id = :keep
+            : "o.status <> 'cancelled'") . ' OR o.id = :keep) AND ' . owner_scope('borrower_obligations', 'o') . '
           ORDER BY o.obligation_date DESC',
         [':keep' => $includeId ?? '']
     );
@@ -253,23 +253,23 @@ function obligation_options(?string $includeId = null, bool $openOnly = false): 
 
 function agreement_template_options(?string $includeId = null): array
 {
-    $options = db_options("SELECT id, CONCAT(name, ' (v', version, ')') FROM agreement_templates WHERE is_active = 1 ORDER BY name");
+    $options = db_options("SELECT id, CONCAT(name, ' (v', version, ')') FROM agreement_templates x WHERE is_active = 1 AND " . owner_scope('agreement_templates', 'x') . ' ORDER BY name');
 
-    return keep_option($options, $includeId, 'SELECT name FROM agreement_templates WHERE id = :id');
+    return keep_option($options, $includeId, 'SELECT name FROM agreement_templates x WHERE id = :id AND ' . owner_scope('agreement_templates', 'x'));
 }
 
 function letter_template_options(?string $includeId = null): array
 {
-    $options = db_options("SELECT id, CONCAT(name, ' (v', version, ')') FROM demand_letter_templates WHERE is_active = 1 ORDER BY name");
+    $options = db_options("SELECT id, CONCAT(name, ' (v', version, ')') FROM demand_letter_templates x WHERE is_active = 1 AND " . owner_scope('demand_letter_templates', 'x') . ' ORDER BY name');
 
-    return keep_option($options, $includeId, 'SELECT name FROM demand_letter_templates WHERE id = :id');
+    return keep_option($options, $includeId, 'SELECT name FROM demand_letter_templates x WHERE id = :id AND ' . owner_scope('demand_letter_templates', 'x'));
 }
 
 function penalty_rule_options(?string $includeId = null): array
 {
-    $options = db_options('SELECT id, name FROM penalty_rules WHERE is_active = 1 ORDER BY name');
+    $options = db_options('SELECT id, name FROM penalty_rules x WHERE is_active = 1 AND ' . owner_scope('penalty_rules', 'x') . ' ORDER BY name');
 
-    return keep_option($options, $includeId, 'SELECT name FROM penalty_rules WHERE id = :id');
+    return keep_option($options, $includeId, 'SELECT name FROM penalty_rules x WHERE id = :id AND ' . owner_scope('penalty_rules', 'x'));
 }
 
 /**
@@ -279,7 +279,8 @@ function penalty_rule_options(?string $includeId = null): array
 function belongs_to(string $table, string $id, string $column, ?string $parentId): bool
 {
     return (int) db_value(
-        'SELECT COUNT(*) FROM ' . db_identifier($table) . ' WHERE id = :id AND ' . db_identifier($column) . ' <=> :parent',
+        'SELECT COUNT(*) FROM ' . db_identifier($table) . ' r WHERE r.id = :id AND r.' . db_identifier($column) . ' <=> :parent'
+            . (isset(OWNERSHIP[$table]) ? ' AND ' . owner_scope($table, 'r') : ''),
         [':id' => $id, ':parent' => $parentId]
     ) === 1;
 }
@@ -409,7 +410,7 @@ function same_bank(?string $a, ?string $b): bool
 function bank_options(?string $current = null): array
 {
     $mine = [];
-    foreach (db_all("SELECT DISTINCT issuer FROM credit_cards WHERE TRIM(issuer) <> ''") as $row) {
+    foreach (db_all("SELECT DISTINCT issuer FROM credit_cards c WHERE TRIM(issuer) <> '' AND " . owner_scope('credit_cards', 'c')) as $row) {
         $mine[(string) bank_canonical($row['issuer'])] = true;
     }
 

@@ -25,7 +25,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('cash_loans', 'l')];
 $params = [];
 add_search_condition($state, ['l.loan_reference', 'l.offer_number', 'c.card_nickname', 'c.last_four'], $where, $params);
 foreach (['card' => 'l.credit_card_id', 'status' => 'l.status'] as $key => $column) {

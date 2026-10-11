@@ -7,7 +7,7 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/user_functions.php';
 
-$currentUser = require_admin();
+$currentUser = require_system_admin();
 
 if (!is_post()) {
     redirect('pages/users/index.php');

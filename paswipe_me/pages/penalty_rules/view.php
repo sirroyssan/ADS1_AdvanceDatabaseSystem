@@ -16,7 +16,7 @@ $applied = db_all(
        FROM applied_penalties ap
        JOIN borrower_obligations o ON o.id = ap.obligation_id
        JOIN borrowers b ON b.id = o.borrower_id
-      WHERE ap.penalty_rule_id = :id
+      WHERE ap.penalty_rule_id = :id AND ' . owner_scope('borrower_obligations', 'o') . '
       ORDER BY ap.applied_date DESC LIMIT 10',
     [':id' => $rule['id']]
 );

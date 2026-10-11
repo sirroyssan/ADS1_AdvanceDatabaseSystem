@@ -1,12 +1,15 @@
 <?php
 /**
- * Admin dashboard. Every number comes from a live query on the schema's
- * tables and reporting views - nothing here is sample data.
+ * Personal dashboard: the signed-in user's own cards, statements, payments,
+ * transactions, installments and borrowers. Every number comes from a live
+ * query scoped to that user (includes/ownership.php) - administrators see
+ * their own records here too, never other users'.
  */
 
 require_once __DIR__ . '/../includes/auth_check.php';
 
 $currentUser = require_admin();
+$isSystemAdmin = user_is_system_admin($currentUser);
 
 /**
  * Run a read-only dashboard query. Returns null (shown as "—") if it fails,
@@ -37,37 +40,48 @@ function stat_number(mixed $value): string
     return $value === null || $value === false ? '—' : format_number((float) $value);
 }
 
+/** Card number as shown everywhere on the dashboard (only the last four digits are stored). */
+function masked_card(string $lastFour): string
+{
+    return '•••• •••• •••• ' . $lastFour;
+}
+
+$myCards      = owned_cards_sql();
+$myBorrowers  = owned_borrowers_sql();
+$myTxn        = owner_scope('transactions', 't');
+$myObligation = owner_scope('borrower_obligations', 'o');
+
 $stats = [
-    'borrowers'          => dashboard_value('SELECT COUNT(*) FROM borrowers'),
-    'borrowers_good'     => dashboard_value("SELECT COUNT(*) FROM borrowers WHERE status = 'good_standing'"),
-    'borrowers_late'     => dashboard_value("SELECT COUNT(*) FROM borrowers WHERE status IN ('late', 'delinquent')"),
-    'cards_active'       => dashboard_value("SELECT COUNT(*) FROM credit_cards WHERE status = 'active'"),
-    'cards_total'        => dashboard_value('SELECT COUNT(*) FROM credit_cards'),
-    'cards_used'         => dashboard_value('SELECT COALESCE(SUM(outstanding), 0) FROM (' . card_utilization_sql() . ') v'),
-    'cards_limit'        => dashboard_value('SELECT COALESCE(SUM(credit_limit), 0) FROM (' . card_utilization_sql() . ') v'),
-    'transactions'       => dashboard_value('SELECT COUNT(*) FROM transactions'),
+    'borrowers'          => dashboard_value("SELECT COUNT(*) FROM borrowers WHERE id IN $myBorrowers"),
+    'borrowers_good'     => dashboard_value("SELECT COUNT(*) FROM borrowers WHERE id IN $myBorrowers AND status = 'good_standing'"),
+    'borrowers_late'     => dashboard_value("SELECT COUNT(*) FROM borrowers WHERE id IN $myBorrowers AND status IN ('late', 'delinquent')"),
+    'cards_used'         => dashboard_value("SELECT COALESCE(SUM(outstanding), 0) FROM (" . card_utilization_sql() . ") v WHERE v.id IN $myCards"),
+    'cards_limit'        => dashboard_value("SELECT COALESCE(SUM(credit_limit), 0) FROM credit_cards WHERE status = 'active' AND id IN $myCards"),
+    'transactions'       => dashboard_value("SELECT COUNT(*) FROM transactions t WHERE $myTxn"),
     'transactions_month' => dashboard_value(
-        "SELECT COUNT(*) FROM transactions
-          WHERE transaction_date >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')"
+        "SELECT COUNT(*) FROM transactions t
+          WHERE $myTxn AND t.transaction_date >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')"
     ),
-    'outstanding'        => dashboard_value(
-        "SELECT COALESCE(SUM(outstanding_amount), 0) FROM borrower_obligations
-          WHERE status NOT IN ('cancelled', 'paid', 'written_off')"
-    ),
-    'pending_payments'   => dashboard_value('SELECT COUNT(*) FROM vw_pending_payment_approvals'),
-    'overdue'            => dashboard_value('SELECT COUNT(*) FROM vw_overdue_obligations'),
-    'overdue_amount'     => dashboard_value('SELECT COALESCE(SUM(overdue_amount), 0) FROM vw_overdue_obligations'),
-    'users_total'        => dashboard_value('SELECT COUNT(*) FROM users'),
-    'users_active'       => dashboard_value("SELECT COUNT(*) FROM users WHERE status = 'active'"),
+    'pending_payments'   => dashboard_value("SELECT COUNT(*) FROM vw_pending_payment_approvals v
+                                              WHERE v.id IN (SELECT p.id FROM borrower_payments p WHERE p.borrower_id IN $myBorrowers)"),
+    'overdue'            => dashboard_value("SELECT COUNT(*) FROM vw_overdue_obligations WHERE borrower_id IN $myBorrowers"),
+    'overdue_amount'     => dashboard_value("SELECT COALESCE(SUM(overdue_amount), 0) FROM vw_overdue_obligations WHERE borrower_id IN $myBorrowers"),
     'categories_active'  => dashboard_value('SELECT COUNT(*) FROM categories WHERE is_active = 1'),
     'categories_inactive'=> dashboard_value('SELECT COUNT(*) FROM categories WHERE is_active = 0'),
 ];
+if ($isSystemAdmin) {
+    // Account counts only (no financial data): system administration.
+    $stats['users_total']  = dashboard_value('SELECT COUNT(*) FROM users');
+    $stats['users_active'] = dashboard_value("SELECT COUNT(*) FROM users WHERE status = 'active'");
+    $stats['unowned']      = array_sum(multiuser_unassigned_counts());
+}
 
 $pendingPayments = dashboard_rows(
-    'SELECT id, payment_number, first_name, last_name, payment_date, amount, display_name, status
-       FROM vw_pending_payment_approvals
+    "SELECT id, payment_number, first_name, last_name, payment_date, amount, display_name, status
+       FROM vw_pending_payment_approvals v
+      WHERE v.id IN (SELECT p.id FROM borrower_payments p WHERE p.borrower_id IN $myBorrowers)
       ORDER BY submitted_at ASC
-      LIMIT 5'
+      LIMIT 5"
 );
 
 // Outstanding + unpaid penalties = total to collect (includes/penalties.php).
@@ -78,24 +92,18 @@ try {
 }
 $borrowerBalances = dashboard_rows(
     'SELECT b.id, b.borrower_number, b.first_name, b.last_name, bt.outstanding, bt.penalties, bt.total_due
-       FROM (' . borrower_totals_sql() . ') bt JOIN borrowers b ON b.id = bt.borrower_id
-      WHERE bt.total_due > 0
+       FROM (' . borrower_totals_sql() . ") bt JOIN borrowers b ON b.id = bt.borrower_id
+      WHERE bt.total_due > 0 AND b.id IN $myBorrowers
       ORDER BY bt.total_due DESC
-      LIMIT 8'
+      LIMIT 8"
 );
 
 $overdueObligations = dashboard_rows(
-    'SELECT id, obligation_number, first_name, last_name, outstanding_amount, due_date, overdue_days
+    "SELECT id, obligation_number, first_name, last_name, outstanding_amount, due_date, overdue_days
        FROM vw_overdue_obligations
+      WHERE borrower_id IN $myBorrowers
       ORDER BY overdue_days DESC
-      LIMIT 5'
-);
-
-$cardUtilization = dashboard_rows(
-    'SELECT card_nickname, issuer, last_four, credit_limit, outstanding, available_credit, utilization_percentage
-       FROM (' . card_utilization_sql() . ') v
-      ORDER BY utilization_percentage DESC
-      LIMIT 5'
+      LIMIT 5"
 );
 
 $recentActivity = dashboard_rows(
@@ -103,6 +111,7 @@ $recentActivity = dashboard_rows(
             COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, u.email, 'System') AS actor
        FROM activity_logs a
        LEFT JOIN users u ON u.id = a.actor_user_id
+      WHERE " . activity_scope('a') . "
       ORDER BY a.created_at DESC
       LIMIT 8"
 );
@@ -113,10 +122,68 @@ $dueSoon = db_all(
     'SELECT s.id, s.cutoff_date, s.statement_date, s.due_date, s.total_amount_due, s.minimum_amount_due, c.card_nickname, c.issuer, c.last_four,
             COALESCE(sp.paid, 0) AS paid, ' . statement_remaining_sql() . ' AS remaining, ' . statement_status_sql() . ' AS pay_status
        FROM credit_card_statements s JOIN credit_cards c ON c.id = s.credit_card_id ' . statement_paid_join() . '
-      WHERE s.soa_recorded_at IS NOT NULL AND ' . statement_remaining_sql() . ' > 0.004 AND s.due_date <= CURDATE() + INTERVAL ' . STATEMENT_UPCOMING_DAYS . ' DAY
+      WHERE s.soa_recorded_at IS NOT NULL AND ' . owner_scope('credit_card_statements', 's') . ' AND ' . statement_remaining_sql() . ' > 0.004
+        AND s.due_date <= CURDATE() + INTERVAL ' . STATEMENT_UPCOMING_DAYS . ' DAY
       ORDER BY s.due_date
       LIMIT 10'
 );
+
+// My credit cards: limit, used and available credit, and the next payment due on a recorded SOA.
+$cards = dashboard_rows(
+    "SELECT cc.id, cc.card_nickname, cc.issuer, cc.network, cc.last_four, cc.status, cc.credit_limit,
+            COALESCE(cu.used, 0) AS used, cc.credit_limit - COALESCE(cu.used, 0) AS available,
+            IF(cc.credit_limit > 0, ROUND(COALESCE(cu.used, 0) / cc.credit_limit * 100, 2), 0) AS utilization,
+            (SELECT MIN(s.due_date) FROM credit_card_statements s " . statement_paid_join() . "
+              WHERE s.credit_card_id = cc.id AND " . statement_remaining_sql() . " > 0.004) AS next_due
+       FROM credit_cards cc " . card_usage_join() . "
+      WHERE cc.id IN $myCards
+      ORDER BY cc.status = 'active' DESC, cc.card_nickname"
+);
+
+$recentTransactions = dashboard_rows(
+    "SELECT t.id, t.transaction_number, t.transaction_date, t.amount, t.payment_type, t.status,
+            c.card_nickname, c.last_four, m.merchant_name, b.first_name, b.last_name
+       FROM transactions t
+       JOIN credit_cards c ON c.id = t.credit_card_id
+       LEFT JOIN merchants m ON m.id = t.merchant_id
+       LEFT JOIN borrowers b ON b.id = t.borrower_id
+      WHERE $myTxn
+      ORDER BY t.transaction_date DESC, t.created_at DESC
+      LIMIT 8"
+);
+
+// Installment overview: progress (paid of total), monthly amount, what is left and the next billing period.
+$installments = dashboard_rows(
+    "SELECT p.id, p.number_of_installments, p.installment_amount, p.total_repayment, p.status,
+            t.transaction_number, t.credit_card_id, m.merchant_name, c.card_nickname, c.last_four,
+            COALESCE(sc.paid_count, 0) AS paid_count, COALESCE(sc.remaining, 0) AS remaining, sc.next_due
+       FROM installment_plans p
+       JOIN transactions t ON t.id = p.transaction_id
+       JOIN credit_cards c ON c.id = t.credit_card_id
+       LEFT JOIN merchants m ON m.id = t.merchant_id
+       LEFT JOIN (SELECT installment_plan_id,
+                         SUM(status IN ('paid', 'waived') OR remaining_amount <= 0) AS paid_count,
+                         SUM(IF(status IN ('waived', 'cancelled'), 0, remaining_amount)) AS remaining,
+                         MIN(IF(remaining_amount > 0 AND status NOT IN ('paid', 'waived', 'cancelled'), due_date, NULL)) AS next_due
+                    FROM installment_schedules GROUP BY installment_plan_id) sc ON sc.installment_plan_id = p.id
+      WHERE t.credit_card_id IN $myCards AND p.status NOT IN ('cancelled', 'completed') AND COALESCE(sc.remaining, 0) > 0
+      ORDER BY sc.next_due IS NULL, sc.next_due
+      LIMIT 10"
+);
+// Billing period (statement month) of each next installment, from the card's cutoff day.
+$cardContext = [];
+foreach ($installments as &$plan) {
+    $plan['next_period'] = null;
+    if ($plan['next_due']) {
+        try {
+            $ctx = $cardContext[$plan['credit_card_id']] ??= card_period_context(db_row('SELECT * FROM credit_cards WHERE id = :id', [':id' => $plan['credit_card_id']]));
+            $plan['next_period'] = statement_month_label(card_period_containing($ctx, $plan['next_due'])['end']);
+        } catch (Throwable $e) {
+            $plan['next_period'] = null;   // card without billing settings: shown as the due date only
+        }
+    }
+}
+unset($plan);
 
 $pageTitle  = 'Dashboard';
 $activeNav  = 'dashboard';
@@ -126,25 +193,36 @@ require APP_ROOT . '/includes/header.php';
 <section class="page-header">
     <div>
         <h2 class="page-header__title">Welcome, <?= e(user_display_name($currentUser)) ?></h2>
-        <p class="page-header__subtitle">Overview of <?= e(APP_NAME) ?> as of <?= e(date('F j, Y g:i A')) ?>.</p>
+        <p class="page-header__subtitle">Your cards and records as of <?= e(date('F j, Y g:i A')) ?>. Only you can see them.</p>
+    </div>
+    <div class="page-header__actions no-print">
+        <a data-modal-form class="btn btn--primary" href="<?= e(url('pages/credit_cards/create.php')) ?>"><?= icon('plus') ?> <span>Add credit card</span></a>
     </div>
 </section>
 
+<?php if ($isSystemAdmin && !empty($stats['unowned'])): ?>
+    <div class="alert alert--warning"><?= icon('alert') ?><span><?= e($stats['unowned']) ?> record(s) from before multi-user accounts need their owner confirmed.
+        <a href="<?= e(url('pages/users/ownership.php')) ?>">Review ownership</a></span></div>
+<?php endif; ?>
+
 <section class="panel pay-summary" aria-labelledby="card-pay-title">
     <header class="panel__header">
-        <h3 id="card-pay-title"><?= icon('credit-card') ?> Credit card payments</h3>
+        <h3 id="card-pay-title"><?= icon('credit-card') ?> My credit cards and payments</h3>
         <a class="btn btn--sm btn--outline" href="<?= e(url('pages/statements/index.php')) ?>">Statements</a>
     </header>
     <div class="pay-cards">
         <?php
+        $limit = (float) $stats['cards_limit'];
         $payCards = [
-            ['Registered credit cards', $cardPay['cards'], $cardPay['active_cards'] . ' active', url('pages/credit_cards/index.php'), 'primary', 'credit-card'],
-            ['Pending payments', $cardPay['unpaid'], 'statements to pay on ' . $cardPay['unpaid_cards'] . ' card(s) · ' . $cardPay['pending'] . ' with nothing paid yet', url('pages/statements/index.php', ['status' => 'unpaid']), 'warning', 'history'],
-            ['Partially paid statements', $cardPay['partial'], 'payment recorded, balance left', url('pages/statements/index.php', ['status' => 'partially_paid']), 'info', 'wallet'],
-            ['Total outstanding statement balance', format_money($cardPay['outstanding']), 'left to pay on recorded SOAs', url('pages/statements/index.php', ['status' => 'unpaid', 'sort' => 'amount']), 'primary', 'banknote'],
-            ['Upcoming payments', $cardPay['upcoming'], 'due in the next ' . STATEMENT_UPCOMING_DAYS . ' days', url('pages/statements/index.php', ['status' => 'upcoming']), 'warning', 'calendar'],
-            ['SOA to record', $cardPay['awaiting_soa'], 'closed periods prepared, bank SOA not entered yet', url('pages/statements/index.php'), 'info', 'file-text'],
-            ['Overdue payments', $cardPay['overdue'], $cardPay['overdue'] ? format_money($cardPay['overdue_amount']) . ' on ' . $cardPay['overdue_cards'] . ' card(s)' : 'nothing overdue', url('pages/statements/index.php', ['status' => 'overdue']), 'danger', 'alert'],
+            ['My credit cards', $cardPay['cards'], $cardPay['active_cards'] . ' active', url('pages/credit_cards/index.php'), 'primary', 'credit-card'],
+            ['Total credit limit', format_money($stats['cards_limit']), 'on active cards', url('pages/reports/card_utilization.php'), 'primary', 'chart'],
+            ['Total outstanding balance', format_money($stats['cards_used']), 'used credit (' . number_format($limit > 0 ? (float) $stats['cards_used'] / $limit * 100 : 0, 2) . '% of limit) · ' . format_money($cardPay['outstanding']) . ' left on SOAs', url('pages/reports/card_utilization.php'), 'primary', 'banknote'],
+            ['Pending SOAs', $cardPay['awaiting_soa'], 'closed periods, bank SOA not entered yet', url('pages/statements/index.php'), 'info', 'file-text'],
+            ['Pending payments', $cardPay['pending'], 'SOAs with nothing paid yet · ' . $cardPay['unpaid'] . ' unpaid on ' . $cardPay['unpaid_cards'] . ' card(s)', url('pages/statements/index.php', ['status' => 'unpaid']), 'warning', 'history'],
+            ['Partially paid', $cardPay['partial'], 'payment recorded, balance left', url('pages/statements/index.php', ['status' => 'partially_paid']), 'info', 'wallet'],
+            ['Upcoming', $cardPay['upcoming'], 'due in the next ' . STATEMENT_UPCOMING_DAYS . ' days', url('pages/statements/index.php', ['status' => 'upcoming']), 'warning', 'calendar'],
+            ['Overdue', $cardPay['overdue'], $cardPay['overdue'] ? format_money($cardPay['overdue_amount']) . ' on ' . $cardPay['overdue_cards'] . ' card(s)' : 'nothing overdue', url('pages/statements/index.php', ['status' => 'overdue']), 'danger', 'alert'],
+            ['Total minimum due', format_money($cardPay['minimum_due']), 'still needed to cover the minimums of unpaid SOAs', url('pages/statements/index.php', ['status' => 'unpaid']), 'warning', 'receipt'],
         ];
         foreach ($payCards as [$label, $value, $meta, $href, $tone, $iconName]): ?>
             <a class="pay-card pay-card--<?= e($tone) ?>" href="<?= e($href) ?>">
@@ -163,6 +241,99 @@ require APP_ROOT . '/includes/header.php';
     <?php endif; ?>
 </section>
 
+<section class="panel" aria-labelledby="my-cards-title">
+    <header class="panel__header">
+        <h3 id="my-cards-title"><?= icon('credit-card') ?> My credit cards</h3>
+        <a class="btn btn--sm btn--outline" href="<?= e(url('pages/credit_cards/index.php')) ?>">View all</a>
+    </header>
+    <?php if (!$cards): ?>
+        <p class="empty-inline">You have not added a credit card yet. <a data-modal-form href="<?= e(url('pages/credit_cards/create.php')) ?>">Add your first card</a> to start tracking statements and payments.</p>
+    <?php else: ?>
+        <div class="table-wrap">
+            <table class="table table--cards table--compact">
+                <thead><tr><th scope="col">Card</th><th scope="col">Card number</th><th scope="col" class="num">Credit limit</th><th scope="col" class="num">Used</th>
+                    <th scope="col" class="num">Available</th><th scope="col">Utilization</th><th scope="col">Next due</th><th scope="col">Status</th></tr></thead>
+                <tbody>
+                <?php foreach ($cards as $card): ?>
+                    <?php $pct = max(0, min(100, (float) $card['utilization'])); ?>
+                    <tr>
+                        <td data-label="Card"><a data-modal-form class="table-link" href="<?= e(url('pages/credit_cards/view.php', ['id' => $card['id']])) ?>"><?= e($card['card_nickname']) ?></a>
+                            <span class="text-muted"><?= e($card['issuer']) ?></span></td>
+                        <td data-label="Card number"><span class="mono"><?= e(masked_card($card['last_four'])) ?></span></td>
+                        <td data-label="Credit limit" class="num"><?= e(format_money($card['credit_limit'])) ?></td>
+                        <td data-label="Used" class="num"><?= e(format_money($card['used'])) ?></td>
+                        <td data-label="Available" class="num"><?= e(format_money($card['available'])) ?></td>
+                        <td data-label="Utilization"><progress class="meter" max="100" value="<?= e($pct) ?>"><?= e($pct) ?>%</progress> <span class="text-muted"><?= e(number_format((float) $card['utilization'], 2)) ?>%</span></td>
+                        <td data-label="Next due"><?= $card['next_due'] ? e(format_date($card['next_due'])) : '<span class="text-muted">—</span>' ?></td>
+                        <td data-label="Status"><?= badge($card['status']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+</section>
+
+<div class="panel-grid">
+    <section class="panel" aria-labelledby="recent-txn-title">
+        <header class="panel__header">
+            <h3 id="recent-txn-title"><?= icon('layers') ?> Recent transactions</h3>
+            <a class="btn btn--sm btn--outline" href="<?= e(url('pages/transactions/index.php')) ?>">View all</a>
+        </header>
+        <?php if (!$recentTransactions): ?>
+            <p class="empty-inline">No transactions yet.</p>
+        <?php else: ?>
+            <div class="table-wrap">
+                <table class="table table--cards table--compact">
+                    <thead><tr><th scope="col">Date</th><th scope="col">Merchant</th><th scope="col">Card</th><th scope="col">For</th><th scope="col" class="num">Amount</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($recentTransactions as $row): ?>
+                        <tr>
+                            <td data-label="Date"><?= e(format_date($row['transaction_date'])) ?></td>
+                            <td data-label="Merchant"><a data-modal-form class="table-link" href="<?= e(url('pages/transactions/view.php', ['id' => $row['id']])) ?>"><?= e($row['merchant_name'] ?: $row['transaction_number']) ?></a>
+                                <span class="text-muted"><?= e(humanize($row['payment_type'])) ?></span></td>
+                            <td data-label="Card"><?= e($row['card_nickname']) ?> <span class="text-muted">•••• <?= e($row['last_four']) ?></span></td>
+                            <td data-label="For"><?= $row['first_name'] ? e(borrower_name($row)) : '<span class="text-muted">Me</span>' ?></td>
+                            <td data-label="Amount" class="num"><?= e(format_money($row['amount'])) ?></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </section>
+
+    <section class="panel" aria-labelledby="installments-title">
+        <header class="panel__header">
+            <h3 id="installments-title"><?= icon('repeat') ?> Installment overview</h3>
+            <a class="btn btn--sm btn--outline" href="<?= e(url('pages/installment_plans/index.php')) ?>">View all</a>
+        </header>
+        <?php if (!$installments): ?>
+            <p class="empty-inline">No installment plans running.</p>
+        <?php else: ?>
+            <div class="table-wrap">
+                <table class="table table--cards table--compact">
+                    <thead><tr><th scope="col">Purchase</th><th scope="col">Progress</th><th scope="col" class="num">Monthly</th><th scope="col" class="num">Remaining</th><th scope="col">Next billing</th></tr></thead>
+                    <tbody>
+                    <?php foreach ($installments as $plan): ?>
+                        <?php $count = max(1, (int) $plan['number_of_installments']); ?>
+                        <tr>
+                            <td data-label="Purchase"><a data-modal-form class="table-link" href="<?= e(url('pages/installment_plans/view.php', ['id' => $plan['id']])) ?>"><?= e($plan['merchant_name'] ?: $plan['transaction_number']) ?></a>
+                                <span class="text-muted"><?= e($plan['card_nickname']) ?> •••• <?= e($plan['last_four']) ?></span></td>
+                            <td data-label="Progress"><strong><?= e((int) $plan['paid_count'] . '/' . $count) ?></strong>
+                                <progress class="meter" max="<?= e($count) ?>" value="<?= e((int) $plan['paid_count']) ?>"><?= e((int) $plan['paid_count']) ?> of <?= e($count) ?></progress></td>
+                            <td data-label="Monthly" class="num"><?= e(format_money($plan['installment_amount'])) ?></td>
+                            <td data-label="Remaining" class="num"><?= e(format_money($plan['remaining'])) ?></td>
+                            <td data-label="Next billing"><?= $plan['next_period'] ? e($plan['next_period']) . '<br>' : '' ?><span class="text-muted"><?= $plan['next_due'] ? 'due ' . e(format_date($plan['next_due'])) : '—' ?></span></td>
+                        </tr>
+                    <?php endforeach; ?>
+                    </tbody>
+                </table>
+            </div>
+        <?php endif; ?>
+    </section>
+</div>
+
 <section class="stat-grid" aria-label="Summary statistics">
     <article class="stat-card">
         <div class="stat-card__icon stat-card__icon--primary"><?= icon('users') ?></div>
@@ -173,16 +344,6 @@ require APP_ROOT . '/includes/header.php';
                 <?= e(stat_number($stats['borrowers_good'])) ?> in good standing ·
                 <?= e(stat_number($stats['borrowers_late'])) ?> late/delinquent
             </p>
-        </div>
-    </article>
-
-    <article class="stat-card">
-        <div class="stat-card__icon stat-card__icon--info"><?= icon('credit-card') ?></div>
-        <div>
-            <p class="stat-card__label"><a href="<?= e(url('pages/credit_cards/index.php')) ?>">Active credit cards</a></p>
-            <p class="stat-card__value"><?= e(stat_number($stats['cards_active'])) ?></p>
-            <p class="stat-card__meta"><?= e(format_money($stats['cards_used'])) ?> used of <?= e(format_money($stats['cards_limit'])) ?>
-                (<?= e(number_format((float) $stats['cards_limit'] > 0 ? (float) $stats['cards_used'] / (float) $stats['cards_limit'] * 100 : 0, 2)) ?>%)</p>
         </div>
     </article>
 
@@ -224,6 +385,7 @@ require APP_ROOT . '/includes/header.php';
         </div>
     </article>
 
+    <?php if ($isSystemAdmin): ?>
     <article class="stat-card">
         <div class="stat-card__icon stat-card__icon--info"><?= icon('shield') ?></div>
         <div>
@@ -232,6 +394,7 @@ require APP_ROOT . '/includes/header.php';
             <p class="stat-card__meta"><?= e(stat_number($stats['users_active'])) ?> active</p>
         </div>
     </article>
+    <?php endif; ?>
 
     <article class="stat-card">
         <div class="stat-card__icon stat-card__icon--success"><?= icon('tag') ?></div>
@@ -266,7 +429,7 @@ require APP_ROOT . '/includes/header.php';
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
-                <tfoot><tr><td>All borrowers</td><td class="num"><?= e(format_money($collect['outstanding'])) ?></td><td class="num"><?= e(format_money($collect['penalties'])) ?></td><td class="num"><strong><?= e(format_money($collect['total_due'])) ?></strong></td></tr></tfoot>
+                <tfoot><tr><td>All my borrowers</td><td class="num"><?= e(format_money($collect['outstanding'])) ?></td><td class="num"><?= e(format_money($collect['penalties'])) ?></td><td class="num"><strong><?= e(format_money($collect['total_due'])) ?></strong></td></tr></tfoot>
             </table>
         </div>
     <?php endif; ?>
@@ -328,30 +491,6 @@ require APP_ROOT . '/includes/header.php';
                     </tbody>
                 </table>
             </div>
-        <?php endif; ?>
-    </section>
-
-    <section class="panel" aria-labelledby="cards-title">
-        <header class="panel__header">
-            <h3 id="cards-title"><?= icon('credit-card') ?> Credit card utilization</h3>
-            <a class="btn btn--sm btn--outline" href="<?= e(url('pages/reports/card_utilization.php')) ?>">View report</a>
-        </header>
-        <?php if (!$cardUtilization): ?>
-            <p class="empty-inline">No active credit cards.</p>
-        <?php else: ?>
-            <ul class="usage-list">
-                <?php foreach ($cardUtilization as $card): ?>
-                    <?php $pct = max(0, min(100, (float) $card['utilization_percentage'])); ?>
-                    <li>
-                        <div class="usage-list__head">
-                            <span><strong><?= e($card['card_nickname']) ?></strong> · <?= e($card['issuer']) ?> •••• <?= e($card['last_four']) ?></span>
-                            <span><?= e(number_format((float) $card['utilization_percentage'], 2)) ?>%</span>
-                        </div>
-                        <progress class="meter" max="100" value="<?= e($pct) ?>"><?= e($pct) ?>%</progress>
-                        <p class="usage-list__meta"><?= e(format_money($card['outstanding'])) ?> used of <?= e(format_money($card['credit_limit'])) ?> · <?= e(format_money($card['available_credit'])) ?> available</p>
-                    </li>
-                <?php endforeach; ?>
-            </ul>
         <?php endif; ?>
     </section>
 

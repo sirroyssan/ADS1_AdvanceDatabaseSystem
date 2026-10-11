@@ -48,7 +48,7 @@ function document_find(string $id): ?array
     $doc = db_row(
         "SELECT d.*, COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) AS uploaded_by_name
            FROM documents d LEFT JOIN users u ON u.id = d.uploaded_by
-          WHERE d.id = :id",
+          WHERE d.id = :id AND " . owner_scope('documents', 'd'),
         [':id' => $id]
     );
 

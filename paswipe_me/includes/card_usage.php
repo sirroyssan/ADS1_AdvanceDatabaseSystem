@@ -209,7 +209,7 @@ function card_usage(string $cardId): array
 function card_usage_sync(array $cardIds): void
 {
     foreach (array_unique(array_filter($cardIds)) as $cardId) {
-        $card = db_row('SELECT id, credit_limit, available_credit FROM credit_cards WHERE id = :id', [':id' => $cardId]);
+        $card = db_row('SELECT id, owner_user_id, credit_limit, available_credit FROM credit_cards WHERE id = :id', [':id' => $cardId]);
         if (!$card) {
             continue;
         }
@@ -220,7 +220,7 @@ function card_usage_sync(array $cardIds): void
             db_update('credit_cards', ['available_credit' => $stored], $cardId);
             log_activity('credit_recalc', 'credit_card', $cardId,
                 'Available credit recalculated: used ' . format_money($usage['used']) . ' of ' . format_money($usage['credit_limit']),
-                ['available_credit' => $card['available_credit']], ['available_credit' => $stored]);
+                ['available_credit' => $card['available_credit']], ['available_credit' => $stored], $card['owner_user_id']);
         }
     }
 }
@@ -302,7 +302,7 @@ function card_set_opening_balance(string $cardId, string $amount, ?string $date 
 function card_usage_ensure_opening_balances(): void
 {
     $cards = db_all(
-        'SELECT cc.id, cc.credit_limit, cc.available_credit, cc.opening_date FROM credit_cards cc
+        'SELECT cc.id, cc.owner_user_id, cc.credit_limit, cc.available_credit, cc.opening_date FROM credit_cards cc
           WHERE NOT EXISTS (SELECT 1 FROM bank_charges b WHERE b.credit_card_id = cc.id AND b.charge_type = :t)',
         [':t' => OPENING_BALANCE_TYPE]
     );
@@ -312,7 +312,7 @@ function card_usage_ensure_opening_balances(): void
             $typedUsed = (float) $card['credit_limit'] - (float) $card['available_credit'];
             $opening = max(0, round($typedUsed - card_usage($card['id'])['used'], 2));
             card_set_opening_balance($card['id'], number_format($opening, 2, '.', ''), $card['opening_date']);
-            log_activity('opening_balance', 'credit_card', $card['id'], 'Opening balance set to ' . format_money($opening) . ' from the card\'s stored available credit');
+            log_activity('opening_balance', 'credit_card', $card['id'], 'Opening balance set to ' . format_money($opening) . ' from the card\'s stored available credit', null, null, $card['owner_user_id']);
         });
     }
 }

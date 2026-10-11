@@ -8,7 +8,7 @@ require_once __DIR__ . '/bank_charge_functions.php';
 
 $currentUser = require_admin();
 
-$typeOptions = db_options('SELECT DISTINCT charge_type, charge_type FROM bank_charges ORDER BY charge_type');
+$typeOptions = db_options('SELECT DISTINCT b.charge_type, b.charge_type FROM bank_charges b WHERE ' . owner_scope('bank_charges', 'b') . ' ORDER BY b.charge_type');
 
 $state = list_state([
     'path'    => 'pages/bank_charges/index.php',
@@ -27,7 +27,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('bank_charges', 'b')];
 $params = [];
 add_search_condition($state, ['b.charge_type', 'b.description', 'b.reference_number', 'c.card_nickname'], $where, $params);
 if ($state['filters']['card'] !== '') {
@@ -49,7 +49,7 @@ if ($state['filters']['to'] !== '') {
 
 $from = 'bank_charges b JOIN credit_cards c ON c.id = b.credit_card_id';
 $result = run_list($state, 'b.id, b.charge_date, b.charge_type, b.description, b.amount, b.reference_number, c.card_nickname, c.last_four', $from, $where, $params);
-$sum = db_value('SELECT COALESCE(SUM(b.amount), 0) FROM ' . $from . ($where ? ' WHERE ' . implode(' AND ', $where) : ''), $params);
+$sum = db_value('SELECT COALESCE(SUM(b.amount), 0) FROM ' . $from . ' WHERE ' . implode(' AND ', $where), $params);
 
 $pageTitle = 'Bank Charges';
 $activeNav = 'bank_charges';

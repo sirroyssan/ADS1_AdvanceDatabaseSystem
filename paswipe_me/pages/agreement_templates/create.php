@@ -19,7 +19,7 @@ if (is_post()) {
     if (!$errors) {
         try {
             $id = new_uuid();
-            db_insert('agreement_templates', ['id' => $id] + $data);
+            db_insert('agreement_templates', ['id' => $id] + $data + ['owner_user_id' => owner_id()]);
             log_activity('create', 'agreement_template', $id, 'Created agreement template "' . $data['name'] . '"');
             flash('success', 'Template "' . $data['name'] . '" was added successfully.');
             redirect('pages/agreement_templates/view.php', ['id' => $id]);

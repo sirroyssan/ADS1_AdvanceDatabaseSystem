@@ -34,7 +34,6 @@ $payments = db_all(
 );
 $methods = db_all('SELECT id, display_name, method_type, is_active FROM payment_methods WHERE borrower_id = :id ORDER BY display_name', [':id' => $id]);
 $usage = borrower_usage($id);
-$linkable = $account ? [] : linkable_borrower_users();
 
 $related = url('pages/borrowers/related.php');
 
@@ -97,30 +96,38 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel">
             <header class="panel__header"><h3>Sign-in account</h3></header>
             <?php if ($account): ?>
-                <p><?= related_link($account['user_id'], $account['email'], 'pages/users/view.php') ?> <?= badge($account['status']) ?></p>
+                <p><?= user_is_system_admin($currentUser) ? related_link($account['user_id'], $account['email'], 'pages/users/view.php') : e($account['email']) ?> <?= badge($account['status']) ?></p>
                 <p class="field-help">Linked <?= e(format_datetime($account['activated_at'])) ?></p>
                 <div class="action-bar no-print">
                     <?= post_button($related, ['id' => $id, 'action' => 'unlink_account', 'item_id' => $account['id']], 'Unlink account', 'x', 'btn btn--outline btn--sm',
                         'Unlink this sign-in account from the borrower? The user account itself is kept.', false, 'Unlink account?') ?>
                 </div>
-            <?php elseif ($linkable): ?>
-                <form method="post" action="<?= e($related) ?>" class="status-form no-print">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="id" value="<?= e($id) ?>">
-                    <input type="hidden" name="action" value="link_account">
-                    <div class="form-group">
-                        <label for="link_user">User with Borrower role</label>
-                        <select id="link_user" name="user_id" required>
-                            <option value="">Select account</option>
-                            <?php foreach ($linkable as $userId => $label): ?>
-                                <option value="<?= e($userId) ?>"><?= e($label) ?></option>
-                            <?php endforeach; ?>
-                        </select>
-                    </div>
-                    <button type="submit" class="btn btn--primary" data-loading-text="Linking…"><?= icon('check') ?> <span class="btn__label">Link</span></button>
-                </form>
             <?php else: ?>
-                <p class="field-help">No sign-in account. Create a user with the Borrower role in <a data-modal-form href="<?= e(url('pages/users/create.php')) ?>">Users &amp; Roles</a>, then link it here.</p>
+                <p class="field-help">No sign-in account yet. Give the borrower a login for the borrower portal, or link the borrower account they already have.</p>
+                <details class="no-print" open>
+                    <summary>Create sign-in account</summary>
+                    <form method="post" action="<?= e($related) ?>" class="status-form">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="id" value="<?= e($id) ?>">
+                        <input type="hidden" name="action" value="create_account">
+                        <?= render_fields([
+                            'email'            => ['label' => 'Email', 'type' => 'email', 'max' => 255, 'required' => true],
+                            'password'         => ['label' => 'Password', 'type' => 'password', 'max' => 255, 'required' => true, 'help' => 'At least ' . PASSWORD_MIN_LENGTH . ' characters, with a letter and a number.'],
+                            'password_confirm' => ['label' => 'Confirm password', 'type' => 'password', 'max' => 255, 'required' => true],
+                        ], ['email' => $borrower['primary_email'] ?? ''], []) ?>
+                        <button type="submit" class="btn btn--primary" data-loading-text="Creating…"><?= icon('plus') ?> <span class="btn__label">Create account</span></button>
+                    </form>
+                </details>
+                <details class="no-print">
+                    <summary>Link existing account</summary>
+                    <form method="post" action="<?= e($related) ?>" class="status-form">
+                        <?= csrf_field() ?>
+                        <input type="hidden" name="id" value="<?= e($id) ?>">
+                        <input type="hidden" name="action" value="link_account">
+                        <?= render_fields(['email' => ['label' => 'Email of the borrower\'s account', 'type' => 'email', 'max' => 255, 'required' => true]], [], []) ?>
+                        <button type="submit" class="btn btn--outline" data-loading-text="Linking…"><?= icon('check') ?> <span class="btn__label">Link</span></button>
+                    </form>
+                </details>
             <?php endif; ?>
         </section>
 

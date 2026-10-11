@@ -10,7 +10,7 @@ $currentUser = require_admin();
 
 $fields = notification_fields();
 $preset = input_string($_GET, 'user_id');
-$data = form_defaults($fields, is_valid_uuid($preset) ? ['user_id' => $preset] : []);
+$data = form_defaults($fields, isset($fields['user_id']['options'][$preset]) ? ['user_id' => $preset] : []);
 $errors = [];
 
 if (is_post()) {

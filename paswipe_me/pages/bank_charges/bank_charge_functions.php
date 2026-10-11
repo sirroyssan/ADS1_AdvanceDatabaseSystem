@@ -45,7 +45,7 @@ function bank_charge_find(string $id): ?array
            FROM bank_charges b
            JOIN credit_cards c ON c.id = b.credit_card_id
            LEFT JOIN credit_card_statements s ON s.id = b.statement_id
-          WHERE b.id = :id',
+          WHERE b.id = :id AND ' . owner_scope('bank_charges', 'b'),
         [':id' => $id]
     );
 }

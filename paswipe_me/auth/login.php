@@ -138,16 +138,7 @@ if (is_post()) {
                 $reset->execute([':id' => $user['id']]);
 
                 // --- Create session (new id prevents session fixation) ------
-                session_regenerate_id(true);
-                $_SESSION['user_id']       = $user['id'];
-                $_SESSION['username']      = $user['username'];
-                $_SESSION['email']         = $user['email'];
-                $_SESSION['display_name']  = user_display_name($user);
-                $_SESSION['user_roles']    = $roles;
-                $_SESSION['user_role']     = $roles[0];
-                $_SESSION['login_at']      = time();
-                $_SESSION['last_activity'] = time();
-                $_SESSION['csrf_token']    = bin2hex(random_bytes(32));
+                sign_in_user($user, $roles);
 
                 log_activity('login', 'user', $user['id'], 'Signed in as ' . $roles[0]);
 
@@ -243,6 +234,8 @@ $flashes = take_flash_messages();
                 <span class="btn__label">Sign in</span>
             </button>
         </form>
+
+        <p class="auth-card__switch">New to <?= e(APP_NAME) ?>? <a href="<?= e(url('auth/register.php')) ?>">Create an account</a></p>
 
         <footer class="auth-card__footer">
             &copy; <?= date('Y') ?> <?= e(APP_NAME) ?>. All Rights Reserved.

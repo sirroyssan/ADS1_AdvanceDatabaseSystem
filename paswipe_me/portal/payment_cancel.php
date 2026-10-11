@@ -24,7 +24,7 @@ try {
         }
         db_update('borrower_payments', ['status' => 'cancelled'], $payment['id']);
         payment_log(['id' => $payment['id'], 'status' => $status], 'cancelled', 'cancelled', 'Cancelled by the borrower in the portal', $currentUser['id']);
-        notify_admins('payment_cancelled', 'Payment cancelled: ' . $payment['payment_number'],
+        notify_lender($borrower['id'], 'payment_cancelled', 'Payment cancelled: ' . $payment['payment_number'],
             borrower_name($borrower) . ' cancelled payment ' . $payment['payment_number'] . ' of ' . format_money($payment['amount']) . '.',
             'borrower_payment', $payment['id']);
         return true;

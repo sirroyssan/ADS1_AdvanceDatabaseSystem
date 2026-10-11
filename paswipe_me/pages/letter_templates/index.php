@@ -21,7 +21,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('demand_letter_templates', 't')];
 $params = [];
 add_search_condition($state, ['t.name', 't.version', 't.template_body'], $where, $params);
 if ($state['filters']['status'] !== '') {

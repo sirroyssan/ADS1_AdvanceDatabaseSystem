@@ -25,7 +25,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('cash_advances', 'a')];
 $params = [];
 add_search_condition($state, ['a.reference_number', 'a.channel', 'c.card_nickname', 'c.last_four'], $where, $params);
 foreach (['card' => 'a.credit_card_id', 'status' => 'a.status'] as $key => $column) {
@@ -46,7 +46,7 @@ if ($state['filters']['to'] !== '') {
 $from = 'cash_advances a JOIN credit_cards c ON c.id = a.credit_card_id';
 $result = run_list($state, 'a.id, a.advance_date, a.reference_number, a.channel, a.amount, a.fee, a.interest, a.total_amount, a.status, c.card_nickname, c.last_four', $from, $where, $params);
 $totals = db_row("SELECT COALESCE(SUM(IF(a.status <> 'cancelled', a.amount, 0)), 0) AS amount, COALESCE(SUM(IF(a.status <> 'cancelled', a.total_amount, 0)), 0) AS total FROM "
-    . $from . ($where ? ' WHERE ' . implode(' AND ', $where) : ''), $params);
+    . $from . ' WHERE ' . implode(' AND ', $where), $params);
 
 $pageTitle = 'Cash Advances';
 $activeNav = 'cash_advances';

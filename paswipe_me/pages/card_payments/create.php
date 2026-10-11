@@ -10,9 +10,9 @@ $currentUser = require_admin();
 
 $fields = card_payment_fields();
 $preset = [];
-foreach (['credit_card_id', 'statement_id'] as $key) {
+foreach (['credit_card_id' => 'credit_cards', 'statement_id' => 'credit_card_statements'] as $key => $table) {
     $value = input_string($_GET, $key);
-    if (is_valid_uuid($value)) {
+    if (owns($table, $value)) {
         $preset[$key] = $value;
     }
 }

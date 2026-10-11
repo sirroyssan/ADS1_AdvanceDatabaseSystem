@@ -194,6 +194,23 @@ function require_admin(): array
 }
 
 /**
+ * System administrator (the admin role only): manages user accounts and
+ * system settings. It gives no access to other users' financial records -
+ * those are scoped to their owner (includes/ownership.php) for everyone.
+ */
+function require_system_admin(): array
+{
+    require_admin();
+
+    return require_role(['admin']);
+}
+
+function user_is_system_admin(?array $user): bool
+{
+    return $user !== null && in_array('admin', $user['roles'], true);
+}
+
+/**
  * The Owner role (the card owner). Some actions, like overriding a payment
  * amount, are reserved for owners - administrators cannot do them.
  */
@@ -205,4 +222,45 @@ function user_is_owner(?array $user): bool
 function user_is_admin(?array $user): bool
 {
     return $user !== null && (bool) array_intersect(ADMIN_ROLES, $user['roles']);
+}
+
+const PASSWORD_MIN_LENGTH = 8;
+
+/**
+ * Password rules for registration, password changes and new accounts.
+ * Returns [field => message] (empty when the password is acceptable).
+ */
+function password_policy_errors(string $password, string $confirm, string $field = 'password', string $confirmField = 'password_confirm'): array
+{
+    if (strlen($password) < PASSWORD_MIN_LENGTH) {
+        return [$field => 'Password must be at least ' . PASSWORD_MIN_LENGTH . ' characters.'];
+    }
+    if (strlen($password) > 255) {
+        return [$field => 'Password is too long.'];
+    }
+    if (!preg_match('/[A-Za-z]/', $password) || !preg_match('/[0-9]/', $password)) {
+        return [$field => 'Use at least one letter and one number.'];
+    }
+    if (!hash_equals($password, $confirm)) {
+        return [$confirmField => 'Passwords do not match.'];
+    }
+
+    return [];
+}
+
+/**
+ * Start a signed-in session for a user (new session id against fixation).
+ */
+function sign_in_user(array $user, array $roles): void
+{
+    session_regenerate_id(true);
+    $_SESSION['user_id']       = $user['id'];
+    $_SESSION['username']      = $user['username'] ?? null;
+    $_SESSION['email']         = $user['email'];
+    $_SESSION['display_name']  = user_display_name($user);
+    $_SESSION['user_roles']    = $roles;
+    $_SESSION['user_role']     = $roles[0];
+    $_SESSION['login_at']      = time();
+    $_SESSION['last_activity'] = time();
+    $_SESSION['csrf_token']    = bin2hex(random_bytes(32));
 }

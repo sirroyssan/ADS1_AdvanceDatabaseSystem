@@ -18,7 +18,7 @@ if (is_post()) {
     );
     if ($count) {
         log_activity('acknowledge', 'demand_letter', $letter['id'], 'Borrower acknowledged ' . $letter['letter_number']);
-        notify_admins('letter_acknowledged', 'Notice acknowledged: ' . $letter['letter_number'],
+        notify_lender($borrower['id'], 'letter_acknowledged', 'Notice acknowledged: ' . $letter['letter_number'],
             borrower_name($borrower) . ' acknowledged notice ' . $letter['letter_number'] . '.', 'demand_letter', $letter['id']);
         flash('success', 'Thank you. The owner can see that you received this notice.');
     }

@@ -11,7 +11,7 @@ $id = request_id();
 $log = find_or_redirect($id === '' ? null : db_row(
     "SELECT a.*, COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, u.email) AS actor
        FROM activity_logs a LEFT JOIN users u ON u.id = a.actor_user_id
-      WHERE a.id = :id",
+      WHERE a.id = :id AND " . activity_scope('a'),
     [':id' => $id]
 ), 'pages/activity_logs/index.php', 'Log entry');
 
@@ -55,7 +55,7 @@ require APP_ROOT . '/includes/header.php';
 <section class="panel">
     <?= render_details([
         'When'        => e(format_datetime($log['created_at'])),
-        'User'        => $log['actor_user_id'] ? related_link($log['actor_user_id'], $log['actor'], 'pages/users/view.php') : 'System / anonymous',
+        'User'        => $log['actor_user_id'] && user_is_system_admin($currentUser) ? related_link($log['actor_user_id'], $log['actor'], 'pages/users/view.php') : e($log['actor'] ?? 'System / anonymous'),
         'Action'      => e($log['action']),
         'Record type' => e($log['entity_type']),
         'Record id'   => $log['entity_id'] ? '<code>' . e($log['entity_id']) . '</code>' : '',

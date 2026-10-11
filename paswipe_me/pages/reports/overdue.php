@@ -23,7 +23,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = ['v.borrower_id IN ' . owned_borrowers_sql()];   // the signed-in user's records only
 $params = [];
 add_search_condition($state, ['v.obligation_number', 'v.borrower_number', 'v.first_name', 'v.last_name'], $where, $params);
 if ($state['filters']['borrower'] !== '') {

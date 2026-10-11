@@ -9,8 +9,6 @@ require_once __DIR__ . '/../../includes/auth_check.php';
 $currentUser = require_role(array_merge(ADMIN_ROLES, ['borrower']));
 $layout = user_is_admin($currentUser) ? 'admin' : 'portal';
 
-const PROFILE_MIN_PASSWORD = 8;
-
 $errors = [];
 
 if (is_post()) {
@@ -27,15 +25,10 @@ if (is_post()) {
     } elseif (!password_verify($current, $hash)) {
         $errors['current_password'] = 'Your current password is incorrect.';
     }
-    if (strlen($new) < PROFILE_MIN_PASSWORD) {
-        $errors['new_password'] = 'New password must be at least ' . PROFILE_MIN_PASSWORD . ' characters.';
-    } elseif (strlen($new) > 255) {
-        $errors['new_password'] = 'New password is too long.';
-    } elseif ($current !== '' && hash_equals($current, $new)) {
+    if ($current !== '' && $new !== '' && hash_equals($current, $new)) {
         $errors['new_password'] = 'Choose a password different from the current one.';
-    }
-    if (!isset($errors['new_password']) && !hash_equals($new, $confirm)) {
-        $errors['confirm_password'] = 'Passwords do not match.';
+    } else {
+        $errors += password_policy_errors($new, $confirm, 'new_password', 'confirm_password');
     }
 
     if (!$errors) {
@@ -50,7 +43,7 @@ if (is_post()) {
 
 $fields = [
     'current_password' => ['label' => 'Current password', 'type' => 'password', 'max' => 255, 'required' => true, 'full' => true],
-    'new_password'     => ['label' => 'New password', 'type' => 'password', 'max' => 255, 'required' => true, 'help' => 'At least ' . PROFILE_MIN_PASSWORD . ' characters.'],
+    'new_password'     => ['label' => 'New password', 'type' => 'password', 'max' => 255, 'required' => true, 'help' => 'At least ' . PASSWORD_MIN_LENGTH . ' characters, with a letter and a number.'],
     'confirm_password' => ['label' => 'Confirm new password', 'type' => 'password', 'max' => 255, 'required' => true],
 ];
 

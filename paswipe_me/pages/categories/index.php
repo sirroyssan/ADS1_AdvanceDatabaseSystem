@@ -99,7 +99,8 @@ $listStmt = db()->prepare(
             p.name AS parent_name,
             (SELECT COUNT(*) FROM categories ch WHERE ch.parent_id = c.id) AS children_count,
             (SELECT COUNT(*) FROM merchants m WHERE m.category_id = c.id) AS merchant_count,
-            (SELECT COUNT(*) FROM transactions t WHERE t.category_id = c.id) AS transaction_count
+            (SELECT COUNT(*) FROM transactions t WHERE t.category_id = c.id AND ' . owner_scope('transactions', 't') . ') AS transaction_count,
+            EXISTS (SELECT 1 FROM transactions ta WHERE ta.category_id = c.id) AS in_use
      ' . $fromSql . '
      ORDER BY ' . $sortOptions[$sort]['sql'] . '
      ' . $limitSql
@@ -291,7 +292,7 @@ require APP_ROOT . '/includes/header.php';
                             <div class="row-actions">
                                 <a data-modal-form href="<?= e($viewUrl) ?>" class="icon-button" title="View" aria-label="View <?= e($row['name']) ?>"><?= icon('eye') ?></a>
                                 <a data-modal-form href="<?= e(url('pages/categories/edit.php', ['id' => $row['id']])) ?>" class="icon-button" title="Edit" aria-label="Edit <?= e($row['name']) ?>"><?= icon('edit') ?></a>
-                                <?php if ($usageTotal > 0): ?>
+                                <?php if ($usageTotal > 0 || (int) $row['in_use'] === 1): ?>
                                     <a href="<?= e(url('pages/categories/delete.php', ['id' => $row['id']])) ?>" class="icon-button icon-button--danger"
                                        title="In use – delete options" aria-label="Delete options for <?= e($row['name']) ?>"><?= icon('trash') ?></a>
                                 <?php else: ?>

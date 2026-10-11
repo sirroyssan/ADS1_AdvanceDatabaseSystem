@@ -14,9 +14,9 @@ $state = list_state([
     'title'   => 'Activity Logs',
     'search'  => 'Search description, record id or IP address…',
     'filters' => [
-        'action' => ['label' => 'Action', 'type' => 'select', 'options' => db_options('SELECT DISTINCT action, action FROM activity_logs ORDER BY action'), 'all' => 'All actions'],
-        'entity' => ['label' => 'Record type', 'type' => 'select', 'options' => db_options('SELECT DISTINCT entity_type, entity_type FROM activity_logs ORDER BY entity_type'), 'all' => 'All record types'],
-        'actor'  => ['label' => 'User', 'type' => 'select', 'options' => all_user_options(), 'all' => 'All users'],
+        'action' => ['label' => 'Action', 'type' => 'select', 'options' => db_options('SELECT DISTINCT action, action FROM activity_logs a WHERE ' . activity_scope('a') . ' ORDER BY action'), 'all' => 'All actions'],
+        'entity' => ['label' => 'Record type', 'type' => 'select', 'options' => db_options('SELECT DISTINCT entity_type, entity_type FROM activity_logs a WHERE ' . activity_scope('a') . ' ORDER BY entity_type'), 'all' => 'All record types'],
+        'actor'  => ['label' => 'User', 'type' => 'select', 'options' => user_is_system_admin($currentUser) ? all_user_options() : db_options("SELECT id, CONCAT(COALESCE(NULLIF(TRIM(CONCAT_WS(' ', first_name, last_name)), ''), username, email), ' <', email, '>') AS label FROM users WHERE id = " . owner_sql() . ' OR id IN ' . owned_borrower_users_sql() . ' ORDER BY label'), 'all' => 'All users'],
         'from'   => ['label' => 'From', 'type' => 'date'],
         'to'     => ['label' => 'To', 'type' => 'date'],
     ],
@@ -26,7 +26,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [activity_scope('a')];
 $params = [];
 add_search_condition($state, ['a.description', 'a.entity_id', 'a.ip_address'], $where, $params);
 foreach (['action' => 'a.action', 'entity' => 'a.entity_type', 'actor' => 'a.actor_user_id'] as $key => $column) {
@@ -59,7 +59,7 @@ require APP_ROOT . '/includes/header.php';
 ?>
 
 <?= render_print_header($state, $result['total'], $result['pager']) ?>
-<?= render_list_header($state, 'Who did what and when. This audit trail is read-only.', null) ?>
+<?= render_list_header($state, 'What you and your borrowers did, and when. This audit trail is read-only.', null) ?>
 <?= render_list_toolbar($state) ?>
 
 <section class="panel panel--flush" aria-label="Activity list">

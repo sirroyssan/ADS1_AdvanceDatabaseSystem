@@ -78,20 +78,50 @@ try {
             break;
 
         case 'link_account':
-            $userId = input_string($_POST, 'user_id');
-            if (!array_key_exists($userId, linkable_borrower_users())) {
-                flash('error', 'Choose a user with the Borrower role that is not linked yet.');
-                break;
-            }
+        case 'create_account':
             if (db_value('SELECT COUNT(*) FROM borrower_user_accounts WHERE borrower_id = :b', [':b' => $borrower['id']]) > 0) {
                 flash('error', 'This borrower already has a linked account.');
                 break;
             }
-            db_insert('borrower_user_accounts', [
-                'id' => new_uuid(), 'user_id' => $userId, 'borrower_id' => $borrower['id'], 'activated_at' => date('Y-m-d H:i:s'),
-            ]);
-            log_activity('link_account', 'borrower', $borrower['id'], 'Linked sign-in account', null, ['user_id' => $userId]);
-            flash('success', 'Sign-in account was linked.');
+            $email = mb_strtolower(input_string($_POST, 'email'));
+            if (!filter_var($email, FILTER_VALIDATE_EMAIL) || mb_strlen($email) > 255) {
+                flash('error', 'Enter a valid email address.');
+                break;
+            }
+            if ($action === 'link_account') {
+                $userId = linkable_borrower_user($email);
+                if ($userId === null) {
+                    flash('error', 'No borrower sign-in account with that email is waiting to be linked. Create a new one instead.');
+                    break;
+                }
+            } else {
+                $password = is_string($_POST['password'] ?? null) ? $_POST['password'] : '';
+                $problems = password_policy_errors($password, is_string($_POST['password_confirm'] ?? null) ? $_POST['password_confirm'] : '');
+                if ($problems) {
+                    flash('error', 'Account not created: ' . reset($problems));
+                    break;
+                }
+                if (db_value('SELECT COUNT(*) FROM users WHERE LOWER(email) = :e', [':e' => $email]) > 0) {
+                    flash('error', 'An account with this email already exists. Use "Link existing account" if it is this borrower\'s.');
+                    break;
+                }
+                $userId = new_uuid();
+            }
+            db_transaction(function () use ($action, $userId, $email, $borrower) {
+                if ($action === 'create_account') {
+                    db_insert('users', [
+                        'id' => $userId, 'email' => $email, 'first_name' => $borrower['first_name'], 'last_name' => $borrower['last_name'],
+                        'status' => 'active', 'password_hash' => password_hash((string) $_POST['password'], PASSWORD_DEFAULT),
+                    ]);
+                    db_insert('user_roles', ['id' => new_uuid(), 'user_id' => $userId, 'role' => 'borrower']);
+                    log_activity('create', 'user', $userId, 'Created borrower sign-in account ' . $email, null, ['email' => $email, 'roles' => ['borrower']]);
+                }
+                db_insert('borrower_user_accounts', [
+                    'id' => new_uuid(), 'user_id' => $userId, 'borrower_id' => $borrower['id'], 'activated_at' => date('Y-m-d H:i:s'),
+                ]);
+            });
+            log_activity('link_account', 'borrower', $borrower['id'], 'Linked sign-in account ' . $email, null, ['user_id' => $userId]);
+            flash('success', $action === 'create_account' ? 'Sign-in account created. The borrower can now sign in with ' . $email . '.' : 'Sign-in account was linked.');
             break;
 
         case 'unlink_account':

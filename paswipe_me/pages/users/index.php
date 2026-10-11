@@ -6,7 +6,7 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/user_functions.php';
 
-$currentUser = require_admin();
+$currentUser = require_system_admin();
 
 $state = list_state([
     'path'    => 'pages/users/index.php',
@@ -50,7 +50,12 @@ require APP_ROOT . '/includes/header.php';
 ?>
 
 <?= render_print_header($state, $result['total'], $result['pager']) ?>
-<?= render_list_header($state, 'Accounts that can sign in, and the roles they hold.', url('pages/users/create.php'), 'Add User') ?>
+<?= render_list_header($state, 'Accounts that can sign in, and the roles they hold. Administrators manage accounts only; each user\'s cards and records stay private to that user.', url('pages/users/create.php'), 'Add User') ?>
+<?php $unowned = array_sum(multiuser_unassigned_counts()); ?>
+<?php if ($unowned > 0): ?>
+    <div class="alert alert--warning no-print"><?= icon('alert') ?><span><?= e($unowned) ?> record(s) from before multi-user accounts still need their owner confirmed.
+        <a href="<?= e(url('pages/users/ownership.php')) ?>">Review ownership</a></span></div>
+<?php endif; ?>
 <?= render_list_toolbar($state) ?>
 
 <section class="panel panel--flush" aria-label="User list">

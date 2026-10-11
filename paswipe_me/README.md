@@ -872,6 +872,83 @@ Every Edit button (list row pencil icons, detail page "Edit", Transaction → ed
 
 **View buttons in the modal:** every View (eye icons, record links in lists, the dashboard, reports and the borrower portal) opens the record in the shared modal. The record's own actions (Edit, Pay, Approve, …) appear at the top of the modal; Back and Print stay on the full page. Add, Edit and View now all use the modal.
 
+## Multi-user accounts — every record belongs to one user (`includes/ownership.php`)
+
+Anyone can register (**auth/register.php**, linked from the sign-in page) and manage their own
+credit cards, statements, payments, transactions, installments, cash loans, cash advances, borrowers
+and documents. Nobody sees anyone else's records — **administrators included**.
+
+**Accounts and sign-in**
+- Registration: first/last name, unique email (case-insensitive), optional unique username,
+  password of 8+ characters with a letter and a number, stored only as `password_hash()`.
+  New accounts get the **Owner** role and are signed in with a new session id; at most 10
+  registrations per hour from one IP address.
+- Sign-in, lockout, idle timeout, logout, profile and password change work as before; the password
+  rules are shared (`password_policy_errors()`) by registration, password change and user forms.
+- Roles: **Owner** = manages their own records (every registered user). **Administrator** = also
+  manages accounts (Users & Roles, Ownership review) — but still sees only their own financial
+  records. **Borrower** = portal account of a borrower.
+
+**How ownership is enforced (server side, every request)**
+| Records | Owner comes from |
+|---|---|
+| credit cards | `credit_cards.owner_user_id` (always the signed-in user on create; no form can change it) |
+| transactions, bank charges, cash advances, cash loans, card payments, statements, billing cycles, statement items | their card |
+| installment plans and schedules, cash loan schedules/allocations | their transaction / loan |
+| borrowers, penalty rules, agreement and letter templates, documents | their own `owner_user_id` (new column) |
+| obligations, borrower payments, agreements, demand letters | their borrower |
+| payment methods | `owner_user_id` (receiving accounts) or their borrower |
+
+- `owner_scope($table, $alias)` is added to every finder (`*_find()`), list page, total, report,
+  dashboard query and dropdown (`includes/lookups.php`). A select value outside the user's own list
+  is rejected by validation, and every id taken from the URL or a hidden field is checked with
+  `owns()` / `require_owned()`. Another user's id behaves exactly like a missing record
+  ("… not found"), and the attempt is written to the activity log (`access_denied`).
+- Merchants and categories stay shared name lists; their counts and totals show only your own
+  transactions (a delete is still blocked when anyone uses them, without saying whose).
+- Automatic penalties use only the rules of the borrower's owner; portal notices go only to the
+  borrower's owner (`notify_lender()`); background jobs log under the record's owner or as System.
+- Activity logs: your own entries and your borrowers' portal entries; administrators also see
+  account and security events (sign-ins, accounts, system jobs) — never other users' finances.
+- Borrower portal accounts act inside their lender's records (`owner_id()` returns the lender), and
+  the portal keeps narrowing everything to the borrower's own records as before.
+- Borrower sign-in accounts are created from the borrower page (**Create sign-in account**) or linked
+  by exact email (**Link existing account**). The old list of every unlinked borrower account in the
+  system is gone.
+- Future shared cards: only `owned_cards_sql()` has to be widened (e.g. a `credit_card_shares`
+  table); every module reads card ownership through it. Sharing is **not** implemented.
+
+**Personal dashboard** — nine summary cards (My credit cards, Total credit limit, Total outstanding
+balance, Pending SOAs, Pending payments, Partially paid, Upcoming, Overdue, Total minimum due), then
+Upcoming and overdue payments, My credit cards (masked `•••• •••• •••• 1234`, limit, used,
+available, utilization, next due), Recent transactions and Installment overview (progress such as
+3/24, monthly amount, remaining, next billing period from the card's cutoff day). User counts and
+the ownership notice appear for administrators only.
+
+**Migration of existing data** (automatic, once, `includes/multiuser.php` + `db/upgrade_multiuser.sql`)
+1. A full backup of every table is written first to `storage/backups/before_multiuser_<date>.sql`
+   (web access denied; restore with `mysql pa_swipe_ako < file`).
+2. `owner_user_id` (NULL allowed, FK to `users`, indexed) is added to borrowers, penalty_rules,
+   agreement_templates, demand_letter_templates and documents. Nothing is deleted or overwritten.
+3. Each existing record gets the owner its links prove: a borrower → the owner of the cards their
+   transactions/obligations/loans are on; rules and templates → the owner of the borrowers they were
+   used for; documents → the owner of the record they are attached to; receiving payment methods →
+   the owner of the payments that used them. With no link: the owner/administrator who created it,
+   else — only when all cards have one owner (the single-user system) — that owner.
+4. When the links point to two different users, or there is nothing to go on, the record is **not
+   guessed**: it stays without owner (visible to nobody) and is listed on
+   **Users & Roles → Ownership review**, where an administrator assigns it. Only records still
+   without an owner can be assigned there.
+
+**Schema change (reported):** `owner_user_id CHAR(36) NULL` + foreign key + index on the five tables
+above (`db/upgrade_multiuser.sql`, idempotent). No other table or column was changed.
+
+**Tested:** registration (weak password, duplicate email, success), two users with their own card,
+transaction, SOA, partial payment and 24-month installment (dashboard totals match their own data
+only), 221 view/edit/delete/download requests with other users' ids (all refused, nothing changed),
+forged form values (another user's card/borrower/owner id rejected), users pages and ownership review
+blocked for non-administrators, logout, borrower portal, and the Add/Edit/View modal suites.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |

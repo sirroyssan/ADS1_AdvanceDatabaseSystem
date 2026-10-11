@@ -53,7 +53,7 @@ function cash_advance_find(string $id): ?array
            FROM cash_advances a
            JOIN credit_cards c ON c.id = a.credit_card_id
            LEFT JOIN credit_card_statements s ON s.id = a.statement_id
-          WHERE a.id = :id',
+          WHERE a.id = :id AND ' . owner_scope('cash_advances', 'a'),
         [':id' => $id]
     );
 }

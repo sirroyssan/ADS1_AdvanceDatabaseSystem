@@ -20,7 +20,7 @@ try {
         db_value('SELECT id FROM merchants WHERE id = :id FOR UPDATE', [':id' => $merchant['id']]);
         $usage = merchant_usage($merchant['id']);
         if ($usage['total'] > 0) {
-            throw new DomainException('This merchant cannot be deleted because it is used by ' . usage_text($usage) . '.');
+            throw new DomainException('This merchant cannot be deleted because it is used by ' . merchant_usage_text($usage) . '.');
         }
         db_exec('DELETE FROM merchants WHERE id = :id', [':id' => $merchant['id']]);
     });

@@ -63,7 +63,7 @@ require APP_ROOT . '/includes/header.php';
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/borrower_payments/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
-        <?php if (user_is_owner($currentUser) && $payment['status'] !== 'cancelled'): ?>
+        <?php if (user_is_admin($currentUser) && $payment['status'] !== 'cancelled'): ?>
             <button type="button" class="btn btn--outline" data-toggle-panel="override-amount"><?= icon('lock') ?> <span>Override amount</span></button>
         <?php endif; ?>
         <?php if (in_array($payment['status'], PAYMENT_EDITABLE_STATUSES, true)): ?>
@@ -72,7 +72,7 @@ require APP_ROOT . '/includes/header.php';
     </div>
 </section>
 
-<?php if (user_is_owner($currentUser) && $payment['status'] !== 'cancelled'): ?>
+<?php if (user_is_admin($currentUser) && $payment['status'] !== 'cancelled'): ?>
     <form method="post" action="<?= e(url('pages/borrower_payments/override.php')) ?>" class="inline-panel no-print" id="override-amount" hidden novalidate data-validate>
         <?= csrf_field() ?>
         <input type="hidden" name="id" value="<?= e($id) ?>">

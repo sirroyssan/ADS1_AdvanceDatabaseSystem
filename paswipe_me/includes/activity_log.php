@@ -6,6 +6,9 @@
 
 defined('APP_ROOT') or exit('No direct access.');
 
+/** Actor of entries written by background jobs (stored as NULL, shown as "System"). */
+const SYSTEM_ACTOR = '';
+
 /**
  * @param string      $action     e.g. login, logout, create, update, delete
  * @param string      $entityType e.g. user, category
@@ -21,6 +24,8 @@ function log_activity(
     ?string $actorUserId = null
 ): void {
     $actorUserId ??= $_SESSION['user_id'] ?? null;
+    // SYSTEM_ACTOR: background jobs, which act for no particular user.
+    $actorUserId = $actorUserId === SYSTEM_ACTOR ? null : $actorUserId;
 
     try {
         $stmt = db()->prepare(

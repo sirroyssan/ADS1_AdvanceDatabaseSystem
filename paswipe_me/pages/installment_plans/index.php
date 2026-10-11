@@ -24,7 +24,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('installment_plans', 'p')];
 $params = [];
 add_search_condition($state, ['t.transaction_number', 'b.first_name', 'b.last_name'], $where, $params);
 foreach (['status' => 'p.status', 'frequency' => 'p.frequency', 'card' => 't.credit_card_id'] as $key => $column) {

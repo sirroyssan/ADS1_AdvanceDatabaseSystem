@@ -118,6 +118,7 @@ if (is_post()) {
 
                 if ($stored) {
                     db_insert('documents', ['id' => $documentId, 'document_type' => 'payment_proof'] + $stored + [
+                        'owner_user_id' => $borrower['owner_user_id'],   // the lender who reviews it
                         'uploaded_by' => $currentUser['id'],
                         'metadata'    => json_encode(['description' => 'Proof for payment ' . $number, 'source' => 'borrower_portal'], JSON_UNESCAPED_UNICODE),
                     ]);
@@ -127,7 +128,8 @@ if (is_post()) {
                 }
 
                 $who = borrower_name($borrower);
-                notify_admins(
+                notify_lender(
+                    $borrower['id'],
                     'payment_submitted',
                     ($payment ? 'Payment corrected: ' : 'New payment: ') . $number,
                     $who . ($payment ? ' updated payment ' : ' submitted payment ') . $number . ' of ' . format_money($data['amount'])

@@ -375,7 +375,7 @@ function schedule_sync_upgrade(): void
         }
     });
     if ($changed > 0) {
-        log_activity('schedule_sync', 'system', null, 'Upgrade: ' . $changed . ' installment schedule(s) re-derived from borrower payments (Pay button removed)');
+        log_activity('schedule_sync', 'system', null, 'Upgrade: ' . $changed . ' installment schedule(s) re-derived from borrower payments (Pay button removed)', null, null, SYSTEM_ACTOR);
     }
     @file_put_contents($marker, date('c'), LOCK_EX);
 }

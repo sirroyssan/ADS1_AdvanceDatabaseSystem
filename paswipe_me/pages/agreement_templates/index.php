@@ -21,7 +21,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('agreement_templates', 't')];
 $params = [];
 add_search_condition($state, ['t.name', 't.version', 't.description', 't.template_body'], $where, $params);
 if ($state['filters']['status'] !== '') {

@@ -21,7 +21,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = ['v.id IN ' . owned_cards_sql()];   // the signed-in user's records only
 $params = [];
 add_search_condition($state, ['v.card_nickname', 'v.issuer', 'v.last_four'], $where, $params);
 $levels = ['high' => 'v.utilization_percentage >= 70', 'medium' => 'v.utilization_percentage >= 30 AND v.utilization_percentage < 70', 'low' => 'v.utilization_percentage < 30'];

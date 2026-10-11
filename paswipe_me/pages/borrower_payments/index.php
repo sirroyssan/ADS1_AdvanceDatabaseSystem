@@ -26,7 +26,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('borrower_payments', 'p')];
 $params = [];
 add_search_condition($state, ['p.payment_number', 'p.reference_number', 'b.first_name', 'b.last_name', 'b.borrower_number'], $where, $params);
 if ($state['filters']['status'] === 'pending') {

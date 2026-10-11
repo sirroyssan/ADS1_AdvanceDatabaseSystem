@@ -82,7 +82,7 @@ function penalty_rule_validate(array $fields, array $input, ?string $id = null):
 
 function penalty_rule_find(string $id): ?array
 {
-    return is_valid_uuid($id) ? db_row('SELECT * FROM penalty_rules WHERE id = :id', [':id' => $id]) : null;
+    return is_valid_uuid($id) ? db_row('SELECT * FROM penalty_rules r WHERE r.id = :id AND ' . owner_scope('penalty_rules', 'r'), [':id' => $id]) : null;
 }
 
 function penalty_rule_usage(string $id): array

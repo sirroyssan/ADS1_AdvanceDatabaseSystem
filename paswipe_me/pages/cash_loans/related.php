@@ -109,7 +109,7 @@ try {
         case 'create_obligation':
             $result = db_transaction(function () use ($loan, $itemId, $currentUser) {
                 $allocation = db_row('SELECT * FROM cash_loan_allocations WHERE id = :i AND cash_loan_id = :l FOR UPDATE', [':i' => $itemId, ':l' => $loan['id']]);
-                if (!$allocation || !$allocation['borrower_id'] || $allocation['obligation_id']) {
+                if (!$allocation || !owns('borrowers', $allocation['borrower_id']) || $allocation['obligation_id']) {
                     return null;
                 }
                 $obligationId = new_uuid();

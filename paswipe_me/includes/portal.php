@@ -86,8 +86,8 @@ function portal_can_see_document(string $documentId, string $borrowerId): bool
 }
 
 /**
- * Payment methods a borrower can pay with: their own accounts and the
- * owner's receiving accounts (active only, plus the current one).
+ * Payment methods a borrower can pay with: their own accounts and their
+ * lender's receiving accounts (active only, plus the current one).
  *
  * @return array<string, string>
  */
@@ -95,10 +95,10 @@ function portal_payment_method_options(string $borrowerId, ?string $current = nu
 {
     $rows = db_all(
         'SELECT id, display_name, method_type, masked_account_number, borrower_id FROM payment_methods
-          WHERE (borrower_id = :b OR (borrower_id IS NULL AND owner_user_id IS NOT NULL))
+          WHERE (borrower_id = :b OR (borrower_id IS NULL AND owner_user_id = (SELECT ob.owner_user_id FROM borrowers ob WHERE ob.id = :b2)))
             AND (is_active = 1 OR id = :c)
           ORDER BY borrower_id IS NULL, display_name',
-        [':b' => $borrowerId, ':c' => $current ?? '']
+        [':b' => $borrowerId, ':b2' => $borrowerId, ':c' => $current ?? '']
     );
 
     $options = [];
@@ -130,16 +130,17 @@ function notify_user(string $userId, string $type, string $title, string $messag
 }
 
 /**
- * Notify every active owner/administrator.
+ * Notify the lender who records this borrower (the borrower's owner) - never
+ * other users: each user hears only about their own borrowers.
  */
-function notify_admins(string $type, string $title, string $message, ?string $entityType = null, ?string $entityId = null): void
+function notify_lender(string $borrowerId, string $type, string $title, string $message, ?string $entityType = null, ?string $entityId = null): void
 {
-    $admins = db_all(
-        "SELECT DISTINCT u.id FROM users u JOIN user_roles r ON r.user_id = u.id
-          WHERE r.role IN (" . sql_in_list(ADMIN_ROLES) . ") AND u.status = 'active'"
+    $ownerId = db_value(
+        "SELECT u.id FROM borrowers b JOIN users u ON u.id = b.owner_user_id WHERE b.id = :b AND u.status = 'active'",
+        [':b' => $borrowerId]
     );
-    foreach ($admins as $admin) {
-        notify_user($admin['id'], $type, $title, $message, $entityType, $entityId);
+    if ($ownerId) {
+        notify_user($ownerId, $type, $title, $message, $entityType, $entityId);
     }
 }
 

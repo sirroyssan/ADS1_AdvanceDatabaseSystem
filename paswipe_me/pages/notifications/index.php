@@ -1,6 +1,6 @@
 <?php
 /**
- * Notifications - list (all users, or only mine), search, filter, print.
+ * Notifications - list (mine and my borrowers', or only mine), search, filter, print.
  */
 
 require_once __DIR__ . '/../../includes/auth_check.php';
@@ -13,7 +13,7 @@ $state = list_state([
     'title'   => 'Notifications',
     'search'  => 'Search title, message or type…',
     'filters' => [
-        'mine'    => ['label' => 'Recipient', 'type' => 'select', 'options' => ['mine' => 'Only mine', 'unread' => 'My unread'] + all_user_options(), 'all' => 'All recipients'],
+        'mine'    => ['label' => 'Recipient', 'type' => 'select', 'options' => ['mine' => 'Only mine', 'unread' => 'My unread'] + notification_recipient_options(), 'all' => 'All recipients'],
         'status'  => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_NOTIFY_STATUS), 'all' => 'All statuses'],
         'channel' => ['label' => 'Channel', 'type' => 'select', 'options' => enum_options(ENUM_NOTIFY_CHANNEL), 'all' => 'All channels'],
     ],
@@ -23,7 +23,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [notification_scope('n')];
 $params = [];
 add_search_condition($state, ['n.title', 'n.message', 'n.notification_type'], $where, $params);
 $mine = $state['filters']['mine'];

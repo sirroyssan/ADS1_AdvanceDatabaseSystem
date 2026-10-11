@@ -67,7 +67,7 @@ function transaction_find(string $id): ?array
            LEFT JOIN categories cat ON cat.id = t.category_id
            LEFT JOIN borrowers b ON b.id = t.borrower_id
            LEFT JOIN users cu ON cu.id = t.created_by
-          WHERE t.id = :id",
+          WHERE t.id = :id AND " . owner_scope('transactions', 't'),
         [':id' => $id]
     );
 }

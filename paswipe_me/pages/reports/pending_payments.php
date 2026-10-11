@@ -22,7 +22,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = ['v.id IN (SELECT op.id FROM borrower_payments op WHERE ' . owner_scope('borrower_payments', 'op') . ')'];   // the signed-in user's records only
 $params = [];
 add_search_condition($state, ['v.payment_number', 'v.reference_number', 'v.borrower_number', 'v.first_name', 'v.last_name'], $where, $params);
 if ($state['filters']['status'] !== '') {

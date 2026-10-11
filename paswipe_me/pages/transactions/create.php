@@ -12,7 +12,7 @@ $fields = transaction_fields();
 $preset = [];
 foreach (['credit_card_id', 'borrower_id'] as $key) {
     $value = input_string($_GET, $key);
-    if (is_valid_uuid($value)) {
+    if (owns($key === 'credit_card_id' ? 'credit_cards' : 'borrowers', $value)) {   // prefill only the user's own card / borrower
         $preset[$key] = $value;
     }
 }

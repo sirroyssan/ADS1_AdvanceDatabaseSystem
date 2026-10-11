@@ -71,7 +71,7 @@ function payment_find(string $id): ?array
            JOIN borrowers b ON b.id = p.borrower_id
            LEFT JOIN payment_methods pm ON pm.id = p.payment_method_id
            LEFT JOIN users ru ON ru.id = p.reviewed_by
-          WHERE p.id = :id",
+          WHERE p.id = :id AND " . owner_scope('borrower_payments', 'p'),
         [':id' => $id]
     );
 }
@@ -170,6 +170,14 @@ function payment_allocate_locked(array $payment, string $obligationId, ?string $
         );
         if (!$obligation) {
             return 'Choose an open obligation of this borrower.';
+        }
+        // An installment must be one of this obligation's own (its purchase's plan).
+        if ($scheduleId !== null && !db_value(
+            'SELECT s.id FROM installment_schedules s JOIN installment_plans ip ON ip.id = s.installment_plan_id
+              WHERE s.id = :s AND ip.transaction_id = :t',
+            [':s' => $scheduleId, ':t' => (string) $obligation['transaction_id']]
+        )) {
+            return 'Choose an installment of this obligation.';
         }
         $penalties = db_all(
             'SELECT * FROM applied_penalties WHERE obligation_id = :o AND remaining_amount > 0 ORDER BY applied_date, created_at FOR UPDATE',
@@ -293,7 +301,7 @@ function payment_allocation_choices(string $borrowerId): array
  */
 function payment_override_amount(array $payment, string $rawAmount, string $reason, array $user): ?string
 {
-    if (!user_is_owner($user)) {
+    if (!user_is_admin($user)) {
         return 'Only the owner can override a payment amount.';
     }
     $reason = trim($reason);

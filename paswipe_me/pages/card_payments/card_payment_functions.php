@@ -55,7 +55,7 @@ function card_payment_find(string $id): ?array
            LEFT JOIN credit_card_statements s ON s.id = p.statement_id
            LEFT JOIN payment_methods pm ON pm.id = p.payment_method_id
            LEFT JOIN documents d ON d.id = p.receipt_document_id
-          WHERE p.id = :id',
+          WHERE p.id = :id AND ' . owner_scope('credit_card_payments', 'p'),
         [':id' => $id]
     );
 }

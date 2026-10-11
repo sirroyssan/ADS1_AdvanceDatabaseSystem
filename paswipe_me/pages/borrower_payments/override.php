@@ -7,7 +7,7 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/payment_functions.php';
 
-$currentUser = require_role(['owner']);
+$currentUser = require_admin();
 
 if (!is_post()) {
     redirect('pages/borrower_payments/index.php');

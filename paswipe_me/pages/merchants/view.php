@@ -14,11 +14,11 @@ $usage = merchant_usage($merchant['id']);
 $transactions = db_all(
     'SELECT t.id, t.transaction_number, t.transaction_date, t.amount, t.status, b.first_name, b.last_name
        FROM transactions t LEFT JOIN borrowers b ON b.id = t.borrower_id
-      WHERE t.merchant_id = :id
+      WHERE t.merchant_id = :id AND ' . owner_scope('transactions', 't') . '
       ORDER BY t.transaction_date DESC LIMIT 10',
     [':id' => $merchant['id']]
 );
-$totalSpent = db_value("SELECT COALESCE(SUM(amount), 0) FROM transactions WHERE merchant_id = :id AND status NOT IN ('cancelled', 'refunded')", [':id' => $merchant['id']]);
+$totalSpent = db_value("SELECT COALESCE(SUM(t.amount), 0) FROM transactions t WHERE t.merchant_id = :id AND t.status NOT IN ('cancelled', 'refunded') AND " . owner_scope('transactions', 't'), [':id' => $merchant['id']]);
 
 $pageTitle = 'Merchant Details';
 $activeNav = 'merchants';
@@ -78,7 +78,7 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel panel--danger no-print">
             <header class="panel__header"><h3>Delete</h3></header>
             <?php if ($usage['total'] > 0): ?>
-                <p class="field-help">This merchant is used by <?= e(usage_text($usage)) ?> and cannot be deleted. The merchants table has no status column, so it stays on record.</p>
+                <p class="field-help">This merchant is used by <?= e(merchant_usage_text($usage)) ?> and cannot be deleted. The merchants table has no status column, so it stays on record.</p>
             <?php else: ?>
                 <p class="field-help">Deleting is permanent.</p>
                 <?= post_button(url('pages/merchants/delete.php'), ['id' => $merchant['id']], 'Delete merchant', 'trash', 'btn btn--danger btn--block',

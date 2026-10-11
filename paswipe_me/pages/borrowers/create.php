@@ -20,7 +20,7 @@ if (is_post()) {
         try {
             $id = new_uuid();
             $data['borrower_number'] ??= generate_reference('BRW', 'borrowers', 'borrower_number');
-            db_insert('borrowers', ['id' => $id] + $data + ['created_by' => $currentUser['id'], 'updated_by' => $currentUser['id']]);
+            db_insert('borrowers', ['id' => $id] + $data + ['owner_user_id' => owner_id(), 'created_by' => $currentUser['id'], 'updated_by' => $currentUser['id']]);
             log_activity('create', 'borrower', $id, 'Created borrower ' . $data['borrower_number'] . ' ' . $data['first_name'] . ' ' . $data['last_name'], null, $data);
             flash('success', 'Borrower ' . $data['first_name'] . ' ' . $data['last_name'] . ' was added successfully.');
             redirect('pages/borrowers/view.php', ['id' => $id]);

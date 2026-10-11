@@ -21,7 +21,7 @@ function template_fields(): array
 
 function template_find(string $id): ?array
 {
-    return is_valid_uuid($id) ? db_row('SELECT * FROM demand_letter_templates WHERE id = :id', [':id' => $id]) : null;
+    return is_valid_uuid($id) ? db_row('SELECT * FROM demand_letter_templates t WHERE id = :id AND ' . owner_scope('demand_letter_templates', 't'), [':id' => $id]) : null;
 }
 
 function template_usage(string $id): array
@@ -30,14 +30,14 @@ function template_usage(string $id): array
 }
 
 /**
- * Same name + version may not be saved twice (application rule; the schema has no UNIQUE here).
+ * Same name + version may not be saved twice by the same owner (application rule; the schema has no UNIQUE here).
  */
 function template_validate(array $fields, array $input, ?string $id = null): array
 {
     [$data, $errors] = validate_fields($fields, $input, $id);
 
     if (!$errors && (int) db_value(
-        'SELECT COUNT(*) FROM demand_letter_templates WHERE name = :n AND version = :v AND id <> :id',
+        'SELECT COUNT(*) FROM demand_letter_templates t WHERE name = :n AND version = :v AND id <> :id AND ' . owner_scope('demand_letter_templates', 't'),
         [':n' => $data['name'], ':v' => $data['version'], ':id' => $id ?? '']
     ) > 0) {
         $errors['version'] = 'This template name already has a version ' . $data['version'] . '.';

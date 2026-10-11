@@ -24,7 +24,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('payment_methods', 'pm')];
 $params = [];
 add_search_condition($state, ['pm.display_name', 'pm.account_name', 'pm.masked_account_number', 'pm.last_four', 'b.first_name', 'b.last_name'], $where, $params);
 if ($state['filters']['type'] !== '') {
@@ -45,8 +45,8 @@ $result = run_list(
     "pm.id, pm.method_type, pm.display_name, pm.account_name, pm.masked_account_number, pm.last_four, pm.is_active,
      pm.borrower_id, b.first_name, b.last_name,
      COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, u.email) AS owner_name,
-     (SELECT COUNT(*) FROM borrower_payments bp WHERE bp.payment_method_id = pm.id)
-       + (SELECT COUNT(*) FROM credit_card_payments cp WHERE cp.payment_method_id = pm.id) AS usage_count",
+     (SELECT COUNT(*) FROM borrower_payments bp WHERE bp.payment_method_id = pm.id AND " . owner_scope('borrower_payments', 'bp') . ")
+       + (SELECT COUNT(*) FROM credit_card_payments cp WHERE cp.payment_method_id = pm.id AND " . owner_scope('credit_card_payments', 'cp') . ") AS usage_count",
     'payment_methods pm LEFT JOIN borrowers b ON b.id = pm.borrower_id LEFT JOIN users u ON u.id = pm.owner_user_id',
     $where,
     $params

@@ -43,5 +43,7 @@ require_once APP_ROOT . '/includes/penalties.php';
 require_once APP_ROOT . '/includes/schedule_sync.php';
 require_once APP_ROOT . '/includes/payment_selections.php';
 require_once APP_ROOT . '/includes/statement_engine.php';
+require_once APP_ROOT . '/includes/ownership.php';
+require_once APP_ROOT . '/includes/multiuser.php';
 
 start_secure_session();

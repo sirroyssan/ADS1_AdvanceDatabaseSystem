@@ -128,8 +128,10 @@ function category_parent_options(?string $excludeId = null): array
 
 /**
  * How many records point to this category. Used before deleting.
+ * Categories are shared, so 'transactions' counts only the signed-in user's
+ * own; 'others' counts everybody else's (never shown, it only blocks a delete).
  *
- * @return array{children:int, merchants:int, transactions:int, total:int}
+ * @return array{children:int, merchants:int, transactions:int, others:int, total:int}
  */
 function category_usage(string $id): array
 {
@@ -137,11 +139,14 @@ function category_usage(string $id): array
         'SELECT
             (SELECT COUNT(*) FROM categories   WHERE parent_id   = :id1) AS children,
             (SELECT COUNT(*) FROM merchants    WHERE category_id = :id2) AS merchants,
-            (SELECT COUNT(*) FROM transactions WHERE category_id = :id3) AS transactions'
+            (SELECT COUNT(*) FROM transactions t WHERE t.category_id = :id3 AND ' . owner_scope('transactions', 't') . ') AS transactions,
+            (SELECT COUNT(*) FROM transactions WHERE category_id = :id4) AS all_transactions'
     );
-    $stmt->execute([':id1' => $id, ':id2' => $id, ':id3' => $id]);
+    $stmt->execute([':id1' => $id, ':id2' => $id, ':id3' => $id, ':id4' => $id]);
     $usage = array_map('intval', $stmt->fetch());
-    $usage['total'] = $usage['children'] + $usage['merchants'] + $usage['transactions'];
+    $usage['others'] = $usage['all_transactions'] - $usage['transactions'];
+    unset($usage['all_transactions']);
+    $usage['total'] = $usage['children'] + $usage['merchants'] + $usage['transactions'] + $usage['others'];
 
     return $usage;
 }
@@ -160,6 +165,9 @@ function category_usage_text(array $usage): string
     }
     if ($usage['transactions']) {
         $parts[] = $usage['transactions'] . ' transaction' . ($usage['transactions'] === 1 ? '' : 's');
+    }
+    if (!empty($usage['others'])) {
+        $parts[] = 'other records';   // other users' transactions: mentioned, never counted
     }
 
     if (count($parts) > 1) {

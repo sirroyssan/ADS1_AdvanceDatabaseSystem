@@ -65,7 +65,7 @@ function cash_loan_find(string $id): ?array
         'SELECT l.*, c.card_nickname, c.last_four,
                 (SELECT COALESCE(SUM(a.allocated_amount), 0) FROM cash_loan_allocations a WHERE a.cash_loan_id = l.id) AS allocated
            FROM cash_loans l JOIN credit_cards c ON c.id = l.credit_card_id
-          WHERE l.id = :id',
+          WHERE l.id = :id AND ' . owner_scope('cash_loans', 'l'),
         [':id' => $id]
     );
 }

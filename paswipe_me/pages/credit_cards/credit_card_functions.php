@@ -19,7 +19,6 @@ function credit_card_fields(?array $current = null): array
         'card_nickname'     => ['label' => 'Card nickname', 'type' => 'text', 'max' => 100, 'required' => true],
         'issuer'            => ['label' => 'Issuer (bank)', 'type' => 'select', 'options' => bank_options(bank_canonical($current['issuer'] ?? null)), 'required' => true, 'empty_label' => 'Select bank',
                                 'help' => 'Penalty rules are set per bank, so this decides which penalty rules apply to this card\'s transactions, cash advances and cash loans.'],
-        'owner_user_id'     => ['label' => 'Card owner', 'type' => 'select', 'options' => admin_user_options($current['owner_user_id'] ?? null), 'required' => true, 'empty_label' => 'Select owner'],
         'card_type'         => ['label' => 'Card type', 'type' => 'select', 'options' => enum_options(ENUM_CARD_TYPE), 'required' => true, 'initial' => 'credit'],
         'network'           => ['label' => 'Network', 'type' => 'select', 'options' => array_combine(ENUM_CARD_NETWORK, ['Visa', 'Mastercard', 'American Express', 'JCB', 'UnionPay', 'Other']), 'empty_label' => '— Not set —'],
         'last_four'         => ['label' => 'Last four digits', 'type' => 'text', 'max' => 4, 'required' => true, 'pattern' => '/^[0-9]{4}$/', 'pattern_message' => 'Enter exactly 4 digits.', 'help' => 'Never enter the full card number.'],
@@ -85,7 +84,8 @@ function credit_card_save(?string $id, array $data, ?string $existingId = null):
     card_usage_apply([$cardId], function () use ($id, $existingId, $cardId, $data, $opening) {
         if ($existingId === null) {
             // Start at the full limit (schema CHECK); card_usage_apply then stores the real figure.
-            db_insert('credit_cards', ['id' => $id] + $data + ['available_credit' => $data['credit_limit']]);
+            // A card always belongs to the signed-in user; no form can set or change its owner.
+            db_insert('credit_cards', ['id' => $id, 'owner_user_id' => owner_id()] + $data + ['available_credit' => $data['credit_limit']]);
         } else {
             db_update('credit_cards', $data, $existingId);
         }
@@ -102,7 +102,7 @@ function credit_card_find(string $id): ?array
     return db_row(
         "SELECT cc.*, COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email) AS owner_name
            FROM credit_cards cc LEFT JOIN users u ON u.id = cc.owner_user_id
-          WHERE cc.id = :id",
+          WHERE cc.id = :id AND " . owner_scope('credit_cards', 'cc'),
         [':id' => $id]
     );
 }

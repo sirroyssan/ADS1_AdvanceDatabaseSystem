@@ -90,7 +90,7 @@ function obligation_find(string $id): ?array
            LEFT JOIN transactions t ON t.id = o.transaction_id
            LEFT JOIN cash_loan_allocations a ON a.id = o.cash_loan_allocation_id
            LEFT JOIN cash_loans cl ON cl.id = a.cash_loan_id
-          WHERE o.id = :id",
+          WHERE o.id = :id AND " . owner_scope('borrower_obligations', 'o'),
         [':id' => $id]
     );
 }

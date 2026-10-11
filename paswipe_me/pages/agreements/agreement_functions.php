@@ -72,7 +72,7 @@ function agreement_find(string $id): ?array
            LEFT JOIN documents gd ON gd.id = a.generated_document_id
            LEFT JOIN documents sd ON sd.id = a.signed_document_id
            LEFT JOIN users u ON u.id = a.created_by
-          WHERE a.id = :id",
+          WHERE a.id = :id AND " . owner_scope('agreements', 'a'),
         [':id' => $id]
     );
 }
@@ -86,9 +86,11 @@ function agreement_text(array $a): ?string
         return null;
     }
 
+    // The lender is the owner of the agreement's borrower.
     $owner = db_value(
         "SELECT COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.email)
-           FROM users u JOIN user_roles r ON r.user_id = u.id AND r.role = 'owner' LIMIT 1"
+           FROM users u JOIN borrowers b ON b.owner_user_id = u.id WHERE b.id = :b",
+        [':b' => $a['borrower_id']]
     );
 
     return fill_template($a['template_body'], [
@@ -105,11 +107,23 @@ function agreement_text(array $a): ?string
     ]);
 }
 
+/**
+ * Users who can sign as "a system user": the signed-in user only (never a list
+ * of every account).
+ */
+function signatory_user_options(): array
+{
+    return db_options(
+        "SELECT id, COALESCE(NULLIF(TRIM(CONCAT_WS(' ', first_name, last_name)), ''), username, email) FROM users WHERE id = :id",
+        [':id' => owner_id()]
+    );
+}
+
 function signatory_fields(): array
 {
     return [
         'signer'   => ['label' => 'Signer', 'type' => 'select', 'options' => ['borrower' => 'The borrower', 'user' => 'A system user', 'other' => 'Someone else (witness, co-maker)'], 'required' => true, 'initial' => 'borrower'],
-        'user_id'  => ['label' => 'User (if a system user)', 'type' => 'select', 'options' => admin_user_options(), 'empty_label' => '— Not a user —'],
+        'user_id'  => ['label' => 'User (if a system user)', 'type' => 'select', 'options' => signatory_user_options(), 'empty_label' => '— Not a user —'],
         'name'     => ['label' => 'Name', 'type' => 'text', 'max' => 255, 'help' => 'Filled in automatically for the borrower or a user when left blank.'],
         'role'     => ['label' => 'Role', 'type' => 'text', 'max' => 100, 'required' => true, 'placeholder' => 'e.g. borrower, lender, witness'],
         'email'    => ['label' => 'Email', 'type' => 'email', 'max' => 255],

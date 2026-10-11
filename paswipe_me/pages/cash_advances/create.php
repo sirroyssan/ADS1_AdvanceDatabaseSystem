@@ -10,7 +10,7 @@ $currentUser = require_admin();
 
 $fields = cash_advance_fields();
 $preset = input_string($_GET, 'credit_card_id');
-$data = form_defaults($fields, is_valid_uuid($preset) ? ['credit_card_id' => $preset] : []);
+$data = form_defaults($fields, owns('credit_cards', $preset) ? ['credit_card_id' => $preset] : []);
 // Opened from a statement ("Add missing transaction"): start from the
 // statement's date and report afterwards which statement the record went to.
 $reconcile = preg_match('/^\d{4}-\d{2}-\d{2}$/', input_string($_GET, 'period')) ? input_string($_GET, 'period') : null;   // cutoff of the statement period being viewed

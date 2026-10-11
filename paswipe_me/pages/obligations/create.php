@@ -17,7 +17,7 @@ foreach (['borrower_id', 'transaction_id'] as $key) {
     }
 }
 if (isset($preset['transaction_id'])) {
-    $txn = db_row('SELECT amount, transaction_number, transaction_date FROM transactions WHERE id = :id', [':id' => $preset['transaction_id']]);
+    $txn = db_row('SELECT amount, transaction_number, transaction_date FROM transactions t WHERE t.id = :id AND ' . owner_scope('transactions', 't'), [':id' => $preset['transaction_id']]);
     if ($txn) {
         $preset += ['original_amount' => $txn['amount'], 'description' => 'Card purchase ' . $txn['transaction_number'], 'obligation_date' => $txn['transaction_date']];
     }

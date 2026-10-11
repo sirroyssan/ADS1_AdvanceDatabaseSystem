@@ -40,9 +40,30 @@ function merchant_find(string $id): ?array
     );
 }
 
+/**
+ * The signed-in user's transactions with this merchant (merchants are shared,
+ * so only the user's own records are counted). 'others' counts everybody
+ * else's transactions without showing them: they only block a delete.
+ */
 function merchant_usage(string $id): array
 {
-    return record_usage(['transactions' => ['transactions', 'merchant_id']], $id);
+    $own = (int) db_value('SELECT COUNT(*) FROM transactions t WHERE t.merchant_id = :id AND ' . owner_scope('transactions', 't'), [':id' => $id]);
+    $all = (int) db_value('SELECT COUNT(*) FROM transactions WHERE merchant_id = :id', [':id' => $id]);
+
+    return ['transactions' => $own, 'others' => $all - $own, 'total' => $all];
+}
+
+/**
+ * "3 transactions" for the user's own records; other users' records are
+ * only mentioned, never counted.
+ */
+function merchant_usage_text(array $usage): string
+{
+    if ($usage['transactions'] > 0) {
+        return usage_text(['transactions' => $usage['transactions']]) . ($usage['others'] > 0 ? ' and other records' : '');
+    }
+
+    return 'other records';
 }
 
 function merchant_label(array $m): string

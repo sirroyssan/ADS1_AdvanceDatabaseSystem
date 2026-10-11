@@ -37,7 +37,7 @@ $statements = db_all(
 $statementPeriods = db_all('SELECT period_start_date, cutoff_date FROM credit_card_statements WHERE credit_card_id = :id', [':id' => $id]);
 $usage = credit_card_usage($id);
 $bankRules = array_values(array_filter(
-    db_all("SELECT * FROM penalty_rules WHERE is_active = 1 AND applies_to_issuer IS NOT NULL ORDER BY name"),
+    db_all("SELECT * FROM penalty_rules pr WHERE pr.is_active = 1 AND pr.applies_to_issuer IS NOT NULL AND " . owner_scope('penalty_rules', 'pr') . " ORDER BY pr.name"),
     static fn ($r) => same_bank($r['applies_to_issuer'], $card['issuer'])
 ));
 $related = url('pages/credit_cards/related.php');

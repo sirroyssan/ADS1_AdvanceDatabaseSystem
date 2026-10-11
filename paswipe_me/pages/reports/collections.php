@@ -25,7 +25,7 @@ $state = list_state([
     ],
 ]);
 
-$where = ["p.status = 'approved'"];
+$where = ["p.status = 'approved'", owner_scope('borrower_payments', 'p')];   // the signed-in user's records only
 $params = [];
 add_search_condition($state, ['p.payment_number', 'p.reference_number', 'b.first_name', 'b.last_name'], $where, $params);
 if ($state['filters']['borrower'] !== '') {

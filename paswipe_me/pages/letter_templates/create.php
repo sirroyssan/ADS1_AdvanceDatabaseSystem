@@ -19,7 +19,7 @@ if (is_post()) {
     if (!$errors) {
         try {
             $id = new_uuid();
-            db_insert('demand_letter_templates', ['id' => $id] + $data);
+            db_insert('demand_letter_templates', ['id' => $id] + $data + ['owner_user_id' => owner_id()]);
             log_activity('create', 'demand_letter_template', $id, 'Created demand letter template "' . $data['name'] . '"');
             flash('success', 'Template "' . $data['name'] . '" was added successfully.');
             redirect('pages/letter_templates/view.php', ['id' => $id]);

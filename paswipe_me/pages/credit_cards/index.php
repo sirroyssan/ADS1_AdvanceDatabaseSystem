@@ -15,7 +15,6 @@ $state = list_state([
     'filters' => [
         'status'  => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_CARD_STATUS), 'all' => 'All statuses'],
         'network' => ['label' => 'Network', 'type' => 'select', 'options' => enum_options(ENUM_CARD_NETWORK), 'all' => 'All networks'],
-        'owner'   => ['label' => 'Owner', 'type' => 'select', 'options' => admin_user_options(), 'all' => 'All owners'],
     ],
     'sorts'   => [
         'name'        => ['Nickname (A–Z)', 'cc.card_nickname ASC'],
@@ -24,10 +23,10 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('credit_cards', 'cc')];
 $params = [];
 add_search_condition($state, ['cc.card_nickname', 'cc.issuer', 'cc.last_four'], $where, $params);
-foreach (['status' => 'cc.status', 'network' => 'cc.network', 'owner' => 'cc.owner_user_id'] as $key => $column) {
+foreach (['status' => 'cc.status', 'network' => 'cc.network'] as $key => $column) {
     if ($state['filters'][$key] !== '') {
         $where[] = $column . ' = :' . $key;
         $params[':' . $key] = $state['filters'][$key];

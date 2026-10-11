@@ -42,7 +42,7 @@ function borrower_find(string $id): ?array
            FROM borrowers b
            LEFT JOIN users cu ON cu.id = b.created_by
            LEFT JOIN users uu ON uu.id = b.updated_by
-          WHERE b.id = :id",
+          WHERE b.id = :id AND " . owner_scope('borrowers', 'b'),
         [':id' => $id]
     );
 }
@@ -102,15 +102,20 @@ function format_address(array $a): string
 }
 
 /**
- * Users with the borrower role that are not linked to any borrower yet.
+ * The sign-in account with this exact email that may be linked to a borrower:
+ * Borrower role, not linked yet. Accounts are looked up by email only - never
+ * listed - so no one sees other users' borrowers or their emails.
  */
-function linkable_borrower_users(): array
+function linkable_borrower_user(string $email): ?string
 {
-    return db_options(
-        "SELECT u.id, CONCAT(COALESCE(NULLIF(TRIM(CONCAT_WS(' ', u.first_name, u.last_name)), ''), u.username, u.email), ' <', u.email, '>')
-           FROM users u
+    $id = db_value(
+        "SELECT u.id FROM users u
            JOIN user_roles r ON r.user_id = u.id AND r.role = 'borrower'
-          WHERE NOT EXISTS (SELECT 1 FROM borrower_user_accounts a WHERE a.user_id = u.id)
-          ORDER BY u.email"
+          WHERE LOWER(u.email) = :e
+            AND NOT EXISTS (SELECT 1 FROM borrower_user_accounts a WHERE a.user_id = u.id)
+            AND NOT EXISTS (SELECT 1 FROM user_roles x WHERE x.user_id = u.id AND x.role IN ('owner', 'admin'))",
+        [':e' => mb_strtolower(trim($email))]
     );
+
+    return $id ? (string) $id : null;
 }

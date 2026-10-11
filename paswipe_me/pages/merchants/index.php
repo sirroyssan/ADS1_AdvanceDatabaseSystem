@@ -41,7 +41,8 @@ $result = run_list(
     $state,
     'm.id, m.merchant_name, m.branch, m.merchant_type, m.platform, m.municipality_city, m.province, m.contact, m.created_at,
      c.name AS category_name,
-     (SELECT COUNT(*) FROM transactions t WHERE t.merchant_id = m.id) AS transaction_count',
+     (SELECT COUNT(*) FROM transactions t WHERE t.merchant_id = m.id AND ' . owner_scope('transactions', 't') . ') AS transaction_count,
+     EXISTS (SELECT 1 FROM transactions ta WHERE ta.merchant_id = m.id) AS in_use',
     'merchants m LEFT JOIN categories c ON c.id = m.category_id',
     $where,
     $params
@@ -91,7 +92,7 @@ require APP_ROOT . '/includes/header.php';
                             <div class="row-actions">
                                 <?= icon_link(url('pages/merchants/view.php', ['id' => $row['id']]), 'eye', 'View ' . $row['merchant_name']) ?>
                                 <?= icon_link(url('pages/merchants/edit.php', ['id' => $row['id']]), 'edit', 'Edit ' . $row['merchant_name']) ?>
-                                <?php if ((int) $row['transaction_count'] === 0): ?>
+                                <?php if ((int) $row['in_use'] === 0): ?>
                                     <?= post_button(url('pages/merchants/delete.php'), ['id' => $row['id']], 'Delete ' . $row['merchant_name'], 'trash', 'icon-button icon-button--danger',
                                         'Are you sure you want to delete the merchant "' . $row['merchant_name'] . '"? This cannot be undone.', true) ?>
                                 <?php endif; ?>

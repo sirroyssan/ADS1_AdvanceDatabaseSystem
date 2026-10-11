@@ -11,8 +11,6 @@
 
 defined('APP_ROOT') or exit('No direct access.');
 
-const MIN_PASSWORD_LENGTH = 8;
-
 function user_fields(): array
 {
     return [
@@ -50,13 +48,7 @@ function user_validate(array $input, ?array $existing, string $currentUserId): a
         $errors['password'] = 'Password is required for a new account.';
     }
     if ($password !== '') {
-        if (strlen($password) < MIN_PASSWORD_LENGTH) {
-            $errors['password'] = 'Password must be at least ' . MIN_PASSWORD_LENGTH . ' characters.';
-        } elseif (strlen($password) > 255) {
-            $errors['password'] = 'Password is too long.';
-        } elseif (!hash_equals($password, $confirm)) {
-            $errors['password_confirm'] = 'Passwords do not match.';
-        }
+        $errors += password_policy_errors($password, $confirm);
     }
 
     // Do not let administrators lock themselves out.
@@ -64,21 +56,8 @@ function user_validate(array $input, ?array $existing, string $currentUserId): a
         if (($data['status'] ?? '') !== 'active') {
             $errors['status'] = 'You cannot change the status of your own account.';
         }
-        if (!array_intersect(ADMIN_ROLES, $roles)) {
+        if (!in_array('admin', $roles, true)) {
             $errors['roles'] = 'You cannot remove your own administrator role.';
-        }
-    }
-
-    // Only an owner may give or take away the Owner role (an administrator may
-    // appoint the first owner), and the last owner cannot be removed.
-    $hadOwner = in_array('owner', $existing['roles'] ?? (isset($existing['id']) ? fetch_user_roles($existing['id']) : []), true);
-    $wantsOwner = in_array('owner', $roles, true);
-    if ($hadOwner !== $wantsOwner && !isset($errors['roles'])) {
-        $owners = (int) db_value("SELECT COUNT(DISTINCT user_id) FROM user_roles WHERE role = 'owner'");
-        if ($owners > 0 && !in_array('owner', fetch_user_roles($currentUserId), true)) {
-            $errors['roles'] = 'Only an owner can give or remove the Owner role.';
-        } elseif ($hadOwner && $owners <= 1) {
-            $errors['roles'] = 'This is the only owner. Make someone else an owner first.';
         }
     }
 
@@ -123,8 +102,8 @@ function user_find(string $id): ?array
 function render_role_checkboxes(array $selected, ?string $error): string
 {
     $descriptions = [
-        'owner'    => 'Owns the credit cards; full administrator access.',
-        'admin'    => 'Manages records and approves payments.',
+        'owner'    => 'Manages their own credit cards, borrowers and records (every registered user).',
+        'admin'    => 'Manages user accounts. Has their own records like an owner; never sees other users\' records.',
         'borrower' => 'Card user. Link the account to a borrower record from the borrower page.',
     ];
 
@@ -141,7 +120,7 @@ function render_password_fields(array $errors, bool $required): string
 {
     $fields = [
         'password'         => ['label' => $required ? 'Password' : 'New password', 'type' => 'password', 'max' => 255, 'required' => $required,
-                               'help' => $required ? 'At least ' . MIN_PASSWORD_LENGTH . ' characters.' : 'Leave blank to keep the current password.'],
+                               'help' => $required ? 'At least ' . PASSWORD_MIN_LENGTH . ' characters, with a letter and a number.' : 'Leave blank to keep the current password.'],
         'password_confirm' => ['label' => 'Confirm password', 'type' => 'password', 'max' => 255, 'required' => $required],
     ];
 

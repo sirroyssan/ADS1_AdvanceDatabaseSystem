@@ -21,7 +21,7 @@ function plan_transaction_options(): array
     return db_options(
         "SELECT t.id, CONCAT(t.transaction_number, ' — ', DATE_FORMAT(t.transaction_date, '%b %e, %Y'), ' — ₱', FORMAT(t.amount, 2)) AS label
            FROM transactions t
-          WHERE t.status NOT IN ('cancelled', 'refunded')
+          WHERE t.status NOT IN ('cancelled', 'refunded') AND " . owner_scope('transactions', 't') . "
             AND NOT EXISTS (SELECT 1 FROM installment_plans p WHERE p.transaction_id = t.id)
           ORDER BY t.transaction_date DESC"
     );
@@ -109,7 +109,7 @@ function plan_find(string $id): ?array
            JOIN transactions t ON t.id = p.transaction_id
            JOIN credit_cards c ON c.id = t.credit_card_id
            LEFT JOIN borrowers b ON b.id = t.borrower_id
-          WHERE p.id = :id',
+          WHERE p.id = :id AND ' . owner_scope('installment_plans', 'p'),
         [':id' => $id]
     );
 }

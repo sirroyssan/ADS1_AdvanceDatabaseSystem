@@ -43,7 +43,7 @@ $listMode = $state['filters']['status'] !== '' || $state['search'] !== '';
 
 if ($listMode) {
     // Recorded SOAs of all cards - one query with the payments grouped once.
-    $where = [];
+    $where = [owner_scope('credit_card_statements', 's')];
     $params = [];
     add_search_condition($state, ['c.card_nickname', 'c.issuer', 'c.last_four', 's.statement_number'], $where, $params);
     if ($state['filters']['card'] !== '') {
@@ -79,6 +79,7 @@ if ($listMode) {
            FROM credit_cards c
            LEFT JOIN credit_card_statements s ON s.credit_card_id = c.id AND s.soa_recorded_at IS NOT NULL
            " . statement_paid_join() . '
+          WHERE ' . owner_scope('credit_cards', 'c') . '
           GROUP BY c.id
           ORDER BY c.status = \'active\' DESC, c.card_nickname'
     );

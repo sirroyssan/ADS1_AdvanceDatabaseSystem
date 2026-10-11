@@ -19,7 +19,7 @@ if (input_string($_GET, 'id') !== '') {
     $period = statement_period_of($statement, $card);
 } else {
     $cardId = input_string($_GET, 'card');
-    $card = is_valid_uuid($cardId) ? db_row('SELECT * FROM credit_cards WHERE id = :c', [':c' => $cardId]) : null;
+    $card = is_valid_uuid($cardId) ? db_row('SELECT * FROM credit_cards c WHERE c.id = :c AND ' . owner_scope('credit_cards', 'c'), [':c' => $cardId]) : null;
     $dateOk = static fn ($d) => (bool) preg_match('/^\d{4}-\d{2}-\d{2}$/', $d);
     if (!$card || !$dateOk(input_string($_GET, 'start')) || !$dateOk(input_string($_GET, 'end'))) {
         flash('error', 'Statement period not found.');

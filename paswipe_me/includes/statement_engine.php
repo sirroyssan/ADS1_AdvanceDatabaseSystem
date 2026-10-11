@@ -140,14 +140,14 @@ function statement_schema_upgrade_v2(): void
     });
     if ($converted + $kept + $removed > 0) {
         log_activity('statements_upgrade', 'system', null, 'Statements now hold only bank SOA figures: ' . $converted . ' converted to their recorded SOA, '
-            . $kept . ' kept (edited or linked), ' . $removed . ' generated statement(s) without any input removed');
+            . $kept . ' kept (edited or linked), ' . $removed . ' generated statement(s) without any input removed', null, null, SYSTEM_ACTOR);
     }
 
     try {
         run_sql_file(APP_ROOT . '/db/upgrade_statements_v2.sql');
     } catch (PDOException $e) {
         // Most likely two older hand-entered statements share a cutoff date: keep them, report it.
-        log_activity('statements_upgrade', 'system', null, 'Index not added: ' . $e->getMessage() . ' — duplicate SOA periods are still prevented by validation.');
+        log_activity('statements_upgrade', 'system', null, 'Index not added: ' . $e->getMessage() . ' — duplicate SOA periods are still prevented by validation.', null, null, SYSTEM_ACTOR);
         error_log('[' . APP_NAME . '] statements upgrade 2: ' . $e->getMessage());
     }
 }
@@ -743,18 +743,19 @@ function render_statement_rows(array $rows, int $offset = 0): string
 }
 
 /**
- * Credit card payment position for the dashboard, from the recorded SOAs and
- * their payments (each statement counted once).
+ * The signed-in user's credit card payment position for the dashboard, from
+ * the recorded SOAs and their payments (each statement counted once).
  */
 function statement_payment_summary(): array
 {
     $remaining = statement_remaining_sql();
     $paid = 'COALESCE(sp.paid, 0)';
     $upcoming = 'CURDATE() + INTERVAL ' . STATEMENT_UPCOMING_DAYS . ' DAY';
+    $mine = owner_scope('credit_cards', 'c');
 
     return db_row(
-        "SELECT (SELECT COUNT(*) FROM credit_cards) AS cards,
-                (SELECT COUNT(*) FROM credit_cards WHERE status = 'active') AS active_cards,
+        "SELECT (SELECT COUNT(*) FROM credit_cards c WHERE $mine) AS cards,
+                (SELECT COUNT(*) FROM credit_cards c WHERE status = 'active' AND $mine) AS active_cards,
                 COALESCE(SUM($remaining > 0.004), 0) AS unpaid,
                 COUNT(DISTINCT IF($remaining > 0.004, s.credit_card_id, NULL)) AS unpaid_cards,
                 COALESCE(SUM($remaining > 0.004 AND $paid = 0 AND s.due_date >= CURDATE()), 0) AS pending,
@@ -764,8 +765,9 @@ function statement_payment_summary(): array
                 COALESCE(SUM($remaining > 0.004 AND s.due_date < CURDATE()), 0) AS overdue,
                 COUNT(DISTINCT IF($remaining > 0.004 AND s.due_date < CURDATE(), s.credit_card_id, NULL)) AS overdue_cards,
                 COALESCE(SUM(IF($remaining > 0.004 AND s.due_date < CURDATE(), $remaining, 0)), 0) AS overdue_amount,
-                (SELECT COUNT(*) FROM credit_card_statements x WHERE x.soa_recorded_at IS NULL AND x.cutoff_date < CURDATE()) AS awaiting_soa
-           FROM credit_card_statements s " . statement_paid_join() . ' WHERE s.soa_recorded_at IS NOT NULL'
+                COALESCE(SUM(IF($remaining > 0.004, LEAST(GREATEST(s.minimum_amount_due - $paid, 0), $remaining), 0)), 0) AS minimum_due,
+                (SELECT COUNT(*) FROM credit_card_statements x WHERE x.soa_recorded_at IS NULL AND x.cutoff_date < CURDATE() AND " . owner_scope('credit_card_statements', 'x') . ") AS awaiting_soa
+           FROM credit_card_statements s " . statement_paid_join() . ' WHERE s.soa_recorded_at IS NOT NULL AND ' . owner_scope('credit_card_statements', 's')
     ) ?: [];
 }
 

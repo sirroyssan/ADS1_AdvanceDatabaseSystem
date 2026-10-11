@@ -69,13 +69,21 @@ $navigation = [
     [
         'label' => 'System',
         'items' => [
-            ['key' => 'users',         'label' => 'Users & Roles', 'icon' => 'shield',  'path' => 'pages/users/index.php'],
+            ['key' => 'users',         'label' => 'Users & Roles', 'icon' => 'shield',  'path' => 'pages/users/index.php', 'admin' => true],
             ['key' => 'notifications', 'label' => 'Notifications', 'icon' => 'bell',    'path' => 'pages/notifications/index.php'],
             ['key' => 'activity_logs', 'label' => 'Activity Logs', 'icon' => 'history', 'path' => 'pages/activity_logs/index.php'],
             ['key' => 'profile',       'label' => 'My Profile',    'icon' => 'user',    'path' => 'pages/profile/index.php'],
         ],
     ],
 ];
+
+// Account management is for system administrators only.
+if (!in_array('admin', (array) ($_SESSION['user_roles'] ?? []), true)) {
+    foreach ($navigation as &$group) {
+        $group['items'] = array_values(array_filter($group['items'], static fn ($item) => empty($item['admin'])));
+    }
+    unset($group);
+}
 
 // Borrowers see only their own account pages.
 if (($layout ?? 'admin') === 'portal') {

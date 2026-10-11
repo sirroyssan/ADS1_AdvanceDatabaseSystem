@@ -11,7 +11,7 @@ require_once __DIR__ . '/statement_functions.php';
 $currentUser = require_admin();
 
 $presetCard = input_string($_GET, 'credit_card_id');
-$card = is_valid_uuid($presetCard) ? db_row('SELECT * FROM credit_cards WHERE id = :c', [':c' => $presetCard]) : null;
+$card = is_valid_uuid($presetCard) ? db_row('SELECT * FROM credit_cards c WHERE c.id = :c AND ' . owner_scope('credit_cards', 'c'), [':c' => $presetCard]) : null;
 $presetCutoff = preg_match('/^\d{4}-\d{2}-\d{2}$/', input_string($_GET, 'cutoff')) ? input_string($_GET, 'cutoff') : null;
 
 $fields = statement_fields(null, $card !== null);

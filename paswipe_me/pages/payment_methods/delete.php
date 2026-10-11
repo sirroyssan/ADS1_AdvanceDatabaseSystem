@@ -27,7 +27,7 @@ if ($action === 'deactivate') {
 try {
     db_transaction(function () use ($method) {
         db_value('SELECT id FROM payment_methods WHERE id = :id FOR UPDATE', [':id' => $method['id']]);
-        $usage = payment_method_usage($method['id']);
+        $usage = payment_method_usage($method['id'], true);
         if ($usage['total'] > 0) {
             throw new DomainException('This payment method cannot be deleted because it is used by ' . usage_text($usage) . '. Deactivate it instead.');
         }

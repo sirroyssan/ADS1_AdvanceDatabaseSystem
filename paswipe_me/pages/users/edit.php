@@ -6,7 +6,7 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/user_functions.php';
 
-$currentUser = require_admin();
+$currentUser = require_system_admin();
 
 $user = find_or_redirect(user_find(request_id()), 'pages/users/index.php', 'User');
 $data = form_data_from_row(user_fields(), $user);

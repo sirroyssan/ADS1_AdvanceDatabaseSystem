@@ -22,7 +22,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('penalty_rules', 'penalty_rules')];
 $params = [];
 add_search_condition($state, ['name', 'basis', 'frequency'], $where, $params);
 if ($state['filters']['status'] !== '') {
@@ -36,7 +36,8 @@ if ($state['filters']['type'] !== '') {
 $result = run_list(
     $state,
     'id, name, applies_to_issuer, calculation_type, basis, rate, fixed_amount, maximum_charge, frequency, grace_period_days, is_active, effective_from, effective_until,
-     (SELECT COUNT(*) FROM applied_penalties ap WHERE ap.penalty_rule_id = penalty_rules.id) AS usage_count',
+     (SELECT COUNT(*) FROM applied_penalties ap WHERE ap.penalty_rule_id = penalty_rules.id
+        AND ap.obligation_id IN (SELECT so.id FROM borrower_obligations so WHERE ' . owner_scope('borrower_obligations', 'so') . ')) AS usage_count',
     'penalty_rules',
     $where,
     $params

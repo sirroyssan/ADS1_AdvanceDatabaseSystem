@@ -5,3 +5,6 @@ penalty_last_run.txt
 upgrade_penalty_rule_bank.done
 upgrade_schedule_sync.done
 upgrade_payment_selections.done
+backups/
+upgrade_multiuser.done
+upgrade_multiuser_v2.done

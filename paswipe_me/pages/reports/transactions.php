@@ -15,7 +15,7 @@ $state = list_state([
     'search'  => 'Search number, merchant or borrower…',
     'filters' => [
         'card'     => ['label' => 'Card', 'type' => 'select', 'options' => credit_card_options(null, false), 'all' => 'All cards'],
-        'borrower' => ['label' => 'Borrower', 'type' => 'select', 'options' => ['owner' => 'Owner\'s own purchases'] + borrower_options(null, false), 'all' => 'Owner and borrowers'],
+        'borrower' => ['label' => 'Borrower', 'type' => 'select', 'options' => ['owner' => 'My own purchases'] + borrower_options(null, false), 'all' => 'Owner and borrowers'],
         'payment'  => ['label' => 'Payment type', 'type' => 'select', 'options' => enum_options(ENUM_TXN_PAYMENT_TYPE), 'all' => 'All payment types'],
         'status'   => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_TXN_STATUS), 'all' => 'All statuses'],
         'from'     => ['label' => 'From', 'type' => 'date'],
@@ -28,7 +28,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('transactions', 't')];   // the signed-in user's records only
 $params = [];
 add_search_condition($state, ['t.transaction_number', 'm.merchant_name', 'b.first_name', 'b.last_name'], $where, $params);
 foreach (['card' => 't.credit_card_id', 'payment' => 't.payment_type', 'status' => 't.status'] as $key => $column) {

@@ -6,7 +6,7 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/user_functions.php';
 
-$currentUser = require_admin();
+$currentUser = require_system_admin();
 
 $data = form_defaults(user_fields());
 $roles = ['admin'];

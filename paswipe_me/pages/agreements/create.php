@@ -12,14 +12,14 @@ $fields = agreement_fields();
 $preset = [];
 $obligationId = input_string($_GET, 'obligation_id');
 if (is_valid_uuid($obligationId)) {
-    $o = db_row('SELECT borrower_id, transaction_id, original_amount, agreed_interest + agreed_fees AS charges FROM borrower_obligations WHERE id = :id', [':id' => $obligationId]);
+    $o = db_row('SELECT borrower_id, transaction_id, original_amount, agreed_interest + agreed_fees AS charges FROM borrower_obligations o WHERE id = :id AND ' . owner_scope('borrower_obligations', 'o'), [':id' => $obligationId]);
     if ($o) {
         $preset = ['obligation_id' => $obligationId, 'borrower_id' => $o['borrower_id'], 'transaction_id' => $o['transaction_id'],
                    'original_amount' => $o['original_amount'], 'agreed_charges' => $o['charges']];
     }
 }
 $borrowerId = input_string($_GET, 'borrower_id');
-if (!$preset && is_valid_uuid($borrowerId)) {
+if (!$preset && owns('borrowers', $borrowerId)) {
     $preset['borrower_id'] = $borrowerId;
 }
 $data = form_defaults($fields, $preset);

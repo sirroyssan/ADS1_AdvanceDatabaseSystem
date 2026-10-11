@@ -27,7 +27,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('borrower_obligations', 'o')];
 $params = [];
 add_search_condition($state, ['o.obligation_number', 'o.description', 'b.first_name', 'b.last_name', 'b.borrower_number'], $where, $params);
 foreach (['borrower' => 'o.borrower_id', 'status' => 'o.status'] as $key => $column) {

@@ -6,13 +6,13 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/user_functions.php';
 
-$currentUser = require_admin();
+$currentUser = require_system_admin();
 
 $user = find_or_redirect(user_find(request_id()), 'pages/users/index.php', 'User');
 $isSelf = $user['id'] === $currentUser['id'];
 
 $linkedBorrower = db_row(
-    'SELECT b.id, b.borrower_number, b.first_name, b.last_name, a.activated_at
+    'SELECT b.id, b.borrower_number, b.first_name, b.last_name, a.activated_at, (' . owner_scope('borrowers', 'b') . ') AS is_mine
        FROM borrower_user_accounts a JOIN borrowers b ON b.id = a.borrower_id
       WHERE a.user_id = :id',
     [':id' => $user['id']]
@@ -20,7 +20,7 @@ $linkedBorrower = db_row(
 
 $activity = db_all(
     'SELECT action, entity_type, description, created_at FROM activity_logs
-      WHERE actor_user_id = :id ORDER BY created_at DESC LIMIT 8',
+      WHERE actor_user_id = :id AND entity_type IN (\'user\', \'page\', \'system\') ORDER BY created_at DESC LIMIT 8',
     [':id' => $user['id']]
 );
 
@@ -96,7 +96,9 @@ require APP_ROOT . '/includes/header.php';
 
         <section class="panel">
             <header class="panel__header"><h3>Linked borrower</h3></header>
-            <?php if ($linkedBorrower): ?>
+            <?php if ($linkedBorrower && !$linkedBorrower['is_mine']): ?>
+                <p class="field-help">Linked to a borrower record of another user (private to that user).</p>
+            <?php elseif ($linkedBorrower): ?>
                 <p><?= related_link($linkedBorrower['id'], borrower_name($linkedBorrower) . ' (' . $linkedBorrower['borrower_number'] . ')', 'pages/borrowers/view.php') ?></p>
                 <p class="field-help">Activated <?= e(format_datetime($linkedBorrower['activated_at'])) ?></p>
             <?php elseif (in_array('borrower', $user['roles'], true)): ?>
@@ -107,7 +109,7 @@ require APP_ROOT . '/includes/header.php';
         </section>
 
         <section class="panel">
-            <header class="panel__header"><h3>Recent activity</h3></header>
+            <header class="panel__header"><h3>Recent account activity</h3></header>
             <?php if (!$activity): ?>
                 <p class="empty-inline">No activity recorded.</p>
             <?php else: ?>

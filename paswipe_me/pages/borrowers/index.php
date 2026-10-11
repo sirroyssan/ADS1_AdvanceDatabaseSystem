@@ -23,7 +23,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [];
+$where = [owner_scope('borrowers', 'b')];
 $params = [];
 add_search_condition($state, ['b.borrower_number', 'b.first_name', 'b.last_name', 'b.nickname', 'b.primary_mobile', 'b.primary_email'], $where, $params);
 if ($state['filters']['status'] !== '') {

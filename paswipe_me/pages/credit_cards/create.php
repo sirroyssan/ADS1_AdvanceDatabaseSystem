@@ -9,7 +9,7 @@ require_once __DIR__ . '/credit_card_functions.php';
 $currentUser = require_admin();
 
 $fields = credit_card_fields();
-$data = form_defaults($fields, ['owner_user_id' => $currentUser['id']]);
+$data = form_defaults($fields);
 $errors = [];
 
 if (is_post()) {

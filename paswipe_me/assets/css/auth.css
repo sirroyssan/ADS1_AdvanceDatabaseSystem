@@ -152,3 +152,18 @@
         display: inline-flex;
     }
 }
+
+.auth-card__switch {
+    margin: 0;
+    font-size: 14px;
+    text-align: center;
+}
+
+#register-form .form-group {
+    margin: 0;
+}
+
+.auth-form .form-grid {
+    display: grid;
+    gap: 14px;
+}
