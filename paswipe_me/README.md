@@ -1016,6 +1016,33 @@ FK, indexed); `applied_penalties.obligation_id` now nullable. No new tables
 (`db/upgrade_borrowed.sql`, applied automatically after copying the changed tables to
 `backup_borrowed_*`).
 
+## Statement cutoff: charges follow the transaction date, never the due date
+
+**Bug fixed:** installment charges (and cash-loan installments) were placed on the statement whose
+period contained the installment's **payment due date** (`installment_schedules.due_date BETWEEN
+period start AND cutoff` in `statement_period_lines()`). A purchase on Oct 9 with its first
+installment due Nov 4 therefore landed on the November statement instead of October's.
+
+**Now** (`installment_billing()` in `includes/statement_engine.php`): each installment is billed by
+the card's own billing periods - installment 1 on the statement whose period contains the
+**transaction date** (posted that day), installment *n* on the (*n*-1)th period after it (posted
+on that period's cutoff date). Cash-loan installments do the same from the loan's start date.
+Straight purchases already used the transaction date. Periods come from the card's configured
+cutoff day and its recorded SOAs (a period includes its cutoff day: Oct 10 with a cutoff on the
+10th belongs to the period ending Oct 10; Oct 11 to the next one). The **payment due date** is the
+statement's: the recorded SOA's due date, else the card's due-date rule - used only for paying,
+reminders and penalties.
+
+Same logic everywhere: statement lines and prepared statements (rebuilt once automatically; items
+stay unique per source record, so re-opening never duplicates), the statements list ("your
+records"), the installment plan's *Billing on the card statements* table (billing date, statement,
+payment due; the plan's own schedule date is shown when it differs), the dashboard's *Installment
+overview*, and the borrower's repay-by dates and penalties.
+
+**Borrower reminders:** the daily job notifies the borrower 3 days before the statement payment due
+date and once when it is missed - each once per purchase and due date - and the notification opens
+the purchase in their account.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |

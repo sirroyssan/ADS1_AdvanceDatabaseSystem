@@ -14,6 +14,7 @@ const PORTAL_NOTIFICATION_LINKS = [
     'obligation'            => 'portal/obligation.php',
     'agreement'             => 'portal/agreement.php',
     'demand_letter'         => 'portal/letter.php',
+    'borrowed_purchase'     => 'pages/borrowed/view.php',
 ];
 
 if (is_post()) {

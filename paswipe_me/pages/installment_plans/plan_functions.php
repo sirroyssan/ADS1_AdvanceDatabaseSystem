@@ -211,7 +211,7 @@ function plan_find(string $id): ?array
     }
 
     return db_row(
-        'SELECT p.*, t.transaction_number, t.amount AS transaction_amount, t.borrower_id, t.credit_card_id,
+        'SELECT p.*, t.transaction_number, t.transaction_date, t.amount AS transaction_amount, t.borrower_id, t.credit_card_id,
                 b.first_name, b.last_name, c.card_nickname, c.last_four,
                 (SELECT COALESCE(SUM(amount_paid), 0) FROM installment_schedules s WHERE s.installment_plan_id = p.id) AS total_paid
            FROM installment_plans p

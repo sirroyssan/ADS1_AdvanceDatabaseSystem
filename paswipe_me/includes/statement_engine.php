@@ -30,6 +30,8 @@ const STATEMENT_UPGRADE_MARKER = 'storage/upgrade_statements.done';
 const STATEMENT_UPGRADE_V2_MARKER = 'storage/upgrade_statements_v2.done';
 const STATEMENT_UPGRADE_V3_MARKER = 'storage/upgrade_statements_v3.done';
 const STATEMENT_UPGRADE_V4_MARKER = 'storage/upgrade_statements_v4.done';
+/** Installments billed by billing period (not due date): prepared statements are rebuilt once. */
+const STATEMENT_UPGRADE_V5_MARKER = 'storage/upgrade_statements_v5.done';
 /** Days ahead that count as an upcoming payment. */
 const STATEMENT_UPCOMING_DAYS = 7;
 
@@ -90,6 +92,11 @@ function statement_schema_upgrade(): void
     if (!marker_exists(STATEMENT_UPGRADE_V4_MARKER)) {
         run_sql_file(APP_ROOT . '/db/upgrade_statements_v4.sql');
         marker_write(STATEMENT_UPGRADE_V4_MARKER);
+    }
+    if (!marker_exists(STATEMENT_UPGRADE_V5_MARKER)) {
+        marker_write(STATEMENT_UPGRADE_V5_MARKER);   // first: a failure is retried by the daily run, never in a loop
+        $rebuilt = statement_prepare_all();
+        log_activity('statements_upgrade', 'system', null, 'Installments are now placed on statements by billing period (from the transaction date), not by due date. Prepared statements rebuilt: ' . $rebuilt, null, null, SYSTEM_ACTOR);
     }
 }
 
@@ -359,6 +366,34 @@ function statement_month_label(?string $cutoff): string
     return $cutoff ? (new DateTimeImmutable($cutoff))->format('F Y') : '—';
 }
 
+/**
+ * Where each installment of a purchase (or cash loan) is billed - by the
+ * card's own billing periods, never by its payment due date. Installment 1 is
+ * billed on the statement whose period contains $startDate (the transaction
+ * date; posted that day); installment n on the (n-1)th period after it
+ * (posted on that period's cutoff date). The due date that a statement gives
+ * is the payment deadline only.
+ *
+ * Example: card with cutoff on the 10th, purchase on Oct 9 in 12 installments:
+ * 1/12 is on the statement of Sep 11 - Oct 10 (October), 2/12 on Oct 11 - Nov 10
+ * (November) ... - whatever their payment due dates are.
+ *
+ * @return array<int, array{date: string, period: array}> keyed by installment number
+ */
+function installment_billing(array $ctx, string $startDate, int $count): array
+{
+    $out = [];
+    $period = card_period_containing($ctx, $startDate);
+    for ($n = 1; $n <= $count; $n++) {
+        if ($n > 1) {
+            $period = card_period_containing($ctx, date_add_days($period['end'], 1));
+        }
+        $out[$n] = ['date' => $n === 1 ? $startDate : $period['end'], 'period' => $period];
+    }
+
+    return $out;
+}
+
 function statement_period_lines(string $cardId, string $start, string $end): array
 {
     $p = [':c' => $cardId, ':s' => $start, ':e' => $end];
@@ -400,9 +435,19 @@ function statement_period_lines(string $cardId, string $start, string $end): arr
         }
     }
 
-    // Installment charges of installment purchases, by due date.
+    // Installment charges of installment purchases: each on the statement that bills it
+    // (installment_billing: from the transaction date, one per billing period).
+    $card = db_row('SELECT * FROM credit_cards WHERE id = :c', [':c' => $cardId]);
+    $ctx = $card ? card_period_context($card) : null;
+    $billing = [];
+    $billedIn = static function (string $key, string $startDate, int $count, int $n) use (&$billing, $ctx): ?string {
+        $billing[$key] ??= installment_billing($ctx, $startDate, $count);
+
+        return $billing[$key][$n]['date'] ?? null;
+    };
     foreach (db_all(
         "SELECT s.id, s.installment_number, s.due_date, s.amount_due, s.status, p.id AS plan_id, p.number_of_installments, t.id AS txn_id, t.transaction_number,
+                t.transaction_date, (SELECT MAX(z.installment_number) FROM installment_schedules z WHERE z.installment_plan_id = p.id) AS max_number,
                 m.merchant_name, (SELECT ti.product_name FROM transaction_items ti WHERE ti.transaction_id = t.id ORDER BY ti.created_at LIMIT 1) AS product_name,
                 (SELECT COUNT(*) FROM installment_schedules y WHERE y.installment_plan_id = p.id AND y.status NOT IN ('waived', 'cancelled')) AS total_rows,
                 (SELECT COUNT(*) FROM installment_schedules x
@@ -414,22 +459,29 @@ function statement_period_lines(string $cardId, string $start, string $end): arr
            JOIN transactions t ON t.id = p.transaction_id
            LEFT JOIN merchants m ON m.id = t.merchant_id
           WHERE t.credit_card_id = :c AND t.payment_type = 'installment' AND t.status IN ($charged) AND t.status <> 'refunded'
-            AND s.due_date BETWEEN :s AND :e AND s.status NOT IN ('waived', 'cancelled')
-          ORDER BY s.due_date, t.transaction_number",
-        $p
+            AND t.transaction_date <= :e AND s.status NOT IN ('waived', 'cancelled')
+          ORDER BY t.transaction_date, t.transaction_number, s.installment_number",
+        [':c' => $cardId, ':e' => $end]
     ) as $s) {
+        $billed = $ctx ? $billedIn('p' . $s['plan_id'], $s['transaction_date'], (int) $s['max_number'], (int) $s['installment_number']) : null;
+        if ($billed === null || $billed < $start || $billed > $end) {
+            continue;   // billed on another statement
+        }
         $what = $s['product_name'] ?: ($s['merchant_name'] ?: $s['transaction_number']);
-        $lines[] = $line('installment_charges', $s['due_date'], $what . ' installment · ' . $s['transaction_number'],
+        $lines[] = $line('installment_charges', $billed, $what . ' installment · ' . $s['transaction_number'],
             (float) $s['amount_due'], url('pages/installment_plans/view.php', ['id' => $s['plan_id']]), 'installment',
-            $s['remaining_count'] . ' left after this · ' . format_money($s['remaining_after']) . ' not billed yet', 'Installment', $s['status'],
+            $s['remaining_count'] . ' left after this · ' . format_money($s['remaining_after']) . ' not billed yet · installment due ' . format_date($s['due_date']), 'Installment', $s['status'],
             ['source_type' => 'installment_schedule', 'source_id' => $s['id'], 'progress' => $s['installment_number'] . '/' . max((int) $s['number_of_installments'], (int) $s['total_rows']),
              'installment_number' => (int) $s['installment_number'], 'installment_count' => max((int) $s['number_of_installments'], (int) $s['total_rows']),
              'remaining_count' => (int) $s['remaining_count'], 'remaining_after' => (float) $s['remaining_after']]);
     }
 
-    // Cash loans: monthly installments by due date, fees on the card when the loan started.
+    // Cash loans: monthly installments billed one per period from the loan's start (not by due date),
+    // fees on the card when the loan started.
     foreach (db_all(
         "SELECT s.id, s.installment_number, s.due_date, s.amount_due, s.status, l.id AS loan_id, l.loan_reference,
+                COALESCE(l.start_date, DATE(l.created_at)) AS billing_start,
+                (SELECT MAX(z.installment_number) FROM cash_loan_schedules z WHERE z.cash_loan_id = l.id) AS max_number,
                 (SELECT COUNT(*) FROM cash_loan_schedules y WHERE y.cash_loan_id = l.id AND y.status NOT IN ('waived', 'cancelled')) AS total_rows,
                 (SELECT COUNT(*) FROM cash_loan_schedules x
                   WHERE x.cash_loan_id = l.id AND x.installment_number > s.installment_number AND x.status NOT IN ('waived', 'cancelled')) AS remaining_count,
@@ -437,13 +489,17 @@ function statement_period_lines(string $cardId, string $start, string $end): arr
                   WHERE x.cash_loan_id = l.id AND x.installment_number > s.installment_number AND x.status NOT IN ('waived', 'cancelled')) AS remaining_after
            FROM cash_loan_schedules s JOIN cash_loans l ON l.id = s.cash_loan_id
           WHERE l.credit_card_id = :c AND l.status IN (" . sql_in_list(CASH_LOAN_CHARGED) . ")
-            AND s.due_date BETWEEN :s AND :e AND s.status NOT IN ('waived', 'cancelled')
-          ORDER BY s.due_date",
-        $p
+            AND COALESCE(l.start_date, DATE(l.created_at)) <= :e AND s.status NOT IN ('waived', 'cancelled')
+          ORDER BY s.installment_number",
+        [':c' => $cardId, ':e' => $end]
     ) as $s) {
-        $lines[] = $line('installment_charges', $s['due_date'], 'Cash loan ' . $s['loan_reference'] . ' repayment',
+        $billed = $ctx ? $billedIn('l' . $s['loan_id'], $s['billing_start'], (int) $s['max_number'], (int) $s['installment_number']) : null;
+        if ($billed === null || $billed < $start || $billed > $end) {
+            continue;   // billed on another statement
+        }
+        $lines[] = $line('installment_charges', $billed, 'Cash loan ' . $s['loan_reference'] . ' repayment',
             (float) $s['amount_due'], url('pages/cash_loans/view.php', ['id' => $s['loan_id']]), 'cash_loan',
-            $s['remaining_count'] . ' left after this · ' . format_money($s['remaining_after']) . ' not billed yet', 'Cash loan', $s['status'],
+            $s['remaining_count'] . ' left after this · ' . format_money($s['remaining_after']) . ' not billed yet · installment due ' . format_date($s['due_date']), 'Cash loan', $s['status'],
             ['source_type' => 'cash_loan_schedule', 'source_id' => $s['id'], 'progress' => $s['installment_number'] . '/' . $s['total_rows'],
              'installment_number' => (int) $s['installment_number'], 'installment_count' => (int) $s['total_rows'],
              'remaining_count' => (int) $s['remaining_count'], 'remaining_after' => (float) $s['remaining_after']]);

@@ -201,7 +201,7 @@ $recentTransactions = dashboard_rows(
 // Installment overview: progress (paid of total), monthly amount, what is left and the next billing period.
 $installments = dashboard_rows(
     "SELECT p.id, p.number_of_installments, p.installment_amount, p.total_repayment, p.status,
-            t.transaction_number, t.credit_card_id, m.merchant_name, c.card_nickname, c.last_four,
+            t.transaction_number, t.transaction_date, t.credit_card_id, m.merchant_name, c.card_nickname, c.last_four, sc.next_number, sc.max_number,
             COALESCE(sc.paid_count, 0) AS paid_count, COALESCE(sc.remaining, 0) AS remaining, sc.next_due
        FROM installment_plans p
        JOIN transactions t ON t.id = p.transaction_id
@@ -210,20 +210,24 @@ $installments = dashboard_rows(
        LEFT JOIN (SELECT installment_plan_id,
                          SUM(status IN ('paid', 'waived') OR remaining_amount <= 0) AS paid_count,
                          SUM(IF(status IN ('waived', 'cancelled'), 0, remaining_amount)) AS remaining,
-                         MIN(IF(remaining_amount > 0 AND status NOT IN ('paid', 'waived', 'cancelled'), due_date, NULL)) AS next_due
+                         MIN(IF(remaining_amount > 0 AND status NOT IN ('paid', 'waived', 'cancelled'), due_date, NULL)) AS next_due,
+                         MIN(IF(remaining_amount > 0 AND status NOT IN ('paid', 'waived', 'cancelled'), installment_number, NULL)) AS next_number,
+                         MAX(installment_number) AS max_number
                     FROM installment_schedules GROUP BY installment_plan_id) sc ON sc.installment_plan_id = p.id
       WHERE t.credit_card_id IN $myCards AND p.status NOT IN ('cancelled', 'completed') AND COALESCE(sc.remaining, 0) > 0
       ORDER BY sc.next_due IS NULL, sc.next_due
       LIMIT 10"
 );
-// Billing period (statement month) of each next installment, from the card's cutoff day.
+// Statement that bills each next installment: by the card's billing periods from the transaction date
+// (installment_billing), not by the installment's due date.
 $cardContext = [];
 foreach ($installments as &$plan) {
     $plan['next_period'] = null;
-    if ($plan['next_due']) {
+    if ($plan['next_number']) {
         try {
             $ctx = $cardContext[$plan['credit_card_id']] ??= card_period_context(db_row('SELECT * FROM credit_cards WHERE id = :id', [':id' => $plan['credit_card_id']]));
-            $plan['next_period'] = statement_month_label(card_period_containing($ctx, $plan['next_due'])['end']);
+            $billed = installment_billing($ctx, $plan['transaction_date'], (int) $plan['max_number'])[(int) $plan['next_number']] ?? null;
+            $plan['next_period'] = $billed ? statement_month_label($billed['period']['end']) : null;
         } catch (Throwable $e) {
             $plan['next_period'] = null;   // card without billing settings: shown as the due date only
         }

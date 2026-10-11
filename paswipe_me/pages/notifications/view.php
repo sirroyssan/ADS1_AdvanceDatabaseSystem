@@ -12,6 +12,8 @@ const ADMIN_ENTITY_PAGES = [
     'demand_letter'    => 'pages/demand_letters/view.php',
     'obligation'       => 'pages/obligations/view.php',
     'agreement'        => 'pages/agreements/view.php',
+    'transaction'      => 'pages/transactions/view.php',
+    'borrowed_purchase' => 'pages/borrowed/view.php',   // a card purchase you have to repay
 ];
 
 $currentUser = require_admin();

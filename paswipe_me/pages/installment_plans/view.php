@@ -107,21 +107,25 @@ require APP_ROOT . '/includes/header.php';
 <?php if ($isBankPlan && $schedule): ?>
     <section class="panel subpanel">
         <header class="panel__header"><h3><?= icon('layers') ?> Billing on the card statements</h3></header>
-        <p class="field-help">Each installment is billed once, on the statement whose period contains its due date. Changing the plan regenerates the schedule rows, so no charge is billed twice.</p>
+        <p class="field-help">Each installment is billed once, by the card's billing periods: the first on the statement whose period contains the transaction date (<?= e(format_date($plan['transaction_date'])) ?>), each next one on the following statement. Its due date is only when it must be paid. Changing the plan regenerates the schedule rows, so no charge is billed twice.</p>
+        <?php $billing = installment_billing($planCtx, $plan['transaction_date'], (int) max(array_column($schedule, 'installment_number'))); ?>
         <div class="table-wrap">
             <table class="table table--cards table--compact">
-                <thead><tr><th scope="col" class="num">#</th><th scope="col">Billing date</th><th scope="col" class="num">Installment charge</th><th scope="col">Statement</th><th scope="col" class="num">Not billed yet after it</th></tr></thead>
+                <thead><tr><th scope="col" class="num">#</th><th scope="col">Billing date</th><th scope="col" class="num">Installment charge</th><th scope="col">Statement</th><th scope="col">Payment due</th><th scope="col" class="num">Not billed yet after it</th></tr></thead>
                 <tbody>
                 <?php $left = array_sum(array_map(static fn ($r) => in_array($r['status'], ['waived', 'cancelled'], true) ? 0 : (float) $r['amount_due'], $schedule)); ?>
-                <?php foreach ($schedule as $r): if (in_array($r['status'], ['waived', 'cancelled'], true)) { continue; } $left -= (float) $r['amount_due']; $where = card_period_containing($planCtx, $r['due_date']); ?>
+                <?php foreach ($schedule as $r): if (in_array($r['status'], ['waived', 'cancelled'], true)) { continue; } $left -= (float) $r['amount_due']; $billed = $billing[(int) $r['installment_number']]; $where = $billed['period']; ?>
                     <tr>
                         <td data-label="#" class="num"><?= e($r['installment_number']) ?> of <?= e($plan['number_of_installments']) ?></td>
-                        <td data-label="Billing date"><?= e(format_date($r['due_date'])) ?></td>
+                        <td data-label="Billing date"><?= e(format_date($billed['date'])) ?></td>
                         <td data-label="Installment charge" class="num"><?= e(format_money($r['amount_due'])) ?></td>
                         <td data-label="Statement"><a data-modal-form href="<?= e($where['statement_id']
                             ? url('pages/statements/view.php', ['id' => $where['statement_id']])
                             : url('pages/statements/view.php', ['card' => $plan['credit_card_id'], 'start' => $where['start'], 'end' => $where['end']])) ?>"><?= e(statement_month_label($where['end'])) ?></a>
-                            <span class="text-muted"><?= $where['statement_id'] ? '· SOA recorded' : '· SOA not recorded' ?></span></td>
+                            <span class="text-muted"><?= $where['statement_id'] && $where['recorded'] ? '· SOA recorded' : '· SOA not recorded' ?></span></td>
+                        <td data-label="Payment due"><?php $due = borrowed_due_of_period($planCtx, $where); /* same rule everywhere: recorded SOA, else the card's due-date rule */ ?>
+                            <?= $due['date'] ? e(format_date($due['date'])) . ' <span class="text-muted">(' . e($due['source'] === 'statement' ? 'SOA' : 'card rule') . ')</span>' : '<span class="text-muted">not set</span>' ?>
+                            <?php if ($due['date'] !== $r['due_date']): ?><br><span class="text-muted">plan schedule: <?= e(format_date($r['due_date'])) ?></span><?php endif; ?></td>
                         <td data-label="Not billed yet after it" class="num"><?= e(format_money(max(0, $left))) ?></td>
                     </tr>
                 <?php endforeach; ?>

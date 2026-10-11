@@ -78,7 +78,7 @@ try {
         });
         notify_borrower($txn['borrower_id'], 'payment_' . $decision, 'Repayment ' . ($decision === 'approved' ? 'confirmed' : 'not accepted') . ': ' . format_money($payment['amount']),
             ($decision === 'approved' ? 'The card owner confirmed your repayment for ' : 'The card owner did not accept your repayment for ') . $txn['transaction_number']
-            . ($reason !== '' ? '. Reason: ' . $reason : '.'), 'transaction', $txn['id']);
+            . ($reason !== '' ? '. Reason: ' . $reason : '.'), 'borrowed_purchase', $txn['id']);
         log_activity($action . '_repayment', 'transaction', $txn['id'], ucfirst($action) . 'ed repayment ' . $payment['payment_number'] . ' of ' . format_money($payment['amount']));
         flash('success', 'Repayment ' . $payment['payment_number'] . ($decision === 'approved' ? ' confirmed.' : ' rejected.'));
     } else {

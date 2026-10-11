@@ -247,8 +247,14 @@ function borrowed_due_for(string $cardId, string $date): array
     if ($ctx === null) {
         return ['date' => null, 'source' => null, 'statement' => null, 'statement_id' => null];
     }
+
+    return borrowed_due_of_period($ctx, card_period_containing($ctx, $date));
+}
+
+/** Payment due date of one billing period of a card (same rules as borrowed_due_for). */
+function borrowed_due_of_period(array $ctx, array $period): array
+{
     $card = $ctx['card'];
-    $period = card_period_containing($ctx, $date);
     $out = ['date' => null, 'source' => null, 'statement' => statement_month_label($period['end']), 'statement_id' => $period['statement_id']];
     if ($period['statement_id'] && $period['recorded']) {
         $due = db_value('SELECT due_date FROM credit_card_statements WHERE id = :s', [':s' => $period['statement_id']]);
@@ -327,11 +333,16 @@ function borrowed_ledger(array $t, ?string $today = null): array
     // What the borrower is responsible for: each installment billed (installment purchase) or the purchase itself.
     $rows = [];
     $plan = db_row("SELECT id FROM installment_plans WHERE transaction_id = :t AND status <> 'cancelled'", [':t' => $t['id']]);
-    if ($plan) {
-        foreach (db_all("SELECT id, installment_number, due_date, amount_due, status FROM installment_schedules
-                          WHERE installment_plan_id = :p AND status NOT IN ('cancelled', 'waived') ORDER BY installment_number", [':p' => $plan['id']]) as $s) {
-            $rows[] = ['schedule_id' => $s['id'], 'label' => 'Installment ' . $s['installment_number'], 'charge_date' => $s['due_date'],
-                       'amount' => (float) $s['amount_due'], 'due' => borrowed_due_for($t['credit_card_id'], $s['due_date'])];
+    $ctx = borrowed_card_context($t['credit_card_id']);
+    if ($plan && $ctx) {
+        $schedule = db_all("SELECT id, installment_number, due_date, amount_due, status FROM installment_schedules
+                             WHERE installment_plan_id = :p AND status NOT IN ('cancelled', 'waived') ORDER BY installment_number", [':p' => $plan['id']]);
+        // Each installment is repaid by the due date of the statement that bills it (from the transaction date).
+        $billing = installment_billing($ctx, $t['transaction_date'], (int) max(array_column($schedule, 'installment_number') ?: [0]));
+        foreach ($schedule as $s) {
+            $billed = $billing[(int) $s['installment_number']];
+            $rows[] = ['schedule_id' => $s['id'], 'label' => 'Installment ' . $s['installment_number'], 'charge_date' => $billed['date'],
+                       'amount' => (float) $s['amount_due'], 'due' => borrowed_due_of_period($ctx, $billed['period'])];
         }
     }
     if (!$rows) {
@@ -462,7 +473,7 @@ function borrowed_penalty_run(array $t, ?string $today = null): int
         log_activity('auto_penalty', 'transaction', $t['id'], 'Charged ' . $created . ' late repayment penalt' . ($created === 1 ? 'y' : 'ies') . ' on borrowed purchase ' . $t['transaction_number'],
             null, null, $owner);
         notify_borrower($t['borrower_id'], 'penalty_charged', 'Late charge on ' . $t['transaction_number'],
-            'A late charge was added because the repayment of ' . $t['transaction_number'] . ' is past its due date. Please repay as soon as possible.', 'transaction', $t['id']);
+            'A late charge was added because the repayment of ' . $t['transaction_number'] . ' is past its due date. Please repay as soon as possible.', 'borrowed_purchase', $t['id']);
     }
 
     return $created;
@@ -538,7 +549,7 @@ function borrowed_record_repayment(array $t, array $data, string $userId, bool $
     if ($confirmed) {
         borrowed_sync_penalty_payments($t['id']);
         notify_borrower($t['borrower_id'], 'payment_approved', 'Repayment received: ' . format_money($data['amount']),
-            'The card owner recorded your repayment of ' . format_money($data['amount']) . ' for ' . $t['transaction_number'] . '.', 'transaction', $t['id']);
+            'The card owner recorded your repayment of ' . format_money($data['amount']) . ' for ' . $t['transaction_number'] . '.', 'borrowed_purchase', $t['id']);
     } else {
         notify_lender($t['borrower_id'], 'payment_submitted', 'Repayment to confirm: ' . $number,
             'A repayment of ' . format_money($data['amount']) . ' (paid ' . format_date($data['payment_date']) . ') was reported for ' . $t['transaction_number'] . '. Please confirm it.',
@@ -802,4 +813,59 @@ function borrowed_render_repayments(array $repayments, ?callable $actions = null
     }
 
     return $html . '</tbody></table></div>';
+}
+
+/** Days before the repay-by date when the borrower is reminded. */
+const BORROWED_REMIND_DAYS = 3;
+
+/**
+ * Daily: remind borrowers of the actual statement payment due date of their
+ * purchases - once a few days before it, and once when it is missed. Each
+ * reminder is sent once per purchase and due date (the notification itself is
+ * the record: type + purchase + date in the title).
+ */
+function borrowed_send_reminders(?string $today = null): int
+{
+    $today ??= date('Y-m-d');
+    $sent = 0;
+    foreach (db_all(borrowed_select_sql() . " WHERE t.borrower_id IS NOT NULL AND t.status NOT IN ('cancelled', 'refunded')
+                      AND EXISTS (SELECT 1 FROM borrower_user_accounts a WHERE a.borrower_id = t.borrower_id AND a.deactivated_at IS NULL)") as $t) {
+        $l = borrowed_ledger($t, $today);
+        if ($l['mode'] !== 'transaction' || $l['status'] === 'repaid') {
+            continue;
+        }
+        foreach ($l['rows'] as $row) {
+            $due = $row['due']['date'];
+            if ($due === null || $row['remaining'] <= 0.004) {
+                continue;
+            }
+            $kind = match (true) {
+                $due < $today => 'repayment_overdue',
+                $due <= date('Y-m-d', strtotime($today . ' +' . BORROWED_REMIND_DAYS . ' days')) => 'repayment_reminder',
+                default => null,
+            };
+            if ($kind === null) {
+                continue;
+            }
+            $what = ($t['merchant_name'] ?: ($t['notes'] ? excerpt($t['notes'], 40) : $t['transaction_number'])) . (count($l['rows']) > 1 ? ' (' . $row['label'] . ')' : '');
+            $title = ($kind === 'repayment_overdue' ? 'Overdue since ' : 'Repayment due ') . format_date($due) . ': ' . $what;
+            $exists = (int) db_value(
+                'SELECT COUNT(*) FROM notifications n JOIN borrower_user_accounts a ON a.user_id = n.user_id AND a.borrower_id = :b
+                  WHERE n.notification_type = :k AND n.entity_id = :t AND n.title = :title',
+                [':b' => $t['borrower_id'], ':k' => $kind, ':t' => $t['id'], ':title' => mb_substr($title, 0, 255)]
+            );
+            if ($exists) {
+                continue;
+            }
+            notify_borrower($t['borrower_id'], $kind, $title,
+                ($kind === 'repayment_overdue'
+                    ? 'The repayment of ' . $what . ' was due on ' . format_date($due) . ' (' . $row['due']['statement'] . ' statement of ' . $t['lender_name'] . '\'s card). '
+                    : 'Please repay ' . $what . ' to ' . $t['lender_name'] . ' by ' . format_date($due) . ', the card\'s ' . $row['due']['statement'] . ' statement payment due date. ')
+                . format_money($row['remaining']) . ' is left on it.',
+                'borrowed_purchase', $t['id']);
+            $sent++;
+        }
+    }
+
+    return $sent;
 }

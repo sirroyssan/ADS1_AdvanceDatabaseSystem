@@ -324,6 +324,7 @@ function penalty_run_if_due(): void
     try {
         [$checked, $created] = penalty_run_all($today);
         $created += borrowed_penalty_run_all($today);   // late repayments of borrowed card purchases
+        borrowed_send_reminders($today);                 // repay-by reminders to borrowers
         if ($created > 0) {
             log_activity('penalty_run', 'system', null, 'Daily penalty check: ' . $created . ' new penalt' . ($created === 1 ? 'y' : 'ies') . ' on ' . $checked . ' open obligation(s)', null, null, SYSTEM_ACTOR);
         }
