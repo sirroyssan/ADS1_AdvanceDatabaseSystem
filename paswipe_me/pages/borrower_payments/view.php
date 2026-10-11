@@ -64,7 +64,8 @@ require APP_ROOT . '/includes/header.php';
         <a href="<?= e(url('pages/borrower_payments/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
         <?php if (user_is_admin($currentUser) && $payment['status'] !== 'cancelled'): ?>
-            <button type="button" class="btn btn--outline" data-toggle-panel="override-amount"><?= icon('lock') ?> <span>Override amount</span></button>
+            <a data-modal-form href="<?= e(url('pages/borrower_payments/override.php', ['id' => $id])) ?>" class="btn btn--outline"><?= icon('lock') ?> <span>Override amount</span></a>
+            <a data-modal-form href="<?= e(url('pages/borrower_payments/void.php', ['id' => $id])) ?>" class="btn btn--outline btn--danger-outline"><?= icon('trash') ?> <span>Delete</span></a>
         <?php endif; ?>
         <?php if (in_array($payment['status'], PAYMENT_EDITABLE_STATUSES, true)): ?>
             <a data-modal-form href="<?= e(url('pages/borrower_payments/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
@@ -72,25 +73,6 @@ require APP_ROOT . '/includes/header.php';
     </div>
 </section>
 
-<?php if (user_is_admin($currentUser) && $payment['status'] !== 'cancelled'): ?>
-    <form method="post" action="<?= e(url('pages/borrower_payments/override.php')) ?>" class="inline-panel no-print" id="override-amount" hidden novalidate data-validate>
-        <?= csrf_field() ?>
-        <input type="hidden" name="id" value="<?= e($id) ?>">
-        <p class="field-help"><strong>Owner only.</strong> Changes the amount even after approval. Payments are never deleted.
-            If the new amount is lower than the <?= e(format_money($payment['allocated'])) ?> already applied, the difference is taken back from the newest allocations
-            (principal first, then interest, then penalties) and those balances are restored.</p>
-        <?= render_fields([
-            'new_amount' => ['label' => 'New amount', 'type' => 'decimal', 'required' => true, 'min_exclusive' => 0],
-            'reason'     => ['label' => 'Reason', 'type' => 'textarea', 'rows' => 2, 'required' => true, 'max' => 1000,
-                             'placeholder' => 'e.g. GCash receipt shows ₱4,500, not ₱5,000',
-                             'help' => 'Required (at least ' . PENALTY_REASON_MIN . ' characters). Saved in the payment history and the activity log; the borrower is notified.'],
-        ], ['new_amount' => number_format((float) $payment['amount'], 2, '.', '')], []) ?>
-        <div class="inline-panel__actions">
-            <button type="button" class="btn btn--outline" data-toggle-panel="override-amount">Cancel</button>
-            <button type="submit" class="btn btn--danger" data-loading-text="Saving…"><?= icon('check') ?> <span class="btn__label">Override amount</span></button>
-        </div>
-    </form>
-<?php endif; ?>
 
 <section class="figure-grid">
     <div class="figure"><p class="figure__label">Amount</p><p class="figure__value"><?= e(format_money($payment['amount'])) ?></p></div>

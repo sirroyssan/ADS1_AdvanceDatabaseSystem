@@ -222,6 +222,16 @@ code {
     background: var(--danger-hover);
 }
 
+/* Outline button for a destructive action next to other outline buttons. */
+.btn--outline.btn--danger-outline {
+    color: var(--danger);
+    border-color: var(--danger);
+}
+
+.btn--outline.btn--danger-outline:hover {
+    background: var(--danger-soft);
+}
+
 .btn--warning {
     background: var(--warning);
     color: var(--text-inverse);

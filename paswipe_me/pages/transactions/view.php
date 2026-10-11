@@ -75,6 +75,9 @@ require APP_ROOT . '/includes/header.php';
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
         <?php if (!$isLocked && $canManage): ?>
             <a data-modal-form href="<?= e(url('pages/transactions/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+            <?php if ($txn['status'] !== 'draft'): ?>
+                <a data-modal-form href="<?= e(url('pages/transactions/void.php', ['id' => $id])) ?>" class="btn btn--outline btn--danger-outline"><?= icon('trash') ?> <span>Delete</span></a>
+            <?php endif; ?>
         <?php elseif (!$isLocked): ?>
             <a data-modal-form href="<?= e(url('pages/authorizations/request.php', ['type' => 'transaction', 'id' => $id, 'action' => 'edit'])) ?>" class="btn btn--outline"><?= icon('lock') ?> <span>Edit</span></a>
             <a data-modal-form href="<?= e(url('pages/authorizations/request.php', ['type' => 'transaction', 'id' => $id, 'action' => 'delete'])) ?>" class="btn btn--outline"><?= icon('trash') ?> <span>Delete</span></a>

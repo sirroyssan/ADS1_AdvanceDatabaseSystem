@@ -251,16 +251,7 @@ function auth_apply(array $req, array $approver): string
         }
         $r = ['record' => $t];
         if ($req['action'] === 'delete') {
-            if ($problem = auth_delete_problem('transaction', $r)) {
-                throw new DomainException($problem);
-            }
-            card_usage_apply([$t['credit_card_id']], static function () use ($t, $approver) {
-                db_update('transactions', ['status' => 'cancelled', 'updated_by' => $approver['id']], $t['id']);
-                db_exec("UPDATE installment_plans SET status = 'cancelled' WHERE transaction_id = :t", [':t' => $t['id']]);
-                db_exec("UPDATE borrower_obligations SET status = 'cancelled' WHERE transaction_id = :t AND total_paid = 0 AND status <> 'cancelled'", [':t' => $t['id']]);
-            });
-
-            return 'Transaction ' . $t['transaction_number'] . ' (' . format_money($t['amount']) . ') was voided: status cancelled, removed from the card\'s used credit. The record is kept.';
+            return transaction_void($t, $approver);
         }
         [, $errors] = auth_edit_changes('transaction', ['record' => $t, 'fields' => auth_record_fields('transaction')], $changes + $t);
         if ($errors) {
@@ -277,20 +268,7 @@ function auth_apply(array $req, array $approver): string
         throw new DomainException('The payment no longer exists or is already void.');
     }
     if ($req['action'] === 'delete') {
-        // Void: give back everything it paid, newest first, then cancel it (kept in the history).
-        foreach (db_all('SELECT * FROM borrower_payment_allocations WHERE borrower_payment_id = :p ORDER BY created_at DESC, id DESC FOR UPDATE', [':p' => $p['id']]) as $a) {
-            payment_reverse_allocation($a, (float) $a['allocated_amount']);
-        }
-        db_update('borrower_payments', ['status' => 'cancelled', 'allocation_status' => 'unallocated'], $p['id']);
-        payment_log($p, 'cancelled', 'voided', 'Voided with the owner\'s authorization: ' . $req['reason'], $approver['id']);
-        if ($p['transaction_id']) {
-            borrowed_sync_penalty_payments($p['transaction_id']);
-        }
-        receipt_note_change($p['id'], 'Payment ' . $p['payment_number'] . ' (' . format_money($p['amount']) . ') voided with the owner\'s authorization (' . $req['request_number'] . '): ' . $req['reason'], $approver['id']);
-        notify_borrower($p['borrower_id'], 'payment_voided', 'Payment ' . $p['payment_number'] . ' voided',
-            'Your payment of ' . format_money($p['amount']) . ' on ' . format_date($p['payment_date']) . ' was voided. Reason: ' . $req['reason'], 'borrower_payment', $p['id']);
-
-        return 'Payment ' . $p['payment_number'] . ' (' . format_money($p['amount']) . ') was voided; what it paid is owed again and its receipt is marked void when no payment on it counts.';
+        return payment_void($p, $req['reason'] . ' (' . $req['request_number'] . ')', $approver);
     }
     if (isset($changes['amount'])) {
         $error = payment_override_amount(payment_find($p['id']) ?? $p, (string) $changes['amount'], 'Authorized correction: ' . $req['reason'], $approver);
@@ -347,4 +325,48 @@ function auth_find(string $id): ?array
 function auth_status_badge(string $status): string
 {
     return status_badge($status, ['pending' => 'warning', 'approved' => 'success', 'rejected' => 'danger', 'failed' => 'danger', 'cancelled' => 'muted']);
+}
+
+/**
+ * Void a transaction (the owner's "Delete" for a confirmed one, directly or
+ * through an approved request): status cancelled, out of the card's used
+ * credit, its plan and unpaid obligations cancelled. The record is kept.
+ * Must run inside a transaction; throws DomainException when it cannot.
+ */
+function transaction_void(array $t, array $user): string
+{
+    if ($problem = auth_delete_problem('transaction', ['record' => $t])) {
+        throw new DomainException($problem);
+    }
+    card_usage_apply([$t['credit_card_id']], static function () use ($t, $user) {
+        db_update('transactions', ['status' => 'cancelled', 'updated_by' => $user['id']], $t['id']);
+        db_exec("UPDATE installment_plans SET status = 'cancelled' WHERE transaction_id = :t", [':t' => $t['id']]);
+        db_exec("UPDATE borrower_obligations SET status = 'cancelled' WHERE transaction_id = :t AND total_paid = 0 AND status <> 'cancelled'", [':t' => $t['id']]);
+    });
+
+    return 'Transaction ' . $t['transaction_number'] . ' (' . format_money($t['amount']) . ') was voided: status cancelled, removed from the card\'s used credit. The record is kept.';
+}
+
+/**
+ * Void a payment (the owner's "Delete", directly or through an approved
+ * request): everything it paid is given back newest first (balances,
+ * installments, penalties restored), it becomes cancelled and stays in the
+ * history; its receipt is marked void or amended. Must run inside a transaction.
+ */
+function payment_void(array $p, string $reason, array $user): string
+{
+    foreach (db_all('SELECT * FROM borrower_payment_allocations WHERE borrower_payment_id = :p ORDER BY created_at DESC, id DESC FOR UPDATE', [':p' => $p['id']]) as $a) {
+        payment_reverse_allocation($a, (float) $a['allocated_amount']);
+    }
+    db_update('borrower_payments', ['status' => 'cancelled', 'allocation_status' => 'unallocated'], $p['id']);
+    payment_log($p, 'cancelled', 'voided', 'Voided by ' . user_name_of($user['id']) . ': ' . $reason, $user['id']);
+    if ($p['transaction_id']) {
+        borrowed_sync_penalty_payments($p['transaction_id']);
+    }
+    receipt_note_change($p['id'], 'Payment ' . $p['payment_number'] . ' (' . format_money($p['amount']) . ') voided: ' . $reason, $user['id']);
+    notify_borrower($p['borrower_id'], 'payment_voided', 'Payment ' . $p['payment_number'] . ' voided',
+        'Your payment of ' . format_money($p['amount']) . ' on ' . format_date($p['payment_date']) . ' was voided. Reason: ' . $reason, 'borrower_payment', $p['id']);
+    log_activity('void', 'borrower_payment', $p['id'], 'Voided payment ' . $p['payment_number'] . ' of ' . format_money($p['amount']) . ': ' . $reason, ['status' => $p['status']], ['status' => 'cancelled'], $user['id']);
+
+    return 'Payment ' . $p['payment_number'] . ' (' . format_money($p['amount']) . ') was voided; what it paid is owed again and its receipt is marked void when no payment on it counts.';
 }
