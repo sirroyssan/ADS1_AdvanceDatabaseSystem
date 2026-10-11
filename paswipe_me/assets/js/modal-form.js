@@ -52,6 +52,24 @@
         // Close: X, backdrop, Cancel links / buttons inside the form.
         modal.addEventListener('click', function (event) {
             var target = event.target;
+            // A panel button inside a view (e.g. "Override amount") shows / hides its panel in place;
+            // only the Cancel of a panel opened as the modal itself closes the modal.
+            var toggle = target.closest('[data-toggle-panel]');
+            if (toggle && modal.contains(toggle)) {
+                var inline = body.querySelector('#' + CSS.escape(toggle.getAttribute('data-toggle-panel')));
+                if (inline && inline !== panel) {
+                    event.preventDefault();
+                    event.stopPropagation();
+                    inline.hidden = !inline.hidden;
+                    if (!inline.hidden) {
+                        if (window.App) window.App.init(inline);
+                        inline.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+                        var first = inline.querySelector('input:not([type=hidden]), select, textarea');
+                        if (first) first.focus();
+                    }
+                    return;
+                }
+            }
             var cancel = target.closest('[data-modal-close], .form-actions a, [data-toggle-panel]');
             if (!cancel || !modal.contains(cancel)) return;
             event.preventDefault();
