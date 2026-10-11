@@ -404,8 +404,9 @@ function same_bank(?string $a, ?string $b): bool
 }
 
 /**
- * Bank dropdown: every listed bank, plus any other bank already used on a
- * card, plus the current value. Banks you have cards with are marked.
+ * Bank dropdown: every listed bank, plus any other bank you already entered
+ * (on a card, a penalty rule or an installment rule), plus the current value.
+ * Banks you have cards with are marked.
  */
 function bank_options(?string $current = null): array
 {
@@ -417,6 +418,12 @@ function bank_options(?string $current = null): array
     $names = array_keys(BANKS);
     foreach (array_keys($mine) as $bank) {
         $names[] = $bank;
+    }
+    // Banks typed in with "Other bank" on a rule, before any card of that bank.
+    $entered = db_all("SELECT applies_to_issuer AS bank FROM penalty_rules r WHERE TRIM(COALESCE(applies_to_issuer, '')) <> '' AND " . owner_scope('penalty_rules', 'r')
+        . " UNION SELECT issuer FROM installment_rules r WHERE TRIM(COALESCE(issuer, '')) <> '' AND " . owner_scope('installment_rules', 'r'));
+    foreach ($entered as $row) {
+        $names[] = (string) bank_canonical($row['bank']);
     }
     if ($current !== null && trim($current) !== '') {
         $names[] = trim($current);
@@ -430,4 +437,45 @@ function bank_options(?string $current = null): array
     }
 
     return $options;
+}
+
+/** Choice in a bank dropdown for a bank that is not listed yet. */
+const BANK_OTHER = '__other__';
+
+/**
+ * A bank dropdown ($name) with "Other bank - not in the list" at the end, and
+ * the text box ({$name}_other) shown only when that is chosen. The typed bank
+ * is saved like any other and is then listed in every bank dropdown.
+ */
+function bank_fields(string $name, array $select, ?string $current = null): array
+{
+    $select['type'] = 'select';
+    $select['options'] = bank_options($current) + [BANK_OTHER => 'Other bank — not in the list'];
+
+    return [
+        $name => $select,
+        $name . '_other' => ['label' => 'Bank name', 'type' => 'text', 'max' => 150, 'placeholder' => 'e.g. Bank of Commerce',
+                             'help' => 'Type the bank\'s name. Once saved it appears in every bank list.',
+                             'attrs' => ['data-show-if' => 'f_' . $name . '=' . BANK_OTHER]],
+    ];
+}
+
+/**
+ * After validate_fields(): turn "Other bank" into the typed name (a listed
+ * bank typed by another name becomes that bank) and drop the text box from
+ * the data saved. Returns [data, errors].
+ */
+function bank_resolve(array $data, array $errors, string $name): array
+{
+    $typed = trim(preg_replace('/\s+/', ' ', (string) ($data[$name . '_other'] ?? '')));
+    unset($data[$name . '_other']);
+    if (($data[$name] ?? null) === BANK_OTHER) {
+        if (mb_strlen($typed) < 2) {
+            $errors[$name . '_other'] = 'Type the name of the bank.';
+        } else {
+            $data[$name] = bank_canonical($typed);
+        }
+    }
+
+    return [$data, $errors];
 }

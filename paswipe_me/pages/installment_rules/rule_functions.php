@@ -23,7 +23,7 @@ function installment_rule_fields(?array $current = null): array
         'name'            => ['label' => 'Rule name', 'type' => 'text', 'max' => 150, 'required' => true, 'placeholder' => 'e.g. BDO 0% installment'],
         'credit_card_id'  => ['label' => 'Card', 'type' => 'select', 'options' => credit_card_options($current['credit_card_id'] ?? null), 'empty_label' => '— Any card of the bank below —',
                               'help' => 'Leave empty to use the rule for every card of the bank.'],
-        'issuer'          => ['label' => 'Bank', 'type' => 'select', 'options' => bank_options(bank_canonical($current['issuer'] ?? null)), 'empty_label' => '— Any bank —'],
+    ] + bank_fields('issuer', ['label' => 'Bank', 'empty_label' => '— Any bank —'], bank_canonical($current['issuer'] ?? null)) + [
         'terms'           => ['label' => 'Months offered', 'type' => 'text', 'max' => 100, 'required' => true, 'placeholder' => '3, 6, 12, 24',
                               'help' => 'The installment terms the bank offers, separated by commas.'],
         'min_amount'      => ['label' => 'Minimum amount', 'type' => 'decimal', 'min' => 0],
@@ -44,6 +44,7 @@ function installment_rule_fields(?array $current = null): array
 function installment_rule_validate(array $fields, array $input, ?string $id = null): array
 {
     [$data, $errors] = validate_fields($fields, $input, $id);
+    [$data, $errors] = bank_resolve($data, $errors, 'issuer');
 
     if (!isset($errors['terms'])) {
         $months = installment_rule_terms(['terms' => $data['terms']]);

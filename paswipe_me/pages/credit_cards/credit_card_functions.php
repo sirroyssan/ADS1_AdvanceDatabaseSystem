@@ -17,8 +17,9 @@ function credit_card_fields(?array $current = null): array
 {
     $fields = [
         'card_nickname'     => ['label' => 'Card nickname', 'type' => 'text', 'max' => 100, 'required' => true],
-        'issuer'            => ['label' => 'Issuer (bank)', 'type' => 'select', 'options' => bank_options(bank_canonical($current['issuer'] ?? null)), 'required' => true, 'empty_label' => 'Select bank',
+    ] + bank_fields('issuer', ['label' => 'Issuer (bank)', 'required' => true, 'empty_label' => 'Select bank',
                                 'help' => 'Penalty rules are set per bank, so this decides which penalty rules apply to this card\'s transactions, cash advances and cash loans.'],
+        bank_canonical($current['issuer'] ?? null)) + [
         'card_type'         => ['label' => 'Card type', 'type' => 'select', 'options' => enum_options(ENUM_CARD_TYPE), 'required' => true, 'initial' => 'credit'],
         'network'           => ['label' => 'Network', 'type' => 'select', 'options' => array_combine(ENUM_CARD_NETWORK, ['Visa', 'Mastercard', 'American Express', 'JCB', 'UnionPay', 'Other']), 'empty_label' => '— Not set —'],
         'last_four'         => ['label' => 'Last four digits', 'type' => 'text', 'max' => 4, 'required' => true, 'pattern' => '/^[0-9]{4}$/', 'pattern_message' => 'Enter exactly 4 digits.', 'help' => 'Never enter the full card number.'],
@@ -48,6 +49,7 @@ function credit_card_fields(?array $current = null): array
 function credit_card_validate(array $fields, array $input, ?string $id = null): array
 {
     [$data, $errors] = validate_fields($fields, $input, $id);
+    [$data, $errors] = bank_resolve($data, $errors, 'issuer');
 
     if ($data['opening_date'] && $data['expiration_date'] && $data['expiration_date'] < $data['opening_date']) {
         $errors['expiration_date'] = 'Expiration date must be after the opening date.';

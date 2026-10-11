@@ -45,9 +45,9 @@ function penalty_rule_fields(?array $current = null): array
 {
     return [
         'name'              => ['label' => 'Rule name', 'type' => 'text', 'max' => 150, 'required' => true],
-        'applies_to_issuer' => ['label' => 'Bank', 'type' => 'select', 'options' => bank_options(bank_canonical($current['applies_to_issuer'] ?? null)),
-                                'empty_label' => '— No bank: never charged automatically —',
+    ] + bank_fields('applies_to_issuer', ['label' => 'Bank', 'empty_label' => '— No bank: never charged automatically —',
                                 'help' => 'Charged automatically only on this bank\'s purchases, installments, cash advances and cash loans. Changes take effect from the day you save; past charges are not recalculated.'],
+        bank_canonical($current['applies_to_issuer'] ?? null)) + [
         'calculation_type'  => ['label' => 'Calculation type', 'type' => 'select', 'options' => penalty_calculation_types($current['calculation_type'] ?? null), 'required' => true, 'empty_label' => 'Select type'],
         'basis'             => ['label' => 'Basis', 'type' => 'select', 'options' => penalty_keep_option(PENALTY_BASIS_OPTIONS, $current['basis'] ?? null), 'required' => true, 'initial' => 'outstanding_amount',
                                 'help' => 'What a percentage is computed from. For an installment purchase it is the overdue installment.'],
@@ -66,6 +66,7 @@ function penalty_rule_fields(?array $current = null): array
 function penalty_rule_validate(array $fields, array $input, ?string $id = null): array
 {
     [$data, $errors] = validate_fields($fields, $input, $id);
+    [$data, $errors] = bank_resolve($data, $errors, 'applies_to_issuer');
 
     if (($data['calculation_type'] ?? '') === 'percentage' && $data['rate'] === null && !isset($errors['rate'])) {
         $errors['rate'] = 'A percentage rule needs a rate.';

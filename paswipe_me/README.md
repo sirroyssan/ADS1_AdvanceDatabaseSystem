@@ -681,11 +681,12 @@ On a cash advance page, **Give to a borrower** turns all or part of the withdraw
 
 **Bank list** (`BANKS` in `includes/lookups.php`):
 - The credit card's **Issuer (bank)** and the penalty rule's **Bank** are dropdowns from the same list.
-- The list holds the Philippine card issuers plus any bank already used on a card. Banks you have a card with are marked.
+- The list holds the Philippine card issuers plus any bank you already entered on a card or a rule. Banks you have a card with are marked.
 - **Matching:** a rule matches a card through `same_bank()`, which also understands older typed-in names ("Bank of the Philippine Islands" = BPI, "Unionbank"/"union bank" = UnionBank).
 - **Visibility:** the card page lists the penalty rules for its bank.
-- **Validation:** a value outside the list is refused.
-- **Adding a bank:** add it to `BANKS`.
+- **Validation:** a value outside the list is refused, except a name typed with *Other bank*.
+- **Adding a bank (no code change):** in the bank dropdown on a card, penalty rule or installment rule, choose **Other bank — not in the list** and type the name in the *Bank name* box that appears. The name is tidied (extra spaces removed, and a listed bank typed another way becomes that bank, e.g. "union bank" → UnionBank). Once saved, it appears in every bank dropdown of your account (`bank_fields()` / `bank_resolve()` in `includes/lookups.php`). No schema change: the bank is stored in the existing `issuer` / `applies_to_issuer` columns.
+- **Adding a bank for everyone:** add it to `BANKS`.
 
 **Bulk waive/delete** (obligation page):
 - Each penalty has a checkbox, and the header box selects all.
