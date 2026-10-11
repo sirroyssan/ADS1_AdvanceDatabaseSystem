@@ -39,7 +39,7 @@ if (is_post()) {
             card_usage_apply([$txn['credit_card_id'], $data['credit_card_id'] ?? null], fn () => db_update('transactions', $data + ['updated_by' => $currentUser['id']], $txn['id']));
             log_activity('update', 'transaction', $txn['id'], 'Updated transaction ' . $data['transaction_number'], array_intersect_key($txn, $data), $data);
             flash('success', 'Transaction ' . $data['transaction_number'] . ' was updated successfully.');
-            if ($repay = borrowed_sync_obligation($txn['id'], $currentUser['id'])) {
+            if ($repay = borrowed_after_save($txn['id'])) {
                 flash('info', $repay);
             }
             statement_move_notice($txn['credit_card_id'], $txn['transaction_date'], $data['credit_card_id'] ?? $txn['credit_card_id'], $data['transaction_date'] ?? $txn['transaction_date']);

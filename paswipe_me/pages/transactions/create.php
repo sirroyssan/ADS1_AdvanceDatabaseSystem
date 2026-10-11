@@ -37,7 +37,7 @@ if (is_post()) {
             card_usage_apply([$data['credit_card_id']], fn () => db_insert('transactions', ['id' => $id] + $data + ['created_by' => $currentUser['id'], 'updated_by' => $currentUser['id']]));
             log_activity('create', 'transaction', $id, 'Recorded transaction ' . $data['transaction_number'] . ' for ' . format_money($data['amount']), null, $data);
             flash('success', 'Transaction ' . $data['transaction_number'] . ' was recorded. You can now add the purchased items.');
-            if ($repay = borrowed_sync_obligation($id, $currentUser['id'])) {
+            if ($repay = borrowed_after_save($id)) {
                 flash('info', $repay);
             }
             statement_placement_notice($data['credit_card_id'], $data['transaction_date'], $reconcile);

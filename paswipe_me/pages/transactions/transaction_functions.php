@@ -17,12 +17,12 @@ const TXN_ITEM_LOCKED_STATUSES = ['completed', 'cancelled', 'refunded'];
 
 function transaction_fields(?array $current = null): array
 {
-    // Borrowers who are registered users see the purchase in their own account ("Amounts to Repay").
+    // Borrowers with a sign-in account see the transaction in their own account right after it is saved.
     $borrowers = borrower_options($current['borrower_id'] ?? null);
     foreach (db_all('SELECT a.borrower_id FROM borrower_user_accounts a JOIN borrowers b ON b.id = a.borrower_id
-                      WHERE a.deactivated_at IS NULL AND a.user_id IN ' . borrowed_registered_users_sql() . ' AND ' . owner_scope('borrowers', 'b')) as $row) {
+                      WHERE a.deactivated_at IS NULL AND ' . owner_scope('borrowers', 'b')) as $row) {
         if (isset($borrowers[$row['borrower_id']])) {
-            $borrowers[$row['borrower_id']] .= ' · registered user';
+            $borrowers[$row['borrower_id']] .= ' · has an account';
         }
     }
 
@@ -39,7 +39,7 @@ function transaction_fields(?array $current = null): array
         'payment_type'       => ['label' => 'Payment type', 'type' => 'select', 'options' => enum_options(ENUM_TXN_PAYMENT_TYPE), 'required' => true, 'empty_label' => 'Select payment type'],
         'status'             => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_TXN_STATUS), 'required' => true, 'initial' => 'draft'],
         'borrower_id'        => ['label' => 'Borrower (card user)', 'type' => 'select', 'options' => $borrowers, 'empty_label' => '— Owner\'s own purchase —',
-                                 'help' => 'A registered user\'s purchase is added to what they must repay, due on your card\'s payment due date.'],
+                                 'help' => 'The borrower repays this transaction by your card\'s payment due date. It shows on their borrower page and in their account.'],
         'borrower_email'     => ['label' => 'Or: registered user\'s email', 'type' => 'email', 'max' => 255,
                                  'help' => 'When a registered user who is not in your list used your card. They are added to your borrowers.'],
         'merchant_id'        => ['label' => 'Merchant', 'type' => 'select', 'options' => merchant_options(), 'empty_label' => '— Not specified —'],

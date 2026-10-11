@@ -55,6 +55,7 @@ try {
             throw new DomainException('This payment was changed by someone else. Please review it again.');
         }
         payment_record_decision($payment, $decision, $reason === '' ? null : $reason, $checks, $currentUser['id']);
+        borrowed_after_decision($payment, $decision);   // repayment of a borrowed card purchase: applied to that purchase
 
         // Tell the borrower in their portal.
         $messages = [
@@ -75,7 +76,7 @@ try {
     log_activity('review', 'borrower_payment', $payment['id'], $payment['payment_number'] . ' ' . $decision . ($reason ? ': ' . $reason : ''),
         ['status' => $payment['status']], ['status' => $decision] + $checks);
     // Approved: apply it exactly as the borrower chose. Anything left is posted by the owner/admin.
-    [$applied, $notes] = $decision === 'approved' ? payment_apply_selections($payment['id'], $currentUser['id']) : [0.0, []];
+    [$applied, $notes] = $decision === 'approved' && empty($payment['transaction_id']) ? payment_apply_selections($payment['id'], $currentUser['id']) : [0.0, []];
     flash('success', 'Payment ' . $payment['payment_number'] . ' is now ' . humanize($decision) . '.'
         . ($applied > 0 ? ' ' . format_money($applied) . ' was applied to the items the borrower chose.' : ''));
     if ($decision === 'approved') {
@@ -83,7 +84,7 @@ try {
         foreach ($notes as $note) {
             flash('info', 'Not applied: ' . $note);
         }
-        if ($rest > 0.004) {
+        if ($rest > 0.004 && empty($payment['transaction_id'])) {
             flash('warning', format_money($rest) . ' is not allocated yet. Choose where to post it with Allocate below.');
         }
     }

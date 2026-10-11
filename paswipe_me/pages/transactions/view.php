@@ -28,6 +28,9 @@ $obligations = db_all(
     [':id' => $id]
 );
 $usage = transaction_usage($id);
+// Assigned to a borrower: what they owe for it, from this transaction (includes/borrowed.php).
+$purchase = $txn['borrower_id'] ? (borrowed_owner_purchases(null, $id)[0] ?? null) : null;
+$repayments = $purchase ? borrowed_repayments($id) : [];
 
 $isLocked = in_array($txn['status'], TXN_LOCKED_STATUSES, true);
 $itemsLocked = in_array($txn['status'], TXN_ITEM_LOCKED_STATUSES, true);
@@ -95,6 +98,7 @@ require APP_ROOT . '/includes/header.php';
     </section>
 
     <div class="detail-side">
+
         <?php if ($quickStatuses): ?>
             <section class="panel no-print">
                 <header class="panel__header"><h3>Change status</h3></header>
@@ -125,6 +129,7 @@ require APP_ROOT . '/includes/header.php';
             <?php endif; ?>
         </section>
 
+        <?php if ($obligations): ?>
         <section class="panel">
             <header class="panel__header">
                 <h3>Borrower obligations</h3>
@@ -143,6 +148,7 @@ require APP_ROOT . '/includes/header.php';
                 </ul>
             <?php endif; ?>
         </section>
+        <?php endif; ?>
 
         <?php if ($txn['status'] === 'draft'): ?>
             <section class="panel panel--danger no-print">
@@ -158,6 +164,50 @@ require APP_ROOT . '/includes/header.php';
         <?php endif; ?>
     </div>
 </div>
+
+    <?php if ($purchase): ?>
+        <?php $l = $purchase['ledger']; ?>
+        <section class="panel borrowed-panel" aria-labelledby="repay-title">
+            <header class="panel__header">
+                <h3 id="repay-title"><?= icon('wallet') ?> Borrower repayment — <?= e(borrower_name($txn)) ?></h3>
+                <?= borrowed_status_badge($l['status']) ?>
+            </header>
+            <p class="field-help">This transaction is what <?= e(borrower_name($txn)) ?> owes you: it counts once on your card, and the same record shows in their account.</p>
+            <?= borrowed_render_ledger($purchase, $l) ?>
+            <?php if ($l['mode'] === 'transaction'): ?>
+                <h4 class="form-section">Repayments</h4>
+                <?= borrowed_render_repayments($repayments, static function ($r) use ($related, $id) {
+                    if (!in_array($r['status'], BORROWED_REPORTED_STATUSES, true)) {
+                        return '';
+                    }
+                    $url = url('pages/transactions/repayment.php');
+
+                    return post_button($url, ['id' => $id, 'action' => 'confirm', 'payment_id' => $r['id']], 'Confirm', 'check', 'btn btn--sm btn--primary',
+                            'Confirm that you received ' . format_money($r['amount']) . '? It is then taken off what the borrower owes.', false, 'Confirm repayment?')
+                        . '<form method="post" action="' . e($url) . '" class="inline-form">' . csrf_field()
+                        . '<input type="hidden" name="id" value="' . e($id) . '"><input type="hidden" name="action" value="reject"><input type="hidden" name="payment_id" value="' . e($r['id']) . '">'
+                        . '<input type="text" name="reason" maxlength="1000" placeholder="Reason" aria-label="Reason for rejecting" required> '
+                        . '<button type="submit" class="btn btn--sm btn--outline">' . icon('x') . ' <span>Reject</span></button></form>';
+                }) ?>
+                <?php if ($l['outstanding'] > 0.004 && !$isLocked): ?>
+                    <details class="no-print">
+                        <summary>Record a repayment you received</summary>
+                        <form method="post" action="<?= e(url('pages/transactions/repayment.php')) ?>" class="status-form">
+                            <?= csrf_field() ?>
+                            <input type="hidden" name="id" value="<?= e($id) ?>">
+                            <input type="hidden" name="action" value="record">
+                            <?= render_fields([
+                                'amount'           => ['label' => 'Amount received', 'type' => 'decimal', 'required' => true, 'help' => 'Up to ' . format_money($l['outstanding']) . '. Partial amounts are fine.'],
+                                'payment_date'     => ['label' => 'Date received', 'type' => 'date', 'required' => true],
+                                'reference_number' => ['label' => 'Reference', 'type' => 'text', 'max' => 150],
+                            ], ['payment_date' => date('Y-m-d')], []) ?>
+                            <button type="submit" class="btn btn--primary" data-loading-text="Saving…"><?= icon('check') ?> <span class="btn__label">Record repayment</span></button>
+                        </form>
+                    </details>
+                <?php endif; ?>
+            <?php endif; ?>
+        </section>
+    <?php endif; ?>
 
 <section class="panel subpanel">
     <header class="panel__header">

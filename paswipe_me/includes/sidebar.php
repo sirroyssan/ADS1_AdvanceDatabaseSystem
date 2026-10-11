@@ -86,14 +86,6 @@ if (!in_array('admin', (array) ($_SESSION['user_roles'] ?? []), true)) {
     unset($group);
 }
 
-// "Amounts to Repay" only for users who used someone else's card.
-if (($layout ?? 'admin') !== 'portal' && !borrowed_has_items()) {
-    foreach ($navigation as &$group) {
-        $group['items'] = array_values(array_filter($group['items'], static fn ($item) => empty($item['borrowed'])));
-    }
-    unset($group);
-}
-
 // Borrowers see only their own account pages.
 if (($layout ?? 'admin') === 'portal') {
     $navigation = [
@@ -107,6 +99,7 @@ if (($layout ?? 'admin') === 'portal') {
             'label' => 'My Balance',
             'items' => [
                 ['key' => 'portal_obligations', 'label' => 'What I Owe',     'icon' => 'file-text', 'path' => 'portal/obligations.php'],
+                ['key' => 'borrowed',           'label' => 'Card Purchases', 'icon' => 'credit-card', 'path' => 'pages/borrowed/index.php', 'borrowed' => true],
                 ['key' => 'portal_penalties',   'label' => 'Late Charges',   'icon' => 'alert',     'path' => 'portal/penalties.php'],
                 ['key' => 'portal_payments',    'label' => 'My Payments',    'icon' => 'receipt',   'path' => 'portal/payments.php'],
                 ['key' => 'portal_pay',         'label' => 'Submit Payment', 'icon' => 'wallet',    'path' => 'portal/pay.php'],
@@ -128,6 +121,15 @@ if (($layout ?? 'admin') === 'portal') {
         ],
     ];
 }
+
+// "Amounts to Repay" only for users who have card purchases assigned to them.
+if (!borrowed_has_items()) {
+    foreach ($navigation as &$group) {
+        $group['items'] = array_values(array_filter($group['items'], static fn ($item) => empty($item['borrowed'])));
+    }
+    unset($group);
+}
+
 ?>
 <aside class="sidebar" id="sidebar" aria-label="Main navigation">
     <div class="sidebar__brand">

@@ -49,7 +49,7 @@ $from = 'transactions t JOIN credit_cards c ON c.id = t.credit_card_id LEFT JOIN
 $result = run_list(
     $state,
     't.id, t.transaction_number, t.transaction_date, t.amount, t.currency, t.payment_type, t.status, c.card_nickname, c.last_four,
-     m.merchant_name, b.first_name, b.last_name',
+     m.merchant_name, b.first_name, b.last_name, t.borrower_id, t.credit_card_id',
     $from,
     $where,
     $params
@@ -93,7 +93,11 @@ require APP_ROOT . '/includes/header.php';
                         <td data-label="Date"><?= e(format_date($row['transaction_date'])) ?></td>
                         <td data-label="Card"><?= e($row['card_nickname']) ?> <span class="text-muted">•••• <?= e($row['last_four']) ?></span></td>
                         <td data-label="Merchant"><?= show($row['merchant_name']) ?></td>
-                        <td data-label="Borrower"><?= $row['first_name'] ? e(borrower_name($row)) : '<span class="text-muted">Owner</span>' ?></td>
+                        <td data-label="Borrower"><?= $row['first_name'] ? e(borrower_name($row)) : '<span class="text-muted">Owner</span>' ?>
+                            <?php if ($row['borrower_id'] && !in_array($row['status'], ['cancelled', 'refunded'], true)): ?>
+                                <?php $l = borrowed_ledger($row); ?>
+                                <br><?= borrowed_status_badge($l['status']) ?><?php if ($l['status'] !== 'repaid'): ?> <span class="text-muted"><?= e(format_money($l['outstanding'])) ?> left</span><?php endif; ?>
+                            <?php endif; ?></td>
                         <td data-label="Payment type"><?= e(humanize($row['payment_type'])) ?></td>
                         <td data-label="Amount" class="num"><?= e(format_money($row['amount'])) ?><?= $row['currency'] !== 'PHP' ? ' <span class="text-muted">' . e($row['currency']) . '</span>' : '' ?></td>
                         <td data-label="Status"><?= badge($row['status']) ?></td>

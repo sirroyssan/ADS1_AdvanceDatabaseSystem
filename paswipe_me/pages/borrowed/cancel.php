@@ -1,13 +1,13 @@
 <?php
 /**
- * Amounts to Repay - cancel my own repayment record (POST) while the card
+ * Amounts to Repay - cancel my own reported repayment (POST) while the card
  * owner has not started confirming it. It stays in the history as cancelled.
  */
 
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once APP_ROOT . '/pages/borrower_payments/payment_functions.php';
 
-$currentUser = require_admin();
+[$currentUser, $layout] = borrowed_require_user();
 
 if (!is_post()) {
     redirect('pages/borrowed/index.php');
@@ -32,9 +32,9 @@ $cancelled = db_transaction(function () use ($payment, $currentUser) {
         return false;
     }
     db_update('borrower_payments', ['status' => 'cancelled'], $payment['id']);
-    payment_log(['id' => $payment['id'], 'status' => $status], 'cancelled', 'cancelled', 'Cancelled by the borrower (Amounts to Repay)', $currentUser['id']);
+    payment_log(['id' => $payment['id'], 'status' => $status], 'cancelled', 'cancelled', 'Cancelled by the borrower', $currentUser['id']);
     notify_lender($payment['borrower_id'], 'payment_cancelled', 'Repayment cancelled: ' . $payment['payment_number'],
-        user_display_name($currentUser) . ' cancelled repayment ' . $payment['payment_number'] . ' of ' . format_money($payment['amount']) . '.', 'borrower_payment', $payment['id']);
+        user_display_name($currentUser) . ' cancelled the repayment ' . $payment['payment_number'] . ' of ' . format_money($payment['amount']) . '.', 'borrower_payment', $payment['id']);
 
     return true;
 });

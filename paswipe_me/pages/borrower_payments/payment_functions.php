@@ -156,7 +156,11 @@ function payment_allocate(array $payment, string $obligationId, ?string $schedul
 function payment_allocate_locked(array $payment, string $obligationId, ?string $scheduleId, float $amount, string $userId): ?string
 {
     return db_transaction(function () use ($payment, $obligationId, $scheduleId, $amount, $userId) {
-        $fresh = db_row('SELECT id, amount, status FROM borrower_payments WHERE id = :id FOR UPDATE', [':id' => $payment['id']]);
+        $fresh = db_row('SELECT id, amount, status, transaction_id FROM borrower_payments WHERE id = :id FOR UPDATE', [':id' => $payment['id']]);
+        if (!empty($fresh['transaction_id'])) {
+            // A repayment of a borrowed card purchase counts on that purchase; posting it to an obligation too would count it twice.
+            throw new DomainException('This is a repayment of a borrowed card purchase. It is applied to that purchase automatically.');
+        }
         if (!$fresh || $fresh['status'] !== 'approved') {
             return 'Only approved payments can be allocated.';
         }
