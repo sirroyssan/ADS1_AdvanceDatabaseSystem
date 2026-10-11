@@ -90,13 +90,24 @@ try {
 } catch (PDOException $e) {
     $collect = ['outstanding' => null, 'penalties' => null, 'total_due' => null];
 }
+// Who owes me: balance, next due date, repayments waiting for my confirmation and status
+// (borrowers who repaid everything stay listed as "Paid up" while they have a recent purchase).
 $borrowerBalances = dashboard_rows(
-    'SELECT b.id, b.borrower_number, b.first_name, b.last_name, bt.outstanding, bt.penalties, bt.total_due
-       FROM (' . borrower_totals_sql() . ") bt JOIN borrowers b ON b.id = bt.borrower_id
-      WHERE bt.total_due > 0 AND b.id IN $myBorrowers
-      ORDER BY bt.total_due DESC
-      LIMIT 8"
+    'SELECT b.id, b.borrower_number, b.first_name, b.last_name, COALESCE(bt.outstanding, 0) AS outstanding,
+            COALESCE(bt.penalties, 0) AS penalties, COALESCE(bt.total_due, 0) AS total_due,
+            (SELECT MIN(o.due_date) FROM borrower_obligations o WHERE o.borrower_id = b.id AND o.outstanding_amount > 0
+                AND o.status NOT IN (\'cancelled\', \'written_off\')) AS next_due,
+            (SELECT COUNT(*) FROM borrower_payments p WHERE p.borrower_id = b.id AND p.status IN (\'submitted\', \'under_review\')) AS to_confirm,
+            (SELECT COUNT(*) FROM borrower_user_accounts a WHERE a.borrower_id = b.id AND a.deactivated_at IS NULL AND a.user_id IN ' . borrowed_registered_users_sql() . ') AS registered
+       FROM borrowers b LEFT JOIN (' . borrower_totals_sql() . ") bt ON bt.borrower_id = b.id
+      WHERE b.id IN $myBorrowers AND (COALESCE(bt.total_due, 0) > 0 OR EXISTS (
+            SELECT 1 FROM borrower_obligations r WHERE r.borrower_id = b.id AND r.status = 'paid' AND r.updated_at >= CURDATE() - INTERVAL 30 DAY))
+      ORDER BY COALESCE(bt.total_due, 0) > 0 DESC, next_due IS NULL, next_due, COALESCE(bt.total_due, 0) DESC
+      LIMIT 10"
 );
+// What the signed-in user borrowed with other users' cards (their side of the same records).
+$borrowed = borrowed_has_items() ? borrowed_summary() : null;
+$borrowedOpen = $borrowed ? array_slice(array_values(array_filter(borrowed_items(), static fn ($r) => $r['repay_status'] !== 'paid')), 0, 5) : [];
 
 $overdueObligations = dashboard_rows(
     "SELECT id, obligation_number, first_name, last_name, outstanding_amount, due_date, overdue_days
@@ -203,6 +214,52 @@ require APP_ROOT . '/includes/header.php';
 <?php if ($isSystemAdmin && !empty($stats['unowned'])): ?>
     <div class="alert alert--warning"><?= icon('alert') ?><span><?= e($stats['unowned']) ?> record(s) from before multi-user accounts need their owner confirmed.
         <a href="<?= e(url('pages/users/ownership.php')) ?>">Review ownership</a></span></div>
+<?php endif; ?>
+
+<?php if ($borrowed): ?>
+<section class="panel pay-summary" aria-labelledby="borrowed-title">
+    <header class="panel__header">
+        <h3 id="borrowed-title"><?= icon('wallet') ?> Borrowed from others — amounts to repay</h3>
+        <a class="btn btn--sm btn--outline" href="<?= e(url('pages/borrowed/index.php')) ?>">View all</a>
+    </header>
+    <div class="pay-cards">
+        <?php foreach ([
+            ['Total borrowed', format_money($borrowed['borrowed']), $borrowed['count'] . ' purchase(s) on other users\' cards', 'primary', 'credit-card'],
+            ['Outstanding to repay', format_money($borrowed['outstanding']), format_money($borrowed['repaid']) . ' repaid · ' . format_money($borrowed['pending']) . ' waiting for confirmation', 'warning', 'wallet'],
+            ['Upcoming deadlines', (string) $borrowed['upcoming'], $borrowed['next_due'] ? 'next on ' . format_date($borrowed['next_due']) : 'none', 'info', 'calendar'],
+            ['Overdue', (string) $borrowed['overdue'], $borrowed['overdue'] ? format_money($borrowed['overdue_amount']) . ' past due' : 'nothing overdue', 'danger', 'alert'],
+            ['Repayment status', $borrowed['open'] ? $borrowed['open'] . ' open' : 'All repaid', ($borrowed['count'] - $borrowed['open']) . ' fully repaid', $borrowed['open'] ? 'warning' : 'info', 'check'],
+        ] as [$label, $value, $meta, $tone, $iconName]): ?>
+            <a class="pay-card pay-card--<?= e($tone) ?>" href="<?= e(url('pages/borrowed/index.php')) ?>">
+                <span class="pay-card__icon"><?= icon($iconName) ?></span>
+                <span class="pay-card__label"><?= e($label) ?></span>
+                <span class="pay-card__value"><?= e($value) ?></span>
+                <span class="pay-card__meta"><?= e($meta) ?></span>
+            </a>
+        <?php endforeach; ?>
+    </div>
+    <?php if ($borrowedOpen): ?>
+        <div class="table-wrap">
+            <table class="table table--cards table--compact">
+                <thead><tr><th scope="col">Purchase</th><th scope="col">Card owner</th><th scope="col" class="num">Remaining</th><th scope="col">Repay by</th><th scope="col">Status</th><th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <tbody>
+                <?php foreach ($borrowedOpen as $row): ?>
+                    <tr>
+                        <td data-label="Purchase"><a data-modal-form class="table-link" href="<?= e(url('pages/borrowed/view.php', ['id' => $row['id']])) ?>"><?= e($row['merchant_name'] ?: ($row['description'] ?: $row['obligation_number'])) ?></a>
+                            <span class="text-muted"><?= e(format_date($row['transaction_date'] ?? $row['obligation_date'])) ?></span></td>
+                        <td data-label="Card owner"><?= e($row['lender_name'] ?? '—') ?></td>
+                        <td data-label="Remaining" class="num"><?= e(format_money($row['outstanding_amount'])) ?></td>
+                        <td data-label="Repay by"><?= $row['due_date'] ? e(format_date($row['due_date'])) : '—' ?></td>
+                        <td data-label="Status"><?= borrowed_status_badge($row['repay_status']) ?></td>
+                        <td class="actions no-print"><?php if ((float) $row['outstanding_amount'] - (float) $row['pending'] > 0.004): ?>
+                            <a data-modal-form href="<?= e(url('pages/borrowed/repay.php', ['id' => $row['id']])) ?>" class="btn btn--sm btn--primary"><?= icon('wallet') ?> <span>Repay</span></a><?php endif; ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+</section>
 <?php endif; ?>
 
 <section class="panel pay-summary" aria-labelledby="card-pay-title">
@@ -409,7 +466,7 @@ require APP_ROOT . '/includes/header.php';
 
 <section class="panel balance-panel" aria-labelledby="balances-title">
     <header class="panel__header">
-        <h3 id="balances-title"><?= icon('users') ?> What borrowers owe (outstanding + penalties)</h3>
+        <h3 id="balances-title"><?= icon('users') ?> Who owes me (outstanding + penalties)</h3>
         <a class="btn btn--sm btn--outline" href="<?= e(url('pages/reports/borrower_balances.php')) ?>">View all</a>
     </header>
     <?php if (!$borrowerBalances): ?>
@@ -417,19 +474,30 @@ require APP_ROOT . '/includes/header.php';
     <?php else: ?>
         <div class="table-wrap">
             <table class="table table--cards table--compact">
-                <thead><tr><th scope="col">Borrower</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th><th scope="col" class="num">Total to collect</th></tr></thead>
+                <thead><tr><th scope="col">Borrower</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th><th scope="col" class="num">Total to collect</th>
+                    <th scope="col">Next due</th><th scope="col">Repayment status</th></tr></thead>
                 <tbody>
                 <?php foreach ($borrowerBalances as $row): ?>
                     <tr>
                         <td data-label="Borrower"><a data-modal-form class="table-link" href="<?= e(url('pages/borrowers/view.php', ['id' => $row['id']])) ?>"><?= e(borrower_name($row)) ?></a>
-                            <span class="text-muted"><?= e($row['borrower_number']) ?></span></td>
+                            <span class="text-muted"><?= e($row['borrower_number']) ?></span><?php if ((int) $row['registered'] > 0): ?> <span class="chip">registered user</span><?php endif; ?></td>
                         <td data-label="Outstanding" class="num"><?= e(format_money($row['outstanding'])) ?></td>
                         <td data-label="Penalties" class="num<?= (float) $row['penalties'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($row['penalties'])) ?></td>
                         <td data-label="Total to collect" class="num"><strong><?= e(format_money($row['total_due'])) ?></strong></td>
+                        <td data-label="Next due"><?= $row['next_due'] ? e(format_date($row['next_due'])) : '<span class="text-muted">—</span>' ?></td>
+                        <td data-label="Repayment status">
+                            <?= borrowed_status_badge(match (true) {
+                                (float) $row['total_due'] <= 0.004 => 'paid',
+                                $row['next_due'] !== null && $row['next_due'] < date('Y-m-d') => 'overdue',
+                                $row['next_due'] !== null && $row['next_due'] <= date('Y-m-d', strtotime('+7 days')) => 'due',
+                                default => 'upcoming',
+                            }) ?>
+                            <?php if ((int) $row['to_confirm'] > 0): ?><br><a data-modal-form href="<?= e(url('pages/borrower_payments/index.php', ['status' => 'pending'])) ?>"><?= e($row['to_confirm']) ?> repayment(s) to confirm</a><?php endif; ?>
+                        </td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
-                <tfoot><tr><td>All my borrowers</td><td class="num"><?= e(format_money($collect['outstanding'])) ?></td><td class="num"><?= e(format_money($collect['penalties'])) ?></td><td class="num"><strong><?= e(format_money($collect['total_due'])) ?></strong></td></tr></tfoot>
+                <tfoot><tr><td>All my borrowers</td><td class="num"><?= e(format_money($collect['outstanding'])) ?></td><td class="num"><?= e(format_money($collect['penalties'])) ?></td><td class="num"><strong><?= e(format_money($collect['total_due'])) ?></strong></td><td colspan="2"></td></tr></tfoot>
             </table>
         </div>
     <?php endif; ?>

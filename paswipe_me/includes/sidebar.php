@@ -13,6 +13,7 @@ $navigation = [
         'label' => null,
         'items' => [
             ['key' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'dashboard', 'path' => 'pages/dashboard.php'],
+            ['key' => 'borrowed',  'label' => 'Amounts to Repay', 'icon' => 'wallet', 'path' => 'pages/borrowed/index.php', 'borrowed' => true],
         ],
     ],
     [
@@ -81,6 +82,14 @@ $navigation = [
 if (!in_array('admin', (array) ($_SESSION['user_roles'] ?? []), true)) {
     foreach ($navigation as &$group) {
         $group['items'] = array_values(array_filter($group['items'], static fn ($item) => empty($item['admin'])));
+    }
+    unset($group);
+}
+
+// "Amounts to Repay" only for users who used someone else's card.
+if (($layout ?? 'admin') !== 'portal' && !borrowed_has_items()) {
+    foreach ($navigation as &$group) {
+        $group['items'] = array_values(array_filter($group['items'], static fn ($item) => empty($item['borrowed'])));
     }
     unset($group);
 }

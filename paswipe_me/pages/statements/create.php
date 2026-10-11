@@ -59,6 +59,9 @@ if (is_post()) {
             log_activity('create', 'statement', $id, 'Recorded SOA ' . format_money($data['total_amount_due']) . ' cut off ' . $data['cutoff_date'], null, $row);
             flash('success', 'SOA for ' . statement_month_label($data['cutoff_date']) . ' was recorded: ' . format_money($data['total_amount_due'])
                 . ', minimum ' . format_money($data['minimum_amount_due']) . ', due ' . format_date($data['due_date']) . '.');
+            if ($moved = borrowed_refresh_due_dates($row['credit_card_id'])) {
+                flash('info', $moved . ' borrowed purchase(s) now have this card\'s payment due date as their repay-by date; the borrowers were notified.');
+            }
             redirect('pages/statements/view.php', ['id' => $id]);
         } catch (PDOException $e) {
             $errors['_form'] = str_contains($e->getMessage(), 'Duplicate')

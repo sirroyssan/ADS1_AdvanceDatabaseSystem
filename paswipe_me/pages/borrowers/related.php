@@ -91,7 +91,7 @@ try {
             if ($action === 'link_account') {
                 $userId = linkable_borrower_user($email);
                 if ($userId === null) {
-                    flash('error', 'No borrower sign-in account with that email is waiting to be linked. Create a new one instead.');
+                    flash('error', 'No account with that email can be linked: it must be a borrower portal account that is not linked yet, or a registered user who is not already one of your borrowers.');
                     break;
                 }
             } else {

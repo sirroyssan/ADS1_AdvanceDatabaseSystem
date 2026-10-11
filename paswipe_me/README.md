@@ -963,6 +963,52 @@ only), 221 view/edit/delete/download requests with other users' ids (all refused
 forged form values (another user's card/borrower/owner id rejected), users pages and ownership review
 blocked for non-administrators, logout, borrower portal, and the Add/Edit/View modal suites.
 
+## Borrowed transactions — a registered user uses your card (`includes/borrowed.php`)
+
+**Recording it (card owner).** On **Transactions → Add**, choose the borrower — registered users are
+marked "· registered user" — or type the registered user's email in **"Or: registered user's
+email"** (they are added to your borrowers and linked to their account automatically; borrowers
+can also be linked on the borrower page with **Link existing account**). Amount, description
+(notes), date, card and borrower are saved on the one transaction.
+
+**One charge, two views — nothing duplicated.**
+| | Where | Counts in |
+|---|---|---|
+| The purchase | `transactions` (one row, on the owner's card) | owner's transactions, statement and card balance — once |
+| What the borrower owes | `borrower_obligations` row of that transaction (created automatically, notes "Created automatically …") | owner's "Who owes me" / borrower's "Amounts to Repay" — never the card balance |
+| Repayments | `borrower_payments` + `borrower_payment_selections` (existing tables) | the obligation, once the owner confirms |
+
+Editing the transaction updates the amount to repay (amount, date, due date, borrower) while nothing
+has been repaid; removing the borrower or cancelling the transaction cancels it. After a repayment
+the amount is left alone and the owner is told to edit the obligation if needed.
+Cash loans and cash advances keep their own flows.
+
+**Repay-by date.** The payment due date of the owner's card for the billing period of the purchase:
+the bank's actual due date when that period's SOA is recorded, otherwise the card's due-date rule
+(e.g. cutoff on the 20th + 21 days). Recording/editing an SOA or the card's billing settings moves
+open repay-by dates and notifies the borrower.
+
+**The borrower** (any registered user) gets **Amounts to Repay** in the menu and a dashboard section:
+total borrowed, outstanding, upcoming deadlines, overdue, repayment status, and each purchase with
+its card owner, card (bank •••• last four), due date and status. **Repay** records a repayment
+(amount, date, reference; partial amounts allowed); it shows as "waiting for confirmation" until
+the card owner confirms it on **Borrower Payments → Review**, which applies it (existing allocation
+logic) and updates what is left. A repayment can be cancelled while not yet reviewed; the history
+keeps every repayment and its status.
+
+**The owner's dashboard** — **Who owes me**: each borrower's outstanding amount and penalties,
+next due date, repayments waiting for confirmation, and status (Paid up / Upcoming / Due soon /
+Overdue); registered users are marked.
+
+**Privacy.** A borrower sees only the purchases recorded against them — never the owner's other
+transactions, statements, cards or balances; every page checks the link on the server
+(`borrowed_items()`), other ids answer "not found". Only the borrower records or cancels their own
+repayments; only the card owner confirms them, edits the purchase or the amount owed.
+
+**Schema change (reported):** `borrower_user_accounts` — the UNIQUE key on `user_id` became UNIQUE
+(`user_id`, `borrower_id`), so a registered user can borrow from several card owners
+(`db/upgrade_borrowed.sql`, applied automatically). No new tables.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |

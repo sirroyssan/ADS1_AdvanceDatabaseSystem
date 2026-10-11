@@ -26,18 +26,26 @@ if (is_post()) {
     [$data, $errors] = transaction_validate($fields, $_POST, $txn['id']);
 
     if (!$errors && $data['status'] === 'cancelled' && (int) db_value(
-        "SELECT COUNT(*) FROM borrower_obligations WHERE transaction_id = :id AND status <> 'cancelled'", [':id' => $txn['id']]
+        // An automatic amount to repay with nothing repaid is cancelled together with the transaction.
+        "SELECT COUNT(*) FROM borrower_obligations WHERE transaction_id = :id AND status <> 'cancelled'
+            AND NOT (notes LIKE 'Created automatically: the borrower used your card%' AND total_paid = 0)", [':id' => $txn['id']]
     ) > 0) {
         $errors['status'] = 'Cancel the borrower obligations of this transaction first.';
     }
 
     if (!$errors) {
         try {
+            $data = transaction_resolve_borrower($data);
             card_usage_apply([$txn['credit_card_id'], $data['credit_card_id'] ?? null], fn () => db_update('transactions', $data + ['updated_by' => $currentUser['id']], $txn['id']));
             log_activity('update', 'transaction', $txn['id'], 'Updated transaction ' . $data['transaction_number'], array_intersect_key($txn, $data), $data);
             flash('success', 'Transaction ' . $data['transaction_number'] . ' was updated successfully.');
+            if ($repay = borrowed_sync_obligation($txn['id'], $currentUser['id'])) {
+                flash('info', $repay);
+            }
             statement_move_notice($txn['credit_card_id'], $txn['transaction_date'], $data['credit_card_id'] ?? $txn['credit_card_id'], $data['transaction_date'] ?? $txn['transaction_date']);
             redirect('pages/transactions/view.php', ['id' => $txn['id']]);
+        } catch (DomainException $e) {
+            $errors['borrower_email'] = $e->getMessage();
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
         }

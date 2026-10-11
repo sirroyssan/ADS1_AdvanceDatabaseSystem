@@ -17,6 +17,15 @@ const TXN_ITEM_LOCKED_STATUSES = ['completed', 'cancelled', 'refunded'];
 
 function transaction_fields(?array $current = null): array
 {
+    // Borrowers who are registered users see the purchase in their own account ("Amounts to Repay").
+    $borrowers = borrower_options($current['borrower_id'] ?? null);
+    foreach (db_all('SELECT a.borrower_id FROM borrower_user_accounts a JOIN borrowers b ON b.id = a.borrower_id
+                      WHERE a.deactivated_at IS NULL AND a.user_id IN ' . borrowed_registered_users_sql() . ' AND ' . owner_scope('borrowers', 'b')) as $row) {
+        if (isset($borrowers[$row['borrower_id']])) {
+            $borrowers[$row['borrower_id']] .= ' · registered user';
+        }
+    }
+
     return [
         'transaction_number' => ['label' => 'Transaction number', 'type' => 'text', 'max' => 50,
                                  'unique' => ['transactions', 'transaction_number', 'This transaction number is already used.'],
@@ -29,7 +38,10 @@ function transaction_fields(?array $current = null): array
         'transaction_type'   => ['label' => 'Transaction type', 'type' => 'select', 'options' => enum_options(ENUM_TXN_TYPE), 'required' => true, 'empty_label' => 'Select type', 'section' => 'Classification'],
         'payment_type'       => ['label' => 'Payment type', 'type' => 'select', 'options' => enum_options(ENUM_TXN_PAYMENT_TYPE), 'required' => true, 'empty_label' => 'Select payment type'],
         'status'             => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_TXN_STATUS), 'required' => true, 'initial' => 'draft'],
-        'borrower_id'        => ['label' => 'Borrower (card user)', 'type' => 'select', 'options' => borrower_options($current['borrower_id'] ?? null), 'empty_label' => '— Owner\'s own purchase —'],
+        'borrower_id'        => ['label' => 'Borrower (card user)', 'type' => 'select', 'options' => $borrowers, 'empty_label' => '— Owner\'s own purchase —',
+                                 'help' => 'A registered user\'s purchase is added to what they must repay, due on your card\'s payment due date.'],
+        'borrower_email'     => ['label' => 'Or: registered user\'s email', 'type' => 'email', 'max' => 255,
+                                 'help' => 'When a registered user who is not in your list used your card. They are added to your borrowers.'],
         'merchant_id'        => ['label' => 'Merchant', 'type' => 'select', 'options' => merchant_options(), 'empty_label' => '— Not specified —'],
         'category_id'        => ['label' => 'Category', 'type' => 'select', 'options' => category_options($current['category_id'] ?? null), 'empty_label' => '— No category —'],
         'reference_number'   => ['label' => 'Reference number', 'type' => 'text', 'max' => 150, 'section' => 'References'],
@@ -46,6 +58,18 @@ function transaction_validate(array $fields, array $input, ?string $id = null): 
 
     if ($data['posting_date'] && $data['transaction_date'] && $data['posting_date'] < $data['transaction_date']) {
         $errors['posting_date'] = 'Posting date cannot be before the transaction date.';
+    }
+    // A registered user given by email is checked here and becomes the borrower on save.
+    if (($data['borrower_email'] ?? null) !== null && !isset($errors['borrower_email'])) {
+        $found = db_row(
+            "SELECT u.id FROM users u WHERE LOWER(u.email) = :e AND u.status = 'active' AND u.id IN " . borrowed_registered_users_sql(),
+            [':e' => mb_strtolower($data['borrower_email'])]
+        );
+        if (!$found) {
+            $errors['borrower_email'] = 'No registered user with this email. Ask them to create an account first.';
+        } elseif ($found['id'] === owner_id()) {
+            $errors['borrower_email'] = 'That is your own account. Leave the borrower empty for your own purchases.';
+        }
     }
 
     return [$data, $errors];
@@ -75,6 +99,25 @@ function transaction_find(string $id): ?array
 /**
  * Records that prevent a hard delete (attachments cascade and are not counted).
  */
+/**
+ * Turn the "registered user's email" into the borrower (linking them on first
+ * use). Call inside the save, before writing the transaction.
+ */
+function transaction_resolve_borrower(array $data): array
+{
+    $email = $data['borrower_email'] ?? null;
+    unset($data['borrower_email']);
+    if ($email !== null) {
+        [$borrowerId, $error] = borrowed_link_user($email);
+        if ($error !== null) {
+            throw new DomainException($error);
+        }
+        $data['borrower_id'] = $borrowerId;
+    }
+
+    return $data;
+}
+
 function transaction_usage(string $id): array
 {
     return record_usage([

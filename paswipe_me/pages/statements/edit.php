@@ -31,6 +31,9 @@ if (is_post()) {
             db_update('credit_card_statements', $data + ['updated_at' => date('Y-m-d H:i:s')], $statement['id']);
             log_activity('update', 'statement', $statement['id'], 'Updated SOA cut off ' . $data['cutoff_date'], array_intersect_key($statement, $data), $data);
             flash('success', 'SOA was updated.');
+            if ($moved = borrowed_refresh_due_dates($statement['credit_card_id'])) {
+                flash('info', $moved . ' borrowed purchase(s) now have this card\'s payment due date as their repay-by date; the borrowers were notified.');
+            }
             redirect('pages/statements/view.php', ['id' => $statement['id']]);
         } catch (PDOException $e) {
             $errors['_form'] = str_contains($e->getMessage(), 'Duplicate')

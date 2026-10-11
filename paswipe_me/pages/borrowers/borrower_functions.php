@@ -103,18 +103,25 @@ function format_address(array $a): string
 
 /**
  * The sign-in account with this exact email that may be linked to a borrower:
- * Borrower role, not linked yet. Accounts are looked up by email only - never
- * listed - so no one sees other users' borrowers or their emails.
+ * a Borrower-role account not linked yet, or a registered user (owner /
+ * administrator account, not yourself) not linked to another of your
+ * borrowers - registered users can borrow from several card owners.
+ * Accounts are looked up by email only - never listed - so no one sees other
+ * users' borrowers or their emails.
  */
 function linkable_borrower_user(string $email): ?string
 {
     $id = db_value(
         "SELECT u.id FROM users u
-           JOIN user_roles r ON r.user_id = u.id AND r.role = 'borrower'
-          WHERE LOWER(u.email) = :e
-            AND NOT EXISTS (SELECT 1 FROM borrower_user_accounts a WHERE a.user_id = u.id)
-            AND NOT EXISTS (SELECT 1 FROM user_roles x WHERE x.user_id = u.id AND x.role IN ('owner', 'admin'))",
-        [':e' => mb_strtolower(trim($email))]
+          WHERE LOWER(u.email) = :e AND u.status = 'active' AND u.id <> :me
+            AND (
+                (EXISTS (SELECT 1 FROM user_roles r WHERE r.user_id = u.id AND r.role = 'borrower')
+                 AND NOT EXISTS (SELECT 1 FROM user_roles x WHERE x.user_id = u.id AND x.role IN ('owner', 'admin'))
+                 AND NOT EXISTS (SELECT 1 FROM borrower_user_accounts a WHERE a.user_id = u.id))
+             OR (u.id IN " . borrowed_registered_users_sql() . "
+                 AND NOT EXISTS (SELECT 1 FROM borrower_user_accounts a WHERE a.user_id = u.id AND a.borrower_id IN " . owned_borrowers_sql() . "))
+            )",
+        [':e' => mb_strtolower(trim($email)), ':me' => owner_id()]
     );
 
     return $id ? (string) $id : null;

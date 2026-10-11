@@ -124,7 +124,8 @@ require APP_ROOT . '/includes/header.php';
                         <?= csrf_field() ?>
                         <input type="hidden" name="id" value="<?= e($id) ?>">
                         <input type="hidden" name="action" value="link_account">
-                        <?= render_fields(['email' => ['label' => 'Email of the borrower\'s account', 'type' => 'email', 'max' => 255, 'required' => true]], [], []) ?>
+                        <?= render_fields(['email' => ['label' => 'Email of the borrower\'s account', 'type' => 'email', 'max' => 255, 'required' => true,
+                            'help' => 'A borrower portal account, or a registered user\'s account: they then see what they borrowed under "Amounts to Repay" in their own account.']], [], []) ?>
                         <button type="submit" class="btn btn--outline" data-loading-text="Linking…"><?= icon('check') ?> <span class="btn__label">Link</span></button>
                     </form>
                 </details>

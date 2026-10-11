@@ -30,6 +30,9 @@ if (is_post()) {
             }
             log_activity('update', 'credit_card', $card['id'], 'Updated card ' . $data['card_nickname'], array_intersect_key($card, $data), $data);
             flash('success', 'Card "' . $data['card_nickname'] . '" was updated successfully.');
+            if ($moved = borrowed_refresh_due_dates($card['id'])) {
+                flash('info', $moved . ' borrowed purchase(s) now have this card\'s payment due date as their repay-by date; the borrowers were notified.');
+            }
             redirect('pages/credit_cards/view.php', ['id' => $card['id']]);
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);

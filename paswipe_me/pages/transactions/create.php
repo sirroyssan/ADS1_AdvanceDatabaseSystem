@@ -33,11 +33,17 @@ if (is_post()) {
         try {
             $id = new_uuid();
             $data['transaction_number'] ??= generate_reference('TXN', 'transactions', 'transaction_number');
+            $data = transaction_resolve_borrower($data);
             card_usage_apply([$data['credit_card_id']], fn () => db_insert('transactions', ['id' => $id] + $data + ['created_by' => $currentUser['id'], 'updated_by' => $currentUser['id']]));
             log_activity('create', 'transaction', $id, 'Recorded transaction ' . $data['transaction_number'] . ' for ' . format_money($data['amount']), null, $data);
             flash('success', 'Transaction ' . $data['transaction_number'] . ' was recorded. You can now add the purchased items.');
+            if ($repay = borrowed_sync_obligation($id, $currentUser['id'])) {
+                flash('info', $repay);
+            }
             statement_placement_notice($data['credit_card_id'], $data['transaction_date'], $reconcile);
             redirect('pages/transactions/view.php', ['id' => $id]);
+        } catch (DomainException $e) {
+            $errors['borrower_email'] = $e->getMessage();
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
         }
