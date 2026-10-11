@@ -99,7 +99,7 @@ require APP_ROOT . '/includes/header.php';
         <div class="table-wrap">
             <table class="table table--cards table--compact">
                 <thead><tr><th scope="col">Transaction</th><th scope="col">Card</th><th scope="col" class="num">Amount</th><th scope="col" class="num">Repaid</th>
-                    <th scope="col" class="num">Penalty</th><th scope="col" class="num">Outstanding</th><th scope="col">Repay by</th><th scope="col">Status</th></tr></thead>
+                    <th scope="col" class="num">Penalty</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Due this period</th><th scope="col">Repay by</th><th scope="col">Status</th></tr></thead>
                 <tbody>
                 <?php foreach ($purchases as $p): ?>
                     <?php $l = $p['ledger']; ?>
@@ -107,10 +107,11 @@ require APP_ROOT . '/includes/header.php';
                         <td data-label="Transaction"><a data-modal-form class="table-link" href="<?= e(url('pages/transactions/view.php', ['id' => $p['id']])) ?>"><?= e($p['merchant_name'] ?: $p['transaction_number']) ?></a>
                             <span class="text-muted"><?= e(format_date($p['transaction_date'])) ?><?= $p['merchant_name'] ? ' · ' . e($p['transaction_number']) : '' ?></span></td>
                         <td data-label="Card"><?= e($p['card_nickname']) ?> <span class="text-muted">•••• <?= e($p['last_four']) ?></span></td>
-                        <td data-label="Amount" class="num"><?= e(format_money($l['responsible'])) ?></td>
+                        <td data-label="Amount" class="num"><?= borrowed_amount_cell($p, $l) ?></td>
                         <td data-label="Repaid" class="num"><?= e(format_money($l['repaid'])) ?><?= $l['reported'] > 0 ? '<br><span class="text-muted">' . e(format_money($l['reported'])) . ' reported</span>' : '' ?></td>
                         <td data-label="Penalty" class="num"><?= e(format_money($l['penalty_unpaid'])) ?></td>
-                        <td data-label="Outstanding" class="num"><strong><?= e(format_money($l['outstanding'])) ?></strong></td>
+                        <td data-label="Outstanding" class="num"><?= e(format_money($l['outstanding'])) ?></td>
+                        <td data-label="Due this period" class="num"><?= borrowed_due_now_cell($l) ?></td>
                         <td data-label="Repay by"><?= e(borrowed_due_text($l, true)) ?><?= $l['review'] ? '<br><span class="text-danger">Needs review: no penalty rule</span>' : '' ?></td>
                         <td data-label="Status"><?= borrowed_status_badge($l['status']) ?></td>
                     </tr>

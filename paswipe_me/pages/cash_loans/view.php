@@ -26,6 +26,19 @@ $cardUsage = card_usage($loan['credit_card_id']);
 $isOpen = !in_array($loan['status'], ['cancelled', 'rejected', 'completed'], true);
 $canGenerate = !$schedule && $loan['term_months'] && $loan['first_due_date'] && (float) $loan['total_repayment'] > 0;
 $related = url('pages/cash_loans/related.php');
+// The bank's monthly installment: the first scheduled one, else the loan's monthly payment.
+$bankInstallment = $schedule ? (float) $schedule[0]['amount_due'] : ($loan['monthly_payment'] !== null ? (float) $loan['monthly_payment'] : null);
+$monthlyTotal = ['principal' => 0.0, 'bank_share' => 0.0, 'owed' => 0.0];
+foreach ($allocations as $i => $a) {
+    $allocations[$i]['monthly'] = allocation_monthly($loan, (float) $a['allocated_amount'], $bankInstallment);
+    if ($allocations[$i]['monthly']) {
+        $monthlyTotal['principal'] += $allocations[$i]['monthly']['principal'];
+        $monthlyTotal['bank_share'] += (float) $allocations[$i]['monthly']['bank_share'];
+        if (in_array($a['allocation_type'], CASH_LOAN_DEBT_TYPES, true)) {
+            $monthlyTotal['owed'] += $allocations[$i]['monthly']['principal'];
+        }
+    }
+}
 
 $pageTitle = 'Cash Loan';
 $activeNav = 'cash_loans';
@@ -130,7 +143,7 @@ require APP_ROOT . '/includes/header.php';
 
 <section class="panel subpanel">
     <header class="panel__header">
-        <h3><?= icon('users') ?> Borrower allocations</h3>
+        <h3><?= icon('users') ?> Who carries the loan</h3>
         <?php if ($isOpen): ?>
             <button type="button" class="btn btn--sm btn--outline no-print" data-modal-panel="add-allocation"><?= icon('plus') ?> <span>Add allocation</span></button>
         <?php endif; ?>
@@ -147,22 +160,30 @@ require APP_ROOT . '/includes/header.php';
             </div>
         </form>
     <?php endif; ?>
+    <p class="field-help">Responsible to the bank: <strong>you, the card owner (account holder)</strong>, for every installment of <?= e($loan['card_nickname']) ?> •••• <?= e($loan['last_four']) ?>.
+        The parts below only say who repays you or helps; they do not make anyone a co-borrower of the bank.</p>
     <?php if (!$allocations): ?>
         <p class="empty-inline">The loan has not been split to anyone.</p>
     <?php else: ?>
         <div class="table-wrap">
             <table class="table table--cards table--compact">
-                <thead><tr><th scope="col">Borrower</th><th scope="col">Type</th><th scope="col">Description</th><th scope="col" class="num">Amount</th><th scope="col">Obligation</th><th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <thead><tr><th scope="col">Person</th><th scope="col">Responsibility</th><th scope="col">Description</th><th scope="col" class="num">Amount</th>
+                    <th scope="col" class="num">Per month</th><th scope="col" class="num">Share of bank installment</th><th scope="col">Obligation</th><th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th></tr></thead>
                 <tbody>
                 <?php foreach ($allocations as $a): ?>
+                    <?php $isDebt = in_array($a['allocation_type'], CASH_LOAN_DEBT_TYPES, true); ?>
                     <tr>
-                        <td data-label="Borrower"><?= $a['borrower_id'] ? related_link($a['borrower_id'], borrower_name($a), 'pages/borrowers/view.php') : '<span class="text-muted">Owner</span>' ?></td>
-                        <td data-label="Type"><?= e(humanize($a['allocation_type'])) ?></td>
+                        <td data-label="Person"><?= $a['borrower_id'] ? related_link($a['borrower_id'], borrower_name($a), 'pages/borrowers/view.php') : '<span class="text-muted">You (card owner)</span>' ?></td>
+                        <td data-label="Responsibility"><?= e(allocation_type_label($a['allocation_type'])) ?></td>
                         <td data-label="Description"><?= show($a['description']) ?></td>
                         <td data-label="Amount" class="num"><?= e(format_money($a['allocated_amount'])) ?></td>
+                        <td data-label="Per month" class="num"><?php if ($a['monthly']): ?><?= e(format_money($a['monthly']['principal'])) ?>
+                            <?php if (abs($a['monthly']['last'] - $a['monthly']['principal']) > 0.004): ?><br><span class="text-muted">last <?= e(format_money($a['monthly']['last'])) ?></span><?php endif; ?>
+                            <?php else: ?><span class="text-muted">Set the term</span><?php endif; ?></td>
+                        <td data-label="Share of bank installment" class="num"><?= $a['monthly'] && $a['monthly']['bank_share'] !== null ? e(format_money($a['monthly']['bank_share'])) : '<span class="text-muted">—</span>' ?></td>
                         <td data-label="Obligation"><?= $a['obligation_id'] ? related_link($a['obligation_id'], $a['obligation_number'], 'pages/obligations/view.php') . ' ' . badge($a['obligation_status']) : '<span class="text-muted">None</span>' ?></td>
                         <td class="actions no-print"><div class="row-actions">
-                            <?php if (!$a['obligation_id'] && $a['borrower_id']): ?>
+                            <?php if (!$a['obligation_id'] && $a['borrower_id'] && $isDebt): ?>
                                 <?= post_button($related, ['id' => $id, 'action' => 'create_obligation', 'item_id' => $a['id']], 'Create obligation', 'file-text', 'btn btn--sm btn--outline',
                                     'Create a borrower obligation of ' . format_money($a['allocated_amount']) . ' for this allocation?', false, 'Create obligation?') ?>
                             <?php endif; ?>
@@ -174,6 +195,11 @@ require APP_ROOT . '/includes/header.php';
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
+                <?php if ($loan['term_months']): ?>
+                    <tfoot><tr><th scope="row" colspan="3">Combined per month<?= $monthlyTotal['owed'] > 0 ? ' · owed to you ' . e(format_money($monthlyTotal['owed'])) . ' a month' : '' ?></th>
+                        <td class="num"><?= e(format_money($loan['allocated'])) ?></td><td class="num"><strong><?= e(format_money($monthlyTotal['principal'])) ?></strong></td>
+                        <td class="num"><?= $bankInstallment !== null ? e(format_money($monthlyTotal['bank_share'])) : '—' ?></td><td colspan="2"></td></tr></tfoot>
+                <?php endif; ?>
             </table>
         </div>
     <?php endif; ?>

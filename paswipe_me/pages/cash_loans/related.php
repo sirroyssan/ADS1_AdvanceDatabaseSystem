@@ -88,6 +88,7 @@ try {
 
         case 'add_allocation':
             [$data, $errors] = validate_fields(allocation_fields(), $_POST);
+            $errors = allocation_validate($data, $errors);
             $room = cash_loan_distributable($loan) - (float) $loan['allocated'];
             if (!$errors && (float) $data['allocated_amount'] > $room + 0.004) {
                 $errors['allocated_amount'] = 'Only ' . format_money(max(0, $room)) . ' of the loan is not yet allocated.';
@@ -109,7 +110,9 @@ try {
         case 'create_obligation':
             $result = db_transaction(function () use ($loan, $itemId, $currentUser) {
                 $allocation = db_row('SELECT * FROM cash_loan_allocations WHERE id = :i AND cash_loan_id = :l FOR UPDATE', [':i' => $itemId, ':l' => $loan['id']]);
-                if (!$allocation || !owns('borrowers', $allocation['borrower_id']) || $allocation['obligation_id']) {
+                // Only a part someone repays to the card owner is a debt.
+                if (!$allocation || !in_array($allocation['allocation_type'], CASH_LOAN_DEBT_TYPES, true)
+                    || !owns('borrowers', $allocation['borrower_id']) || $allocation['obligation_id']) {
                     return null;
                 }
                 $obligationId = new_uuid();
@@ -117,10 +120,12 @@ try {
                 db_insert('borrower_obligations', [
                     'id' => $obligationId, 'obligation_number' => $number, 'borrower_id' => $allocation['borrower_id'],
                     'cash_loan_allocation_id' => $allocation['id'],
-                    'description' => 'Cash loan ' . $loan['loan_reference'] . ($allocation['description'] ? ' — ' . $allocation['description'] : ''),
+                    'description' => 'Cash loan ' . $loan['loan_reference'] . ' — share of ' . format_money($allocation['allocated_amount'])
+                        . ($loan['term_months'] ? ' over ' . $loan['term_months'] . ' months' : '') . ($allocation['description'] ? ' — ' . $allocation['description'] : ''),
+                    'obligation_date' => $loan['start_date'] ?: date('Y-m-d'),
                     'original_amount' => $allocation['allocated_amount'], 'total_amount_due' => $allocation['allocated_amount'],
                     'total_paid' => '0.00', 'outstanding_amount' => $allocation['allocated_amount'], 'status' => 'active',
-                    'obligation_date' => date('Y-m-d'), 'due_date' => $loan['end_date'],
+                    'due_date' => $loan['end_date'],
                     'created_by' => $currentUser['id'], 'updated_by' => $currentUser['id'],
                 ]);
                 db_update('cash_loan_allocations', ['obligation_id' => $obligationId], $allocation['id']);

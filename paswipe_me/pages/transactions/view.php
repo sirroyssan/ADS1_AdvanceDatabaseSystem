@@ -173,7 +173,7 @@ require APP_ROOT . '/includes/header.php';
                 <?= borrowed_status_badge($l['status']) ?>
             </header>
             <p class="field-help">This transaction is what <?= e(borrower_name($txn)) ?> owes you: it counts once on your card, and the same record shows in their account.</p>
-            <?= borrowed_render_ledger($purchase, $l) ?>
+            <?= borrowed_render_ledger($purchase, $l, true) ?>
             <?php if ($l['mode'] === 'transaction'): ?>
                 <h4 class="form-section">Repayments</h4>
                 <?= borrowed_render_repayments($repayments, static function ($r) use ($related, $id) {

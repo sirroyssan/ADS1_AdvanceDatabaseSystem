@@ -817,6 +817,12 @@ a.dropdown__item {
     background: #fafbfd;
 }
 
+/* The installment due this period in a repayment schedule. */
+.table tbody tr.is-current td {
+    background: #fff8e6;
+    font-weight: 600;
+}
+
 .table tbody tr:last-child td {
     border-bottom: 0;
 }

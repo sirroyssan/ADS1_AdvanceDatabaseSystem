@@ -23,7 +23,7 @@ require APP_ROOT . '/includes/header.php';
 <section class="page-header">
     <div>
         <h2 class="page-header__title"><?= e($item['merchant_name'] ?: $item['transaction_number']) ?></h2>
-        <p class="page-header__subtitle"><?= e(format_money($l['outstanding'])) ?> outstanding · repay by <?= e(borrowed_due_text($l)) ?> · <?= borrowed_status_badge($l['status']) ?></p>
+        <p class="page-header__subtitle"><?php if ($l['status'] !== 'repaid' && !$l['terms_missing']): ?><?= e(format_money($l['due_now'])) ?> due this period<?= ($t = borrowed_installment_text($l)) ? ' (' . e($t) . ')' : '' ?> · <?php endif; ?><?= e(format_money($l['outstanding'])) ?> outstanding in total · repay by <?= e(borrowed_due_text($l)) ?> · <?= borrowed_status_badge($l['status']) ?></p>
     </div>
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/borrowed/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>

@@ -21,12 +21,14 @@ if ($open <= 0.004) {
 
 $fields = [
     'amount'           => ['label' => 'Amount repaid', 'type' => 'decimal', 'required' => true, 'min_exclusive' => 0,
-                           'help' => 'Up to ' . format_money($open) . '. A partial repayment is fine.'],
+                           'help' => ($l['due_now'] > 0.004 ? format_money($l['due_now']) . ' is due this period. ' : '') . 'Up to ' . format_money($open) . '. A partial repayment is fine.'],
     'payment_date'     => ['label' => 'Date you paid', 'type' => 'date', 'required' => true, 'initial' => date('Y-m-d')],
     'reference_number' => ['label' => 'Reference number', 'type' => 'text', 'max' => 150, 'help' => 'Optional: GCash / bank reference, or "cash".'],
     'notes'            => ['label' => 'Notes', 'type' => 'textarea', 'rows' => 2],
 ];
-$data = form_defaults($fields, ['amount' => number_format($open, 2, '.', '')]);
+// Suggest what is due this period (overdue + current installment); any amount up to the open balance is accepted.
+$suggest = $l['due_now'] > 0.004 ? min($l['due_now'], $open) : $open;
+$data = form_defaults($fields, ['amount' => number_format($suggest, 2, '.', '')]);
 $errors = [];
 
 if (is_post()) {

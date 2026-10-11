@@ -305,6 +305,41 @@ function borrowed_legacy_obligation(string $transactionId): ?array
  * transaction, its installment schedule, its confirmed / reported repayments
  * and its penalties. $t needs id, amount, credit_card_id, transaction_date.
  */
+/**
+ * Due this period of an obligation-tracked purchase: its overdue months plus the
+ * current month of its monthly schedule (plus unpaid penalties); the whole
+ * outstanding when it has no monthly schedule.
+ */
+function borrowed_obligation_due_now(array $o, string $today, float $outstanding, float $penalties): array
+{
+    [$rows] = obligation_schedule_view($o);
+    $rows = array_values(array_filter($rows, static fn ($r) => !in_array($r['status'], ['cancelled', 'waived'], true)));
+    if (count($rows) < 2) {
+        return ['due_now' => $outstanding, 'current' => null, 'installments' => 0, 'monthly' => null];
+    }
+    $due = 0.0;
+    $current = null;
+    foreach ($rows as $i => $r) {
+        $left = (float) $r['remaining_amount'];
+        if ($left <= 0.004) {
+            continue;
+        }
+        if ($r['due_date'] < $today) {
+            $due += $left;
+        } elseif ($current === null) {
+            $current = $i;
+            $due += $left;
+        }
+    }
+    $current ??= array_key_first(array_filter($rows, static fn ($r) => (float) $r['remaining_amount'] > 0.004));
+
+    return [
+        'due_now' => round(min($due + $penalties, $outstanding), 2), 'installments' => count($rows), 'monthly' => (float) $rows[0]['amount_due'],
+        'current' => $current === null ? null : ['n' => $current + 1, 'amount' => (float) $rows[$current]['amount_due'], 'remaining' => (float) $rows[$current]['remaining_amount'],
+                                                 'due' => ['date' => $rows[$current]['due_date'], 'source' => 'obligation', 'statement' => null]],
+    ];
+}
+
 function borrowed_ledger(array $t, ?string $today = null): array
 {
     $today ??= date('Y-m-d');
@@ -327,12 +362,13 @@ function borrowed_ledger(array $t, ?string $today = null): array
             'penalty_paid' => $money((float) $legacy['penalties_charged'] - $penalties), 'penalty_unpaid' => $penalties,
             'outstanding' => $money($remaining + $penalties), 'rows' => [], 'next_due' => $legacy['due_date'] ? ['date' => $legacy['due_date'], 'source' => 'obligation', 'statement' => null] : null,
             'status' => $status, 'overdue_amount' => $status === 'overdue' ? $remaining : 0.0, 'review' => null, 'unknown_due' => !$legacy['due_date'],
-        ];
+            'terms_missing' => false,
+        ] + borrowed_obligation_due_now($legacy, $today, $money($remaining + $penalties), $penalties);
     }
 
     // What the borrower is responsible for: each installment billed (installment purchase) or the purchase itself.
     $rows = [];
-    $plan = db_row("SELECT id FROM installment_plans WHERE transaction_id = :t AND status <> 'cancelled'", [':t' => $t['id']]);
+    $plan = db_row("SELECT id, installment_amount FROM installment_plans WHERE transaction_id = :t AND status <> 'cancelled'", [':t' => $t['id']]);
     $ctx = borrowed_card_context($t['credit_card_id']);
     if ($plan && $ctx) {
         $schedule = db_all("SELECT id, installment_number, due_date, amount_due, status FROM installment_schedules
@@ -345,11 +381,14 @@ function borrowed_ledger(array $t, ?string $today = null): array
                        'amount' => (float) $s['amount_due'], 'due' => borrowed_due_of_period($ctx, $billed['period'])];
         }
     }
-    if (!$rows) {
+    // An installment purchase whose plan is not entered yet: the monthly amounts and due
+    // dates are unknown, so nothing is due yet (never the full purchase amount at once).
+    $termsMissing = !$rows && ($t['payment_type'] ?? null) === 'installment';
+    if (!$rows && !$termsMissing) {
         $rows[] = ['schedule_id' => null, 'label' => 'Purchase', 'charge_date' => $t['transaction_date'], 'amount' => (float) $t['amount'],
                    'due' => borrowed_due_for($t['credit_card_id'], $t['transaction_date'])];
     }
-    $responsible = $money(array_sum(array_column($rows, 'amount')));
+    $responsible = $termsMissing ? (float) $t['amount'] : $money(array_sum(array_column($rows, 'amount')));
 
     $pay = db_row(
         "SELECT COALESCE(SUM(IF(status = 'approved', amount, 0)), 0) AS confirmed,
@@ -383,13 +422,36 @@ function borrowed_ledger(array $t, ?string $today = null): array
             }
         }
     }
-    $principalPaid = $money($repaid - $penaltyPaid - max(0, $left));
+    // Due now: what is overdue plus the installment of the current billing period (the next unpaid one).
+    $dueNow = 0.0;
+    $current = null;
+    foreach ($rows as $i => $r) {
+        if ($rows[$i]['remaining'] <= 0.004) {
+            continue;
+        }
+        if ($rows[$i]['overdue']) {
+            $dueNow += $rows[$i]['remaining'];
+        } elseif ($current === null) {
+            $current = $i;
+            $dueNow += $rows[$i]['remaining'];
+        }
+    }
+    if ($current === null) {
+        foreach ($rows as $i => $r) {
+            if ($rows[$i]['remaining'] > 0.004) {
+                $current = $i;   // everything left is overdue: the oldest one
+                break;
+            }
+        }
+    }
+    $principalPaid = $termsMissing ? $money($repaid - $penaltyPaid) : $money($repaid - $penaltyPaid - max(0, $left));
     $remaining = $money($responsible - $principalPaid);
     $penaltyUnpaid = $money($penalties - $penaltyPaid);
     $outstanding = $money($remaining + $penaltyUnpaid);
 
     $status = match (true) {
         $outstanding <= 0.004 => 'repaid',
+        $termsMissing => 'terms_missing',
         $overdue > 0.004 => 'overdue',
         $repaid > 0.004 => 'partially_repaid',
         default => 'pending',
@@ -404,7 +466,9 @@ function borrowed_ledger(array $t, ?string $today = null): array
         'mode' => 'transaction', 'obligation' => null, 'amount' => (float) $t['amount'], 'responsible' => $responsible,
         'repaid' => $money($repaid), 'reported' => $money((float) $pay['reported']), 'remaining' => $remaining,
         'penalties' => $money($penalties), 'penalty_paid' => $money($penaltyPaid), 'penalty_unpaid' => $penaltyUnpaid, 'outstanding' => $outstanding,
-        'rows' => $rows, 'next_due' => $nextDue, 'status' => $status, 'overdue_amount' => $money($overdue), 'review' => $review, 'unknown_due' => $unknown,
+        'rows' => $rows, 'next_due' => $nextDue, 'status' => $status, 'overdue_amount' => $money($overdue), 'review' => $review, 'unknown_due' => $unknown || $termsMissing,
+        'due_now' => $termsMissing ? 0.0 : $money(min($dueNow + $penaltyUnpaid, $outstanding)), 'current' => $current === null ? null : $rows[$current] + ['n' => $current + 1],
+        'installments' => $plan ? count($rows) : 0, 'monthly' => $plan ? (float) $plan['installment_amount'] : null, 'terms_missing' => $termsMissing,
     ];
 }
 
@@ -647,7 +711,7 @@ function borrowed_totals(array $rows): array
         $sum['remaining'] += $l['remaining'];
         $sum['penalties'] += $l['penalty_unpaid'];
         $sum['outstanding'] += $l['outstanding'];
-        $sum['review'] += $l['review'] ? 1 : 0;
+        $sum['review'] += $l['review'] || $l['terms_missing'] ? 1 : 0;
         if ($l['status'] === 'repaid') {
             continue;
         }
@@ -671,8 +735,9 @@ function borrowed_status_badge(string $status): string
         'repaid' => 'fully repaid',
         'partially_repaid' => 'partially repaid',
         'pending' => 'pending repayment',
+        'terms_missing' => 'installment terms not set',
         default => $status,
-    }, ['fully repaid' => 'success', 'overdue' => 'danger', 'partially repaid' => 'warning', 'pending repayment' => 'info']);
+    }, ['fully repaid' => 'success', 'overdue' => 'danger', 'partially repaid' => 'warning', 'pending repayment' => 'info', 'installment terms not set' => 'warning']);
 }
 
 /** Repay-by text of a ledger: date and where it comes from, or why there is none. */
@@ -682,6 +747,9 @@ function borrowed_due_text(array $ledger, bool $short = false): string
         return 'Fully repaid';
     }
     $due = $ledger['next_due'];
+    if ($ledger['terms_missing'] ?? false) {
+        return $short ? 'Not available yet' : 'Not available yet - the installment plan (months and monthly amount) is not entered';
+    }
     if ($due === null) {
         return $short ? 'Not available yet' : 'Not available yet - the card\'s statement / due date is not set';
     }
@@ -749,11 +817,59 @@ function borrowed_require_user(): array
  * The figures of one borrowed purchase: original amount, repaid, remaining,
  * penalty and total outstanding, repay-by date and status (both sides).
  */
-function borrowed_render_ledger(array $row, array $l): string
+/** "Installment 3 of 12" for the current installment, or why there is none. */
+function borrowed_installment_text(array $l): ?string
+{
+    if ($l['terms_missing']) {
+        return 'Installment terms not set yet';
+    }
+    if ($l['installments'] < 1 || $l['current'] === null) {
+        return null;
+    }
+
+    return 'Installment ' . $l['current']['n'] . ' of ' . $l['installments'];
+}
+
+/** List cell: the original amount and, for an installment purchase, n × monthly amount. */
+function borrowed_amount_cell(array $row, array $l): string
+{
+    $html = e(format_money($row['amount']));
+    if ($l['installments'] > 0) {
+        $html .= '<br><span class="text-muted">' . e($l['installments'] . ' × ' . format_money($l['monthly'])) . '</span>';
+    } elseif ($l['terms_missing']) {
+        $html .= '<br><span class="text-muted">installment, terms not set</span>';
+    }
+
+    return $html;
+}
+
+/** List cell: what is due now (overdue + current installment) and which installment it is. */
+function borrowed_due_now_cell(array $l): string
+{
+    if ($l['status'] === 'repaid') {
+        return e(format_money(0));
+    }
+    $text = borrowed_installment_text($l);
+
+    return '<strong>' . e(format_money($l['due_now'])) . '</strong>' . ($text ? '<br><span class="text-muted">' . e($text) . '</span>' : '');
+}
+
+function borrowed_render_ledger(array $row, array $l, bool $owner = false): string
 {
     $details = [
-        'Original transaction amount' => e(format_money($row['amount'])),
+        'Original transaction amount' => e(format_money($row['amount'])) . ($l['installments'] > 0 || $l['terms_missing'] ? ' <span class="text-muted">(charged to the card in installments)</span>' : ''),
     ];
+    if ($l['installments'] > 0) {
+        $plan = db_row("SELECT p.* FROM installment_plans p WHERE p.transaction_id = :t AND p.status <> 'cancelled'", [':t' => $row['id']]);
+        $details['Installment plan'] = e($l['installments'] . ' monthly installments of ' . format_money($l['monthly'])) . ($plan ? ' <span class="text-muted">(' . e(installment_terms_text($plan)) . ')</span>' : '');
+        if ($plan && ((float) $plan['interest_amount'] > 0 || (float) $plan['fees_amount'] > 0)) {
+            $details['Interest and fees'] = e(format_money($plan['interest_amount'])) . ' interest · ' . e(format_money($plan['fees_amount'])) . ' fees';
+        }
+        if ($l['current'] !== null && $l['status'] !== 'repaid') {
+            $details['Current installment'] = e(borrowed_installment_text($l)) . ': ' . e(format_money($l['current']['amount']))
+                . ($l['current']['due']['date'] ? ' · repay by ' . e(format_date($l['current']['due']['date'])) : '');
+        }
+    }
     if ($l['mode'] === 'obligation') {
         $details['Tracked as'] = 'obligation ' . e($l['obligation']['obligation_number']) . ' <span class="text-muted">(older workflow: repayments are posted to it)</span>';
     }
@@ -765,24 +881,37 @@ function borrowed_render_ledger(array $row, array $l): string
         'Reported, not confirmed'  => $l['reported'] > 0 ? e(format_money($l['reported'])) . ' <span class="text-muted">(counts once the card owner confirms it)</span>' : e(format_money(0)),
         'Remaining'                => e(format_money($l['remaining'])),
         'Late penalty'             => $l['penalties'] > 0 ? e(format_money($l['penalty_unpaid'])) . ' unpaid <span class="text-muted">of ' . e(format_money($l['penalties'])) . ' charged (card owner\'s penalty rules; not a card charge)</span>' : e(format_money(0)),
-        'Total outstanding'        => '<strong>' . e(format_money($l['outstanding'])) . '</strong>',
+        'Total outstanding'        => '<strong>' . e(format_money($l['outstanding'])) . '</strong>' . ($l['installments'] > 0 ? ' <span class="text-muted">(all remaining installments)</span>' : ''),
+        'Due this period'          => $l['terms_missing'] ? '<span class="text-muted">Not available yet</span>' : '<strong>' . e(format_money($l['status'] === 'repaid' ? 0 : $l['due_now'])) . '</strong>'
+                                      . ($l['overdue_amount'] > 0 ? ' <span class="text-danger">(includes ' . e(format_money($l['overdue_amount'])) . ' overdue)</span>' : ''),
         'Repay by'                 => e(borrowed_due_text($l)),
         'Status'                   => borrowed_status_badge($l['status']),
     ];
     $html = render_details($details);
+    if ($l['terms_missing']) {
+        $html .= '<div class="alert alert--warning">' . icon('alert') . '<span>This is an installment purchase, but its installment plan is not entered yet, so the monthly amount and due dates are not known. '
+            . ($owner ? 'Nothing is shown as due until you <a data-modal-form href="' . e(url('pages/installment_plans/create.php', ['transaction_id' => $row['id']])) . '">add its installment plan</a>.'
+                      : 'Nothing is due until the card owner enters the plan.') . '</span></div>';
+    }
     if ($l['review']) {
         $html .= '<div class="alert alert--warning">' . icon('alert') . '<span>' . e($l['review']) . '</span></div>';
     }
     if (count($l['rows']) > 1) {
         $html .= '<div class="table-wrap"><table class="table table--cards table--compact"><thead><tr><th scope="col">Charge</th><th scope="col" class="num">Amount</th>'
-            . '<th scope="col" class="num">Repaid</th><th scope="col" class="num">Remaining</th><th scope="col">Repay by</th></tr></thead><tbody>';
-        foreach ($l['rows'] as $r) {
-            $html .= '<tr><td data-label="Charge">' . e($r['label']) . ' <span class="text-muted">' . e($r['due']['statement'] ?? '') . '</span></td>'
+            . '<th scope="col" class="num">Repaid</th><th scope="col" class="num">Remaining</th><th scope="col">Repay by</th><th scope="col">Status</th></tr></thead><tbody>';
+        foreach ($l['rows'] as $i => $r) {
+            $state = match (true) {
+                $r['remaining'] <= 0.004 => 'paid',
+                $r['overdue'] => 'overdue',
+                $r['paid'] > 0.004 => 'partially paid',
+                default => 'pending',
+            };
+            $html .= '<tr' . ($l['current'] !== null && $l['current']['n'] === $i + 1 && $state !== 'paid' ? ' class="is-current"' : '') . '><td data-label="Charge">' . e($r['label']) . ($l['installments'] > 0 ? ' of ' . e($l['installments']) : '') . ' <span class="text-muted">' . e($r['due']['statement'] ?? '') . '</span></td>'
                 . '<td data-label="Amount" class="num">' . e(format_money($r['amount'])) . '</td>'
                 . '<td data-label="Repaid" class="num">' . e(format_money($r['paid'])) . '</td>'
                 . '<td data-label="Remaining" class="num">' . e(format_money($r['remaining'])) . '</td>'
-                . '<td data-label="Repay by">' . ($r['due']['date'] ? e(format_date($r['due']['date'])) : '<span class="text-muted">not available yet</span>')
-                . ($r['overdue'] ? ' ' . status_badge('overdue', ['overdue' => 'danger']) : '') . '</td></tr>';
+                . '<td data-label="Repay by">' . ($r['due']['date'] ? e(format_date($r['due']['date'])) : '<span class="text-muted">not available yet</span>') . '</td>'
+                . '<td data-label="Status">' . status_badge($state, ['paid' => 'success', 'overdue' => 'danger', 'partially paid' => 'warning', 'pending' => 'info']) . '</td></tr>';
         }
         $html .= '</tbody></table></div>';
     }

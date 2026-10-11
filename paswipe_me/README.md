@@ -1043,6 +1043,85 @@ overview*, and the borrower's repay-by dates and penalties.
 date and once when it is missed - each once per purchase and due date - and the notification opens
 the purchase in their account.
 
+## Installments, obligations, cash loans and cash advances (one record each)
+
+**One record per event.** A card purchase is one `transactions` row. An installment purchase adds
+its `installment_plans` row and its `installment_schedules` rows, linked by `transaction_id`. A
+borrower's responsibility is either that same transaction (a borrowed purchase,
+`includes/borrowed.php`) or a `borrower_obligations` row linked to its source:
+`transaction_id` for a cash advance share, or `cash_loan_allocation_id` for a cash loan share. Nothing
+copies the purchase amount into a second record. Repayments are separate `borrower_payments` rows.
+
+**Installment purchase in one step** (`pages/transactions/create.php`): choose *Installment* as the
+payment type, and the form shows the terms. Either pick a bank rule, or enter the months, the
+interest method and rate, the processing fee and how it is billed, plus an optional first due date
+(by default the payment due date of the statement that bills installment 1). Saving writes the
+transaction, the plan and its schedule in **one database transaction**. A transaction saved without
+a plan can get one from *Edit*. The Installment module is for viewing and managing plans.
+
+**Calculation** (`includes/installments.php`, `installment_compute()`), always from terms you enter:
+
+| Method | Interest |
+|---|---|
+| `none` | 0 |
+| `fixed_amount` | the amount entered |
+| `add_on_monthly` | principal × rate % × months |
+| `add_on_total` | principal × rate % |
+| `reducing_balance` | annuity at rate % per month on the remaining balance |
+
+- **Fee** `fixed` or `percent` of the principal, spread over every installment or billed with the
+  first one.
+- **Rounding:** each installment is rounded to the nearest centavo and the **last installment takes
+  the difference**, so the rows always add up to the total. For example, ₱20,000 / 12 is
+  11 × ₱1,666.67 + ₱1,666.63, and ₱20,999 / 12 is 11 × ₱1,749.92 + ₱1,749.88, matching the bank's SOA.
+- Each schedule row stores principal, interest, fee, amount due, paid and remaining.
+- **Older plans** (`interest_method` NULL) keep their hand-entered amounts.
+
+**Installment Rules** (Master Data, table `installment_rules`):
+- Each rule holds a bank's or one card's offer: months offered, an amount range, the interest method
+  and rate, the fee, and effective dates.
+- Only rules you entered are used; nothing is assumed.
+- A plan made from a rule stores `installment_rule_id` and a JSON **snapshot** of the rule
+  (`terms_snapshot`), so editing the rule later never changes existing plans.
+- A rule that is in use can only be deactivated.
+
+**What the borrower sees** (Amounts to Repay, owner's borrower page, transaction page, dashboard):
+- the original amount and *n × monthly amount*;
+- **Due this period**: what is overdue, plus the current installment ("Installment 1 of 12");
+- the repay-by date, from the statement that bills that installment;
+- paid, remaining in total, and the status;
+- the installment table, with Paid / Partially paid / Overdue / Pending and the current row
+  highlighted.
+
+The full purchase amount is never shown as due at once for an installment purchase. An
+installment purchase **without a plan** shows *Installment terms not set*: nothing is due, no
+reminder or penalty is sent, and the card owner sees a link to add the plan.
+
+**Cash loans: who carries what** (`pages/cash_loans/`):
+- The card owner is the account holder, responsible to the bank for every installment.
+- Each allocation has a defined responsibility:
+  - *Owes me*: the person repays this part to the card owner. It can become an obligation, which
+    repays its share of each loan installment. Older rows typed "borrower" mean the same.
+  - *My own share*: no other person, no debt.
+  - *Contribution*: helps pay, not owed.
+- For each allocation, the loan page shows the amount per month (allocated ÷ term, the last month
+  takes the rounding) and its share of the bank installment, with the combined total.
+- Example: ₱130,000 over 24 months is ₱100,000 owed by ate (₱4,166.67 a month) and ₱30,000 own share
+  (₱1,250.00 a month), ₱5,416.67 a month combined.
+- No one becomes a co-borrower automatically.
+
+**Cash advance given to someone:**
+- The withdrawal is one `cash_advances` row and is billed once.
+- *Give to a borrower* creates the borrower's share: a transaction referencing the advance, which
+  the card total and the statement do not count again, plus its monthly plan and the obligation for
+  that part only.
+
+**Duplicate prevention:**
+- One-time form tokens make a double click or a refresh save once. They cover: transaction create,
+  plan create, cash advance give, borrower repayment reports, and repayments recorded by the owner.
+- The database adds UNIQUE keys: one plan per transaction, one schedule row per number, and one
+  statement item per source.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |

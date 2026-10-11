@@ -2,10 +2,16 @@
 /**
  * Cash Loans module (tables: cash_loans, cash_loan_schedules, cash_loan_allocations).
  *
- * A bank cash loan on a card can be split ("allocated") to borrowers.
- * An allocation to a borrower can be turned into a borrower obligation;
- * the two rows are then linked both ways (cash_loan_allocations.obligation_id
- * and borrower_obligations.cash_loan_allocation_id).
+ * A bank cash loan on a card can be split ("allocated"). The card owner is the
+ * account holder: the bank's borrower, responsible for every installment to the
+ * bank. An allocation only says who carries which part of it:
+ *   reimburse    - a person repays this part to the card owner (a debt; it can
+ *                  become a borrower obligation, which repays its share of each
+ *                  loan installment). Older "borrower" rows mean the same.
+ *   own_share    - the card owner's own part (no debt).
+ *   contribution - a person helps with the payments without owing it (no debt).
+ * The obligation and the allocation are linked both ways
+ * (cash_loan_allocations.obligation_id and borrower_obligations.cash_loan_allocation_id).
  * No hard delete once allocations exist; use status cancelled/rejected.
  */
 
@@ -78,13 +84,70 @@ function cash_loan_distributable(array $loan): float
     return (float) $loan['actual_cash_received'] > 0 ? (float) $loan['actual_cash_received'] : (float) $loan['accepted_amount'];
 }
 
+const CASH_LOAN_ALLOCATION_TYPES = [
+    'reimburse'    => 'Owes me — repays this part to me',
+    'own_share'    => 'My own share',
+    'contribution' => 'Contribution — helps pay, does not owe it',
+];
+
+/** Allocation types that are a debt to the card owner (older rows used "borrower"). */
+const CASH_LOAN_DEBT_TYPES = ['reimburse', 'borrower'];
+
+function allocation_type_label(string $type): string
+{
+    return match ($type) {
+        'reimburse', 'borrower' => 'Owes the card owner',
+        'own_share' => 'Card owner\'s own share',
+        'contribution' => 'Contribution (not owed)',
+        default => humanize($type),
+    };
+}
+
 function allocation_fields(): array
 {
     return [
-        'borrower_id'      => ['label' => 'Borrower', 'type' => 'select', 'options' => borrower_options(), 'empty_label' => '— Owner / not a borrower —'],
-        'allocation_type'  => ['label' => 'Allocation type', 'type' => 'text', 'max' => 50, 'required' => true, 'initial' => 'borrower', 'help' => 'e.g. borrower, personal, fees.'],
+        'borrower_id'      => ['label' => 'Person', 'type' => 'select', 'options' => borrower_options(), 'empty_label' => '— Me (card owner) —'],
+        'allocation_type'  => ['label' => 'Responsibility', 'type' => 'select', 'options' => CASH_LOAN_ALLOCATION_TYPES, 'required' => true, 'initial' => 'reimburse',
+                               'help' => 'You stay responsible to the bank for the whole loan. "Owes me" can become an obligation that follows the loan\'s monthly schedule.'],
         'allocated_amount' => ['label' => 'Amount', 'type' => 'decimal', 'required' => true, 'min' => 0],
         'description'      => ['label' => 'Description', 'type' => 'text', 'max' => 500],
+    ];
+}
+
+/** Allocation rules: a debt needs the person who owes it; the own share is the card owner's. */
+function allocation_validate(array $data, array $errors): array
+{
+    if (in_array($data['allocation_type'] ?? '', CASH_LOAN_DEBT_TYPES, true) && !$data['borrower_id'] && !isset($errors['borrower_id'])) {
+        $errors['borrower_id'] = 'Choose the person who repays this part to you.';
+    }
+    if (($data['allocation_type'] ?? '') === 'own_share' && $data['borrower_id']) {
+        $errors['borrower_id'] = 'Your own share has no other person. Leave the person empty, or choose "Owes me".';
+    }
+    if (($data['allocated_amount'] ?? null) !== null && (float) $data['allocated_amount'] <= 0 && !isset($errors['allocated_amount'])) {
+        $errors['allocated_amount'] = 'The amount must be more than zero.';
+    }
+
+    return $errors;
+}
+
+/**
+ * Monthly figures of an allocation: its principal per month (allocated / term,
+ * the last month takes the rounding) and its proportional share of the bank's
+ * monthly installment (allocated / loan principal x installment). Null when the
+ * loan has no term yet.
+ */
+function allocation_monthly(array $loan, float $allocated, ?float $bankInstallment): ?array
+{
+    $term = (int) $loan['term_months'];
+    if ($term < 1) {
+        return null;
+    }
+    $parts = installment_split((int) round($allocated * 100), $term);
+    $principal = cash_loan_principal($loan) ?: cash_loan_distributable($loan);
+
+    return [
+        'principal' => $parts[0] / 100, 'last' => end($parts) / 100,
+        'bank_share' => $bankInstallment !== null && $principal > 0 ? round($bankInstallment * $allocated / $principal, 2) : null,
     ];
 }
 

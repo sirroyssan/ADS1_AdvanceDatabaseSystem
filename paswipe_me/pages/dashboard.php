@@ -280,7 +280,7 @@ require APP_ROOT . '/includes/header.php';
     <?php if ($borrowedOpen): ?>
         <div class="table-wrap">
             <table class="table table--cards table--compact">
-                <thead><tr><th scope="col">Purchase</th><th scope="col">Card owner</th><th scope="col" class="num">Remaining</th><th scope="col">Repay by</th><th scope="col">Status</th><th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th></tr></thead>
+                <thead><tr><th scope="col">Purchase</th><th scope="col">Card owner</th><th scope="col" class="num">Remaining</th><th scope="col" class="num">Due this period</th><th scope="col">Repay by</th><th scope="col">Status</th><th scope="col" class="actions no-print"><span class="visually-hidden">Actions</span></th></tr></thead>
                 <tbody>
                 <?php foreach ($borrowedOpen as $row): ?>
                     <tr>
@@ -288,6 +288,7 @@ require APP_ROOT . '/includes/header.php';
                             <span class="text-muted"><?= e(format_date($row['transaction_date'])) ?> · <?= e($row['issuer']) ?> •••• <?= e($row['last_four']) ?></span></td>
                         <td data-label="Card owner"><?= e($row['lender_name'] ?? '—') ?></td>
                         <td data-label="Remaining" class="num"><?= e(format_money($row['ledger']['outstanding'])) ?></td>
+                        <td data-label="Due this period" class="num"><?= borrowed_due_now_cell($row['ledger']) ?></td>
                         <td data-label="Repay by"><?= e(borrowed_due_text($row['ledger'])) ?></td>
                         <td data-label="Status"><?= borrowed_status_badge($row['ledger']['status']) ?></td>
                         <td class="actions no-print"><?php if ($row['ledger']['outstanding'] - $row['ledger']['reported'] > 0.004): ?>

@@ -109,6 +109,7 @@ require APP_ROOT . '/includes/header.php';
         <form method="post" action="<?= e(url('pages/cash_advances/give.php')) ?>" class="inline-panel no-print" id="give-borrower" <?= $prefill ? '' : 'hidden' ?> novalidate data-validate>
             <?= csrf_field() ?>
             <input type="hidden" name="id" value="<?= e($advance['id']) ?>">
+            <?= form_once_field('cash_advance_give') ?>
             <p class="field-help">The borrower owes the amount given + the fee + interest (amount × monthly rate × months), split into equal monthly payments.
                 Late payments are charged by your penalty rules. The bank's fee and interest on this card are tracked separately.</p>
             <?= render_fields($giveFields, $giveData, []) ?>

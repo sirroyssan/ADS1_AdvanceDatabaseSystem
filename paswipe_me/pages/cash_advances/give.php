@@ -29,6 +29,11 @@ if ($errors) {
     }
     redirect($back . '#give-borrower');
 }
+// The same form sent twice (double click, refresh) gives the cash once.
+if (!form_once_use('cash_advance_give', input_string($_POST, 'once'))) {
+    flash('info', 'This was already saved.');
+    redirect($back);
+}
 
 try {
     [$obligationId, $number, $t] = cash_advance_give($advance, $data, $currentUser);
