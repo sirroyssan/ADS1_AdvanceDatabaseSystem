@@ -145,9 +145,6 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel">
             <header class="panel__header">
                 <h3>Borrower obligations</h3>
-                <?php if (!$isLocked && $txn['borrower_id'] && $canManage): ?>
-                    <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/obligations/create.php', ['borrower_id' => $txn['borrower_id'], 'transaction_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
-                <?php endif; ?>
             </header>
             <?php if (!$obligations): ?>
                 <p class="empty-inline"><?= $txn['borrower_id'] ? 'No obligation created yet.' : 'Owner\'s own purchase — no borrower obligation.' ?></p>

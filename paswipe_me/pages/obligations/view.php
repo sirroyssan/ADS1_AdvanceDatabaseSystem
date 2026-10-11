@@ -35,10 +35,7 @@ foreach ($terminable as $p) {
 $isClosed = in_array($obligation['status'], ['cancelled', 'written_off', 'paid'], true);
 $daysLate = $obligation['due_date'] && $obligation['due_date'] < date('Y-m-d') ? (int) ((strtotime(date('Y-m-d')) - strtotime($obligation['due_date'])) / 86400) : 0;
 
-$statusChoices = array_values(array_diff(OBLIGATION_MANUAL_STATUSES, [$obligation['status']]));
-if ((float) $obligation['total_paid'] > 0) {
-    $statusChoices = array_values(array_diff($statusChoices, ['cancelled', 'pending']));
-}
+$statusChoices = obligation_status_choices($obligation);
 
 $related = url('pages/obligations/related.php');
 $penaltyDefaults = form_defaults(penalty_fields(), ['calculation_base' => $obligation['outstanding_amount'], 'overdue_days' => $daysLate]);
@@ -66,6 +63,11 @@ require APP_ROOT . '/includes/header.php';
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
         <?php if (!$isClosed): ?>
             <a data-modal-form href="<?= e(url('pages/borrower_payments/create.php', ['borrower_id' => $obligation['borrower_id']])) ?>" class="btn btn--outline"><?= icon('receipt') ?> <span>Record payment</span></a>
+        <?php endif; ?>
+        <?php if ($statusChoices && $obligation['status'] !== 'paid'): ?>
+            <a data-modal-form href="<?= e(url('pages/obligations/status.php', ['id' => $id])) ?>" class="btn btn--outline"><?= icon('repeat') ?> <span>Change status</span></a>
+        <?php endif; ?>
+        <?php if (!$isClosed): ?>
             <a data-modal-form href="<?= e(url('pages/obligations/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
         <?php endif; ?>
     </div>
@@ -107,25 +109,6 @@ require APP_ROOT . '/includes/header.php';
     </section>
 
     <div class="detail-side">
-        <?php if ($statusChoices && $obligation['status'] !== 'paid'): ?>
-            <section class="panel no-print">
-                <header class="panel__header"><h3>Change status</h3></header>
-                <form method="post" action="<?= e($related) ?>" class="status-form" data-confirm="Change the status of this obligation?" data-confirm-title="Change status?" data-confirm-button="Change status">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="id" value="<?= e($id) ?>">
-                    <input type="hidden" name="action" value="status">
-                    <div class="form-group">
-                        <label for="obl_status">New status</label>
-                        <select id="obl_status" name="status" required>
-                            <?php foreach ($statusChoices as $s): ?><option value="<?= e($s) ?>"><?= e(humanize($s)) ?></option><?php endforeach; ?>
-                        </select>
-                    </div>
-                    <button type="submit" class="btn btn--primary"><?= icon('check') ?> <span class="btn__label">Apply</span></button>
-                </form>
-                <p class="field-help">Cancel is only possible before any payment. Obligations are never deleted.</p>
-            </section>
-        <?php endif; ?>
-
         <section class="panel">
             <header class="panel__header"><h3>Payments applied</h3></header>
             <?php if (!$allocations): ?>

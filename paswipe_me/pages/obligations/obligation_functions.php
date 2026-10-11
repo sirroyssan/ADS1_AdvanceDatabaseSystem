@@ -17,16 +17,11 @@ const OBLIGATION_MANUAL_STATUSES = ['pending', 'active', 'partially_paid', 'over
 
 function obligation_fields(bool $isNew, ?array $current = null): array
 {
-    [$txnOptions, $txnData] = transaction_options($current['transaction_id'] ?? null);
-
     $fields = [
         'obligation_number' => ['label' => 'Obligation number', 'type' => 'text', 'max' => 50,
                                 'unique' => ['borrower_obligations', 'obligation_number', 'This obligation number is already used.'],
                                 'help' => $isNew ? 'Leave blank to generate one automatically.' : ''],
         'borrower_id'       => ['label' => 'Borrower', 'type' => 'select', 'options' => borrower_options($current['borrower_id'] ?? null), 'required' => true, 'empty_label' => 'Select borrower'],
-        'transaction_id'    => ['label' => 'Transaction', 'type' => 'select', 'options' => $txnOptions, 'option_data' => $txnData,
-                                'attrs' => ['data-depends-on' => 'f_borrower_id'], 'empty_label' => '— Not linked to a transaction —',
-                                'help' => 'Only the selected borrower\'s transactions are listed.'],
         'description'       => ['label' => 'Description', 'type' => 'text', 'max' => 500, 'full' => true],
         'obligation_date'   => ['label' => 'Obligation date', 'type' => 'date', 'required' => true, 'initial' => date('Y-m-d')],
         'due_date'          => ['label' => 'Due date', 'type' => 'date'],
@@ -80,6 +75,20 @@ function obligation_borrower_lock(array $o): ?string
     return null;
 }
 
+/** Statuses the obligation can be changed to by hand (none once paid). */
+function obligation_status_choices(array $o): array
+{
+    if ($o['status'] === 'paid') {
+        return [];
+    }
+    $choices = array_values(array_diff(OBLIGATION_MANUAL_STATUSES, [$o['status']]));
+    if ((float) $o['total_paid'] > 0) {
+        $choices = array_values(array_diff($choices, ['cancelled', 'pending']));
+    }
+
+    return $choices;
+}
+
 /**
  * Validate and compute totals. $totalPaid is 0 for new obligations.
  */
@@ -90,9 +99,6 @@ function obligation_validate(array $fields, array $input, ?string $id, float $to
 
     if ($data['due_date'] && $data['obligation_date'] && $data['due_date'] < $data['obligation_date']) {
         $errors['due_date'] = 'Due date cannot be before the obligation date.';
-    }
-    if ($data['transaction_id'] && $borrowerId && !belongs_to('transactions', $data['transaction_id'], 'borrower_id', $borrowerId)) {
-        $errors['transaction_id'] = 'The transaction must belong to the selected borrower.';
     }
 
     if (!array_intersect_key($errors, array_flip(['original_amount', 'agreed_interest', 'agreed_fees', 'overdue_amount']))) {

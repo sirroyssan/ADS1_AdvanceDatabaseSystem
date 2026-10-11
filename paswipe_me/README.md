@@ -1142,6 +1142,10 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
   The cash loan allocation moves with it. The change is logged (`change_borrower`) and the new
   person is notified. Otherwise the field is locked and shows why; the server checks this again.
 
+**Obligation form and status:**
+- **No Transaction field:** the obligation form has no *Transaction* field. Obligations are entered by hand or created from cash loans and cash advances. Card purchases and installments are tracked on the transaction itself, so the transaction page no longer has an *Add obligation* button. An existing link (a cash advance share) is kept when the obligation is edited.
+- **Change status:** this is now a button in the obligation page's header, next to *Record payment* and *Edit*. It opens a small modal (`pages/obligations/status.php`), which posts to the same `related.php` action, so the same rules are checked on the server.
+
 **Cash advance given to someone:**
 - The withdrawal is one `cash_advances` row and is billed once.
 - *Give to a borrower* creates the borrower's share: a transaction referencing the advance, which

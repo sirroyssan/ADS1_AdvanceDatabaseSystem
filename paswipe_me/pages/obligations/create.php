@@ -1,6 +1,6 @@
 <?php
 /**
- * Obligations - create what a borrower owes (optionally linked to a transaction).
+ * Obligations - create what a borrower owes (a manual item).
  */
 
 require_once __DIR__ . '/../../includes/auth_check.php';
@@ -9,18 +9,12 @@ require_once __DIR__ . '/obligation_functions.php';
 $currentUser = require_admin();
 
 $fields = obligation_fields(true);
+// Obligations are entered by hand or come from cash loans and cash advances;
+// card purchases and installments are tracked on the transaction itself.
 $preset = [];
-foreach (['borrower_id', 'transaction_id'] as $key) {
-    $value = input_string($_GET, $key);
-    if (is_valid_uuid($value)) {
-        $preset[$key] = $value;
-    }
-}
-if (isset($preset['transaction_id'])) {
-    $txn = db_row('SELECT amount, transaction_number, transaction_date FROM transactions t WHERE t.id = :id AND ' . owner_scope('transactions', 't'), [':id' => $preset['transaction_id']]);
-    if ($txn) {
-        $preset += ['original_amount' => $txn['amount'], 'description' => 'Card purchase ' . $txn['transaction_number'], 'obligation_date' => $txn['transaction_date']];
-    }
+$value = input_string($_GET, 'borrower_id');
+if (is_valid_uuid($value)) {
+    $preset['borrower_id'] = $value;
 }
 $data = form_defaults($fields, $preset);
 $errors = [];
