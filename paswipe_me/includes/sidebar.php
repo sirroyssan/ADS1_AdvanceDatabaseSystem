@@ -74,6 +74,7 @@ $navigation = [
             ['key' => 'users',         'label' => 'Users & Roles', 'icon' => 'shield',  'path' => 'pages/users/index.php', 'admin' => true],
             ['key' => 'notifications', 'label' => 'Notifications', 'icon' => 'bell',    'path' => 'pages/notifications/index.php'],
             ['key' => 'activity_logs', 'label' => 'Activity Logs', 'icon' => 'history', 'path' => 'pages/activity_logs/index.php'],
+            ['key' => 'data_reset',    'label' => 'Reset Test Data', 'icon' => 'trash', 'path' => 'pages/data_reset/index.php'],
             ['key' => 'profile',       'label' => 'My Profile',    'icon' => 'user',    'path' => 'pages/profile/index.php'],
         ],
     ],

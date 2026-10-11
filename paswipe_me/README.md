@@ -1122,6 +1122,39 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - The database adds UNIQUE keys: one plan per transaction, one schedule row per number, and one
   statement item per source.
 
+## Reset test data (System → Reset Test Data, `includes/data_reset.php`)
+
+Clears **your own** test financial records so you can record from zero, and keeps your master data.
+Other users' records are never touched; portal borrowers cannot open the page.
+
+1. **Preview** (opening the page changes nothing): the number of records per table that will go,
+   and the counts of everything kept.
+2. **Confirm** by typing `RESET`. A one-time token makes a double click run it once.
+3. **Backup**: every row is copied as JSON into `backup_reset_rows` first, inside the same database
+   transaction as the deletes. The page then offers a `.sql` download per batch that restores it.
+4. **Delete** children before parents, with foreign-key checks **on** and everything in one
+   transaction (all or nothing). The one circular link, a cash-loan allocation ↔ its obligation, is
+   cleared before the obligation is deleted.
+5. **Recalculate**: each card's stored available credit comes from the remaining records, and
+   prepared statements are rebuilt.
+6. **Verify**: nothing in scope is left, no statement line or notification points at a removed
+   record, and every kept count is unchanged. A report is shown.
+
+Removed: transactions with their items, attachment links, and installment plans and schedules;
+cash loans with their allocations and schedules; cash advances; bank charges (except the card's
+**opening balance**); card payments; obligations; borrower payments with their allocations,
+selections, verifications, verification logs and proof links; applied penalties; agreements and
+demand letters tied to removed obligations or transactions; statements the app prepared, and
+statement lines; notifications about removed records.
+
+Kept: users and roles, credit cards (limit, cutoff day, due-date rule, opening balance), billing
+cycles, borrowers with contacts, addresses and portal accounts, penalty rules, installment rules,
+payment methods, categories, merchants, templates, the **bank SOAs you recorded** (with their
+reconciliations), agreements not tied to a removed record, and activity logs.
+
+Uploaded files used only by removed records are flagged `is_deleted`; the files stay in `storage/`.
+Kept SOAs whose card payments were removed show as unpaid again until you record the payment.
+
 ## DATABASE LIMITATIONS (no schema changes were made)
 
 | Feature | Missing information | Affected module | Recommended schema change |
