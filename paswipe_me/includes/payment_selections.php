@@ -67,6 +67,7 @@ function payable_items(string $borrowerId): array
         $rows = [];
         $target = obligation_schedule_target($o);
         if ($target && $target['table'] === 'installment_schedules') {
+            $count = (int) db_value("SELECT COUNT(*) FROM installment_schedules WHERE installment_plan_id = :p AND status NOT IN ('waived', 'cancelled')", [':p' => $target['parent_id']]);
             foreach (db_all(
                 "SELECT id, installment_number, due_date, remaining_amount FROM installment_schedules
                   WHERE installment_plan_id = :p AND status NOT IN ('paid', 'waived', 'cancelled') AND remaining_amount > 0
@@ -75,25 +76,43 @@ function payable_items(string $borrowerId): array
             ) as $s) {
                 $rows[] = [
                     'key' => $o['id'] . ':' . $s['id'], 'obligation_id' => $o['id'], 'schedule_id' => $s['id'],
-                    'label' => 'Installment #' . $s['installment_number'], 'due_date' => $s['due_date'],
+                    'label' => 'Installment ' . $s['installment_number'] . ' of ' . $count, 'due_date' => $s['due_date'],
                     'owed' => (float) $s['remaining_amount'], 'overdue' => $s['due_date'] < date('Y-m-d'),
                 ];
             }
         }
-        if (!$rows || (float) $o['penalties_unpaid'] > 0) {
-            // The item as a whole (also the way to pay its late charges).
+        // Without an installment plan (e.g. a cash loan share) each open month of the
+        // obligation's monthly schedule is its own row, like a card installment. These
+        // rows pay the obligation as a whole: payments fill the oldest month first.
+        if (!$rows) {
+            $all = obligation_monthly_rows($o);
+            $count = count($all);
+            foreach ($all as $n => $m) {
+                if ((float) $m['remaining_amount'] <= 0.004) {
+                    continue;
+                }
+                $rows[] = [
+                    'key' => $o['id'] . ':m' . ($n + 1), 'obligation_id' => $o['id'], 'schedule_id' => null,
+                    'label' => 'Installment ' . ($n + 1) . ' of ' . $count, 'due_date' => $m['due_date'],
+                    'owed' => (float) $m['remaining_amount'], 'overdue' => $m['due_date'] < date('Y-m-d'),
+                ];
+            }
+            if (count($rows) < 2 && $count < 2) {
+                $rows = [];   // one payment only: the item as a whole below
+            }
+        }
+        if ((float) $o['penalties_unpaid'] > 0) {
             array_unshift($rows, [
                 'key' => $o['id'] . ':', 'obligation_id' => $o['id'], 'schedule_id' => null,
-                'label' => $rows ? 'Late charges / any part of this item' : 'This item', 'due_date' => $o['due_date'],
-                'owed' => $owed, 'overdue' => (float) $o['overdue_amount'] > 0,
+                'label' => 'Late charges', 'due_date' => null, 'owed' => round((float) $o['penalties_unpaid'], 2), 'overdue' => true,
             ]);
+        } elseif (!$rows) {
+            $rows[] = [
+                'key' => $o['id'] . ':', 'obligation_id' => $o['id'], 'schedule_id' => null,
+                'label' => 'This item', 'due_date' => $o['due_date'], 'owed' => $owed, 'overdue' => (float) $o['overdue_amount'] > 0,
+            ];
         }
-        // Without an installment plan the item is paid as a whole (oldest month first); its open months are shown for reference.
-        $months = $target && $target['table'] === 'installment_schedules' ? [] : array_values(array_filter(
-            obligation_monthly_rows($o), static fn ($s) => (float) $s['remaining_amount'] > 0.004
-        ));
-        $months = count($months) > 1 || ($months && $months[0]['due_date'] !== $o['due_date']) ? $months : [];
-        $groups[] = ['obligation' => $o, 'penalties' => (float) $o['penalties_unpaid'], 'owed' => $owed, 'rows' => $rows, 'months' => $months];
+        $groups[] = ['obligation' => $o, 'penalties' => (float) $o['penalties_unpaid'], 'owed' => $owed, 'rows' => $rows, 'months' => []];
     }
 
     return $groups;
@@ -126,14 +145,17 @@ function payment_selections_from_input(array $input, string $borrowerId, float $
         if ($amount > $index[$key]['owed'] + 0.004) {
             return [[], $index[$key]['obligation_number'] . ' — ' . $index[$key]['label'] . ' only has ' . format_money($index[$key]['owed']) . ' to pay.'];
         }
-        $chosen[] = ['obligation_id' => $index[$key]['obligation_id'], 'installment_schedule_id' => $index[$key]['schedule_id'], 'amount' => $amount];
+        // Month rows of one obligation are one selection (the obligation as a whole).
+        $merge = $index[$key]['obligation_id'] . '|' . ($index[$key]['schedule_id'] ?? '');
+        $chosen[$merge] ??= ['obligation_id' => $index[$key]['obligation_id'], 'installment_schedule_id' => $index[$key]['schedule_id'], 'amount' => 0.0];
+        $chosen[$merge]['amount'] = round($chosen[$merge]['amount'] + $amount, 2);
         $total += $amount;
     }
     if ($total > $paid + 0.004) {
         return [[], 'You assigned ' . format_money($total) . ', which is more than the ' . format_money($paid) . ' you paid.'];
     }
 
-    return [$chosen, null];
+    return [array_values($chosen), null];
 }
 
 function payment_selections_save(string $paymentId, array $rows): void

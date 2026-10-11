@@ -175,8 +175,25 @@ function payment_form_handle(array $ctx): array
             $left -= min($left, $r['owed']);
         }
     } elseif ($payment) {
+        $rowsOf = [];
+        foreach ($groups as $g) {
+            $rowsOf[$g['id']] = $g['rows'];
+        }
         foreach (payment_selections($payment['id']) as $sel) {
-            $chosen[$sel['obligation_id'] . ':' . ($sel['installment_schedule_id'] ?? '')] = $sel['amount'];
+            if ($sel['installment_schedule_id'] !== null) {
+                $chosen[$sel['obligation_id'] . ':' . $sel['installment_schedule_id']] = $sel['amount'];
+                continue;
+            }
+            // An amount on the obligation as a whole ticks its rows (late charges, then months) oldest first.
+            $left = (float) $sel['amount'];
+            foreach ($rowsOf[$sel['obligation_id']] ?? [] as $r) {
+                if ($left <= 0.004 || !str_starts_with($r['key'], $sel['obligation_id'] . ':') || preg_match('/:[0-9a-f-]{36}$/', $r['key'])) {
+                    continue;
+                }
+                $take = min($left, $r['owed']);
+                $chosen[$r['key']] = number_format($take, 2, '.', '');
+                $left -= $take;
+            }
         }
     } else {
         foreach ($groups as $g) {

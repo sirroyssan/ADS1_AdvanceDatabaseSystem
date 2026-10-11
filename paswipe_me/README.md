@@ -1150,8 +1150,11 @@ by open or closed.
 fields: how you paid, payment date, amount, reference, notes for the owner and proof of payment. It
 also has the same **What is this payment for?** table.
 
-- **The table lists everything open:** obligations (each installment, or the item) and card purchases
-  made on the owner's card (each open installment, plus late charges).
+- **The table lists everything open, the same way for every item:** one row per open installment
+  ("Installment n of N"), with its due date and what is left on it, plus a "Late charges" row when there
+  are any. This covers card purchases, obligations with an installment plan, and obligations with a
+  monthly schedule such as cash loan shares. Month rows of an obligation without a plan pay that
+  obligation, and payments fill the oldest month first.
 - **Opened from a card purchase,** the form ticks that purchase's amount due this period (overdue plus
   the current installment).
 - **Saving** happens in one database transaction:
