@@ -311,17 +311,14 @@ function penalty_run_if_due(): void
     } catch (PDOException $e) {
         error_log('[' . APP_NAME . '] Status refresh failed: ' . $e->getMessage());
     }
-    $marker = APP_ROOT . '/' . PENALTY_RUN_MARKER;
     $today = date('Y-m-d');
-    if (is_file($marker) && trim((string) @file_get_contents($marker)) === $today) {
+    if (marker_exists(PENALTY_RUN_MARKER, $today)) {
         return;
     }
     // The daily jobs cover every user's records: give them time on slower XAMPP machines.
     @set_time_limit(300);
     // Write the marker first so two simultaneous requests do not both run it.
-    if (@file_put_contents($marker, $today, LOCK_EX) === false) {
-        error_log('[' . APP_NAME . '] Cannot write ' . PENALTY_RUN_MARKER . '; the daily penalty check runs on every request.');
-    }
+    marker_write(PENALTY_RUN_MARKER, $today);
 
     try {
         [$checked, $created] = penalty_run_all($today);
@@ -329,7 +326,7 @@ function penalty_run_if_due(): void
             log_activity('penalty_run', 'system', null, 'Daily penalty check: ' . $created . ' new penalt' . ($created === 1 ? 'y' : 'ies') . ' on ' . $checked . ' open obligation(s)', null, null, SYSTEM_ACTOR);
         }
     } catch (Throwable $e) {
-        @unlink($marker);
+        @unlink(APP_ROOT . '/' . PENALTY_RUN_MARKER);   // try again on the next page load
         error_log('[' . APP_NAME . '] Daily penalty check failed: ' . $e->getMessage());
     }
     // Once a day: prepare each card's current and next statement from its records (idempotent).
@@ -466,8 +463,7 @@ const PENALTY_UPGRADE_MARKER = 'storage/upgrade_penalty_rule_bank.done';
  */
 function penalty_schema_upgrade(): void
 {
-    $marker = APP_ROOT . '/' . PENALTY_UPGRADE_MARKER;
-    if (is_file($marker)) {
+    if (marker_exists(PENALTY_UPGRADE_MARKER)) {
         return;
     }
     $hasColumn = (int) db_value(
@@ -524,9 +520,7 @@ function penalty_schema_upgrade(): void
         });
     }
 
-    if (@file_put_contents($marker, date('c'), LOCK_EX) === false) {
-        error_log('[' . APP_NAME . '] Cannot write ' . PENALTY_UPGRADE_MARKER . '; the upgrade check runs on every request.');
-    }
+    marker_write(PENALTY_UPGRADE_MARKER);
 }
 
 /* ------------------------------------------------------------------

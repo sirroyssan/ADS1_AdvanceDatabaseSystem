@@ -73,23 +73,23 @@ function run_sql_file(string $file): void
 /** Upgrade 1 (columns for card billing rules and statements) and upgrade 2. */
 function statement_schema_upgrade(): void
 {
-    if (!is_file(APP_ROOT . '/' . STATEMENT_UPGRADE_MARKER)) {
+    if (!marker_exists(STATEMENT_UPGRADE_MARKER)) {
         run_sql_file(APP_ROOT . '/db/upgrade_statements.sql');
-        @file_put_contents(APP_ROOT . '/' . STATEMENT_UPGRADE_MARKER, date('c'), LOCK_EX);
+        marker_write(STATEMENT_UPGRADE_MARKER);
     }
-    if (!is_file(APP_ROOT . '/' . STATEMENT_UPGRADE_V2_MARKER)) {
+    if (!marker_exists(STATEMENT_UPGRADE_V2_MARKER)) {
         statement_schema_upgrade_v2();
-        @file_put_contents(APP_ROOT . '/' . STATEMENT_UPGRADE_V2_MARKER, date('c'), LOCK_EX);
+        marker_write(STATEMENT_UPGRADE_V2_MARKER);
     }
-    if (!is_file(APP_ROOT . '/' . STATEMENT_UPGRADE_V3_MARKER)) {
+    if (!marker_exists(STATEMENT_UPGRADE_V3_MARKER)) {
         run_sql_file(APP_ROOT . '/db/upgrade_statements_v3.sql');
         // Every statement that exists before this upgrade is a recorded SOA.
         db()->exec('UPDATE credit_card_statements SET soa_recorded_at = created_at WHERE soa_recorded_at IS NULL AND prepared_at IS NULL');
-        @file_put_contents(APP_ROOT . '/' . STATEMENT_UPGRADE_V3_MARKER, date('c'), LOCK_EX);
+        marker_write(STATEMENT_UPGRADE_V3_MARKER);
     }
-    if (!is_file(APP_ROOT . '/' . STATEMENT_UPGRADE_V4_MARKER)) {
+    if (!marker_exists(STATEMENT_UPGRADE_V4_MARKER)) {
         run_sql_file(APP_ROOT . '/db/upgrade_statements_v4.sql');
-        @file_put_contents(APP_ROOT . '/' . STATEMENT_UPGRADE_V4_MARKER, date('c'), LOCK_EX);
+        marker_write(STATEMENT_UPGRADE_V4_MARKER);
     }
 }
 

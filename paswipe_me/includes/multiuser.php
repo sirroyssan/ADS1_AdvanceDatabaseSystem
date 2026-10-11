@@ -41,16 +41,25 @@ function multiuser_unowned_where(string $table): string
 /** Second pass (payment methods and the creator rule were added later): only fills owners still missing. */
 const MULTIUSER_MARKER_V2 = 'storage/upgrade_multiuser_v2.done';
 
+/**
+ * Done markers live in storage/ when it is writable, and always in the
+ * activity log too: on XAMPP for macOS/Linux the web server often cannot
+ * write into the project folder, and the upgrade must still run only once.
+ */
+function multiuser_logged(string $sql): bool
+{
+    return (int) db_value('SELECT COUNT(*) FROM activity_logs WHERE ' . $sql) > 0;
+}
+
 function multiuser_upgrade(): void
 {
-    if (is_file(APP_ROOT . '/' . MULTIUSER_MARKER)) {
-        if (!is_file(APP_ROOT . '/' . MULTIUSER_MARKER_V2)) {
+    $done = is_file(APP_ROOT . '/' . MULTIUSER_MARKER) || multiuser_logged("action = 'multiuser_upgrade'");
+    if ($done) {
+        $doneV2 = is_file(APP_ROOT . '/' . MULTIUSER_MARKER_V2)
+            || multiuser_logged("action IN ('multiuser_upgrade_v2') OR (action = 'multiuser_upgrade' AND description LIKE '%Payment methods%')");
+        if (!$doneV2) {
             $result = multiuser_assign_owners();
-            $summary = [];
-            foreach ($result as $table => [$assigned, $flagged]) {
-                $summary[] = MULTIUSER_OWNED_TABLES[$table] . ': ' . $assigned . ' assigned' . ($flagged ? ', ' . $flagged . ' to confirm' : '');
-            }
-            log_activity('multiuser_upgrade', 'system', null, 'Multi-user owners (second pass). ' . implode('; ', $summary), null, null, SYSTEM_ACTOR);
+            log_activity('multiuser_upgrade_v2', 'system', null, 'Multi-user owners (second pass). ' . multiuser_summary($result), null, null, SYSTEM_ACTOR);
             @file_put_contents(APP_ROOT . '/' . MULTIUSER_MARKER_V2, date('c') . "\n", LOCK_EX);
         }
         return;
@@ -60,13 +69,19 @@ function multiuser_upgrade(): void
     multiuser_schema();
     $result = multiuser_assign_owners();
 
+    log_activity('multiuser_upgrade', 'system', null, 'Multi-user upgrade. Backup: ' . $backup . '. ' . multiuser_summary($result), null, null, SYSTEM_ACTOR);
+    @file_put_contents(APP_ROOT . '/' . MULTIUSER_MARKER, date('c') . "\n" . $backup, LOCK_EX);
+    @file_put_contents(APP_ROOT . '/' . MULTIUSER_MARKER_V2, date('c') . "\n", LOCK_EX);   // this run included the second pass
+}
+
+function multiuser_summary(array $result): string
+{
     $summary = [];
     foreach ($result as $table => [$assigned, $flagged]) {
         $summary[] = MULTIUSER_OWNED_TABLES[$table] . ': ' . $assigned . ' assigned' . ($flagged ? ', ' . $flagged . ' to confirm' : '');
     }
-    log_activity('multiuser_upgrade', 'system', null, 'Multi-user upgrade. Backup: ' . basename($backup) . '. ' . implode('; ', $summary), null, null, SYSTEM_ACTOR);
-    @file_put_contents(APP_ROOT . '/' . MULTIUSER_MARKER, date('c') . "\n" . $backup, LOCK_EX);
-    @file_put_contents(APP_ROOT . '/' . MULTIUSER_MARKER_V2, date('c') . "\n", LOCK_EX);   // this run included the second pass
+
+    return implode('; ', $summary);
 }
 
 /**
@@ -109,8 +124,12 @@ function multiuser_schema(): void
 }
 
 /**
- * Write every table's rows as INSERT statements to storage/backups/ (works
- * on XAMPP without shell access). Returns the file path.
+ * Back up the data before the upgrade. Normally every table's rows are written
+ * as INSERT statements to storage/backups/ (works on XAMPP without shell
+ * access). When the web server may not write there (common on XAMPP for
+ * macOS), the tables this upgrade changes are copied inside the database
+ * instead (backup_multiuser_<table>, created once, never changed afterwards).
+ * Returns where the backup is.
  */
 function database_backup(string $label): string
 {
@@ -120,12 +139,9 @@ function database_backup(string $label): string
         @file_put_contents($dir . '/.htaccess', "Require all denied\nDeny from all\n");
     }
     $file = $dir . '/' . $label . '_' . date('Ymd_His') . '.sql';
-    $out = @fopen($file, 'wb');
+    $out = is_dir($dir) && is_writable($dir) ? @fopen($file, 'wb') : false;
     if ($out === false) {
-        // No upgrade without a backup: say exactly what to fix.
-        throw new UpgradeException('The database upgrade needs a backup first, but the folder storage/backups cannot be written. '
-            . 'Make sure the paswipe_me/storage folder exists and is not read-only (right-click → Properties → uncheck Read-only), then reload this page. '
-            . 'Nothing in your data was changed.');
+        return database_backup_in_database();
     }
     fwrite($out, "-- PA-KASKAS data backup " . date('c') . "\n-- Restore into the same schema: mysql pa_swipe_ako < this file\nSET FOREIGN_KEY_CHECKS = 0;\n");
     foreach (db()->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_NUM) as [$table]) {
@@ -139,7 +155,28 @@ function database_backup(string $label): string
     fwrite($out, "\nSET FOREIGN_KEY_CHECKS = 1;\n");
     fclose($out);
 
-    return $file;
+    return 'storage/backups/' . basename($file);
+}
+
+/** Copy every table the upgrade changes to backup_multiuser_<table> (structure + rows). */
+function database_backup_in_database(): string
+{
+    try {
+        foreach (array_keys(MULTIUSER_OWNED_TABLES) as $table) {
+            $copy = db_identifier('backup_multiuser_' . $table);
+            $exists = (int) db_value('SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t',
+                [':t' => 'backup_multiuser_' . $table]) > 0;
+            if (!$exists) {   // an earlier attempt's copy is the untouched original: keep it
+                db()->exec('CREATE TABLE ' . $copy . ' LIKE ' . db_identifier($table));
+                db()->exec('INSERT INTO ' . $copy . ' SELECT * FROM ' . db_identifier($table));
+            }
+        }
+    } catch (PDOException $e) {
+        throw new UpgradeException('The database upgrade needs a backup first, but neither storage/backups could be written nor a backup copy made in the database ('
+            . $e->getMessage() . '). On XAMPP for macOS, run in Terminal: sudo chmod -R 777 ' . APP_ROOT . '/storage — then reload this page. Nothing in your data was changed.');
+    }
+
+    return 'database tables backup_multiuser_* (storage/backups was not writable)';
 }
 
 /** The one owner of every card, when all cards have the same owner. */

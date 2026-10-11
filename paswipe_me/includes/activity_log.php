@@ -52,3 +52,40 @@ function log_activity(
         error_log('[' . APP_NAME . '] Activity log failed: ' . $e->getMessage());
     }
 }
+
+/* ------------------------------------------------------------------
+ * "Already done" markers for upgrades and the daily jobs. They are files in
+ * storage/; when the web server may not write there (common on XAMPP for
+ * macOS/Linux), the marker is kept as an activity log entry instead, so a
+ * one-time upgrade never runs again and the daily jobs run once a day.
+ * ------------------------------------------------------------------ */
+
+/** Is the marker $file present (with this $content, when given)? */
+function marker_exists(string $file, ?string $content = null): bool
+{
+    static $logged = null;
+    $path = APP_ROOT . '/' . $file;
+    if (is_file($path) && ($content === null || trim((string) @file_get_contents($path)) === $content)) {
+        return true;
+    }
+    if ($logged === null) {
+        $logged = [];
+        try {
+            foreach (db()->query("SELECT description FROM activity_logs WHERE action = 'marker'")->fetchAll(PDO::FETCH_COLUMN) as $d) {
+                $logged[$d] = true;
+            }
+        } catch (PDOException $e) {
+            error_log('[' . APP_NAME . '] Marker lookup failed: ' . $e->getMessage());
+        }
+    }
+
+    return isset($logged[$file . ($content === null ? '' : '|' . $content)]);
+}
+
+/** Write the marker; falls back to the activity log when storage/ is not writable. */
+function marker_write(string $file, ?string $content = null): void
+{
+    if (@file_put_contents(APP_ROOT . '/' . $file, $content ?? date('c'), LOCK_EX) === false) {
+        log_activity('marker', 'system', null, $file . ($content === null ? '' : '|' . $content), null, null, SYSTEM_ACTOR);
+    }
+}

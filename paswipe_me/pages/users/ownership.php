@@ -31,8 +31,10 @@ if (is_post()) {
 
 $records = multiuser_unassigned_records();
 $total = array_sum(array_map('count', $records));
-$marker = APP_ROOT . '/' . MULTIUSER_MARKER;
-$backup = is_file($marker) ? basename((string) (file($marker, FILE_IGNORE_NEW_LINES)[1] ?? '')) : '';
+// Where the upgrade put its backup (from its activity log entry).
+$log = (string) db_value("SELECT description FROM activity_logs WHERE action = 'multiuser_upgrade' ORDER BY created_at LIMIT 1");
+$backup = preg_match('/Backup: (.+?)\. [A-Z]/', $log, $m) ? $m[1] : '';
+$backup = str_starts_with($backup, 'before_') ? 'storage/backups/' . $backup : $backup;   // entries written before the location was logged in full
 
 $pageTitle = 'Ownership Review';
 $activeNav = 'users';
@@ -52,7 +54,7 @@ require APP_ROOT . '/includes/header.php';
 </section>
 
 <?php if ($backup !== ''): ?>
-    <p class="field-help">A full backup was written before the upgrade: <code>storage/backups/<?= e($backup) ?></code></p>
+    <p class="field-help">A backup was made before the upgrade: <code><?= e($backup) ?></code></p>
 <?php endif; ?>
 
 <?php if ($total === 0): ?>

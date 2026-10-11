@@ -131,13 +131,13 @@ function document_store_upload(array $file, string $documentId): array
 
     $folder = date('Y') . '/' . date('m');
     $dir = APP_ROOT . '/' . DOCUMENT_STORAGE_DIR . '/' . $folder;
-    if (!is_dir($dir) && !mkdir($dir, 0775, true) && !is_dir($dir)) {
-        return [null, 'The storage folder could not be created. Check that storage/documents is writable.'];
+    if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
+        return [null, 'The storage folder could not be created. Check that storage/documents is writable. On XAMPP for macOS, run in Terminal: sudo chmod -R 777 ' . APP_ROOT . '/storage'];
     }
 
     $storageKey = $folder . '/' . $documentId . '.' . $extension;
-    if (!move_uploaded_file($file['tmp_name'], APP_ROOT . '/' . DOCUMENT_STORAGE_DIR . '/' . $storageKey)) {
-        return [null, 'The file could not be saved. Check that storage/documents is writable.'];
+    if (!@move_uploaded_file($file['tmp_name'], APP_ROOT . '/' . DOCUMENT_STORAGE_DIR . '/' . $storageKey)) {
+        return [null, 'The file could not be saved. Check that storage/documents is writable. On XAMPP for macOS, run in Terminal: sudo chmod -R 777 ' . APP_ROOT . '/storage'];
     }
 
     $stored = APP_ROOT . '/' . DOCUMENT_STORAGE_DIR . '/' . $storageKey;

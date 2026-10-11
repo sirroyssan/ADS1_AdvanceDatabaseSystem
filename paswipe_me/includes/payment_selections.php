@@ -23,7 +23,7 @@ const PAYMENT_SELECTIONS_MARKER = 'storage/upgrade_payment_selections.done';
  */
 function payment_selections_upgrade(): void
 {
-    if (is_file(APP_ROOT . '/' . PAYMENT_SELECTIONS_MARKER)) {
+    if (marker_exists(PAYMENT_SELECTIONS_MARKER)) {
         return;
     }
     db()->exec(
@@ -41,7 +41,7 @@ function payment_selections_upgrade(): void
             CONSTRAINT chk_selection_amount CHECK (amount > 0)
         )'
     );
-    @file_put_contents(APP_ROOT . '/' . PAYMENT_SELECTIONS_MARKER, date('c'), LOCK_EX);
+    marker_write(PAYMENT_SELECTIONS_MARKER);
 }
 
 /**

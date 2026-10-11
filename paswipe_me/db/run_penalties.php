@@ -18,7 +18,7 @@ if (PHP_SAPI !== 'cli') {
 require_once dirname(__DIR__) . '/includes/bootstrap.php';
 
 [$checked, $created] = penalty_run_all();
-@file_put_contents(APP_ROOT . '/' . PENALTY_RUN_MARKER, date('Y-m-d'), LOCK_EX);
+marker_write(PENALTY_RUN_MARKER, date('Y-m-d'));
 log_activity('penalty_run', 'system', null, 'Penalty check (command line): ' . $created . ' new penalties on ' . $checked . ' open obligation(s)');
 
 echo 'Checked ' . $checked . ' open obligation(s); charged ' . $created . ' new penalt' . ($created === 1 ? 'y' : 'ies') . '.' . PHP_EOL;

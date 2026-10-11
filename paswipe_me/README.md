@@ -312,6 +312,20 @@ to the PHP time zone in `config/app.php` (default `Asia/Manila`). That keeps `NO
    Every row is marked `[TEST]`, and the file contains the SQL to remove them.
 8. **Open** `http://localhost/paswipe_me/` and sign in with the username or email you entered.
 
+### XAMPP for macOS / Linux: let the web server write to `storage/`
+
+On macOS, Apache runs as its own user and usually may not write into a folder you unzipped.
+Uploading files (receipts, SOA PDFs, payment proofs) needs that, so run once in Terminal:
+
+```
+sudo chmod -R 777 /Applications/XAMPP/xamppfiles/htdocs/paswipe_me/storage
+```
+
+Everything else works without it: one-time upgrades and the daily jobs then keep their "done"
+markers in the activity log, and the multi-user upgrade backs up the tables it changes inside the
+database (`backup_multiuser_*` tables) instead of `storage/backups/`. When the error page appears on
+your own computer (localhost), it shows the technical details to copy.
+
 ### Troubleshooting (blank page / "HTTP ERROR 500")
 
 1. Open **`http://localhost/paswipe_me/setup_check.php`** (works only from the same computer).
