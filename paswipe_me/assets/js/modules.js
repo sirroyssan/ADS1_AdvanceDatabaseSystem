@@ -94,6 +94,32 @@
             return isNaN(value) ? 0 : value;
         }
 
+        /* ------------------------------------------------------------------
+         * Amounts are easy to check: 400000 becomes 400,000.00 when you leave
+         * the box (data-scale decimals; the server removes the commas again).
+         * A value with more decimals than allowed is left as typed, so the
+         * form's own error shows instead of a silent rounding.
+         * ------------------------------------------------------------------ */
+        function formatAmount(input, value) {
+            var raw = String(value === undefined ? input.value : value).replace(/[,₱\s]/g, '');
+            var scale = parseInt(input.getAttribute('data-scale') || '2', 10);
+            var m = /^(-?)(\d*)(?:\.(\d*))?$/.exec(raw);
+            if (raw === '' || !m || (m[2] === '' && !m[3]) || (m[3] || '').length > scale) {
+                if (value !== undefined) input.value = value;
+                return;
+            }
+            var n = Number(raw);
+            if (!isFinite(n)) return;
+            input.value = n.toLocaleString('en-US', { minimumFractionDigits: scale, maximumFractionDigits: scale });
+        }
+        App.formatAmount = formatAmount;
+
+        scope.querySelectorAll('input.input-num').forEach(function (input) {
+            if (!App.once(input, 'M10')) return;
+            input.addEventListener('blur', function () { formatAmount(input); });
+            if (document.activeElement !== input) formatAmount(input);
+        });
+
         function bindCalc(target, attr, compute) {
             var ids = target.getAttribute(attr).split(',');
             var edited = target.value.trim() !== '' && target.hasAttribute('data-keep');
@@ -105,7 +131,11 @@
             function update() {
                 if (edited) return;
                 var result = compute(ids.map(number));
-                target.value = isFinite(result) && result > 0 ? result.toFixed(2) : '';
+                if (isFinite(result) && result > 0) {
+                    formatAmount(target, result.toFixed(2));
+                } else {
+                    target.value = '';
+                }
             }
 
             ids.forEach(function (id) {

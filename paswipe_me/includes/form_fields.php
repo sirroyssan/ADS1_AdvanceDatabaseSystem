@@ -257,7 +257,7 @@ function render_field(string $name, array $f, mixed $value, ?string $error): str
                 break;
 
             case 'decimal':
-                $html .= '<input type="text" inputmode="decimal" class="input-num" value="' . e($value) . '"'
+                $html .= '<input type="text" inputmode="decimal" class="input-num" data-scale="' . (int) ($f['scale'] ?? 2) . '" value="' . e($value) . '"'
                     . (isset($f['placeholder']) ? ' placeholder="' . e($f['placeholder']) . '"' : ' placeholder="0.00"')
                     . $common . '>';
                 break;
