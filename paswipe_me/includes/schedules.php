@@ -28,7 +28,7 @@ function schedule_due_date(string $firstDue, int $index, string $frequency): str
 }
 
 /**
- * Split principal, interest and fees evenly; the last row absorbs rounding.
+ * Split the total evenly (the last row absorbs rounding), with interest and fees spread the same way.
  *
  * @return array<int, array{installment_number:int, due_date:string, principal_amount:string, interest_amount:string, fee_amount:string, amount_due:string, remaining_amount:string}>
  */
@@ -43,9 +43,13 @@ function build_schedule(float $principal, float $interest, float $fees, int $cou
         return array_map(static fn ($c) => $c / 100, $parts);
     };
 
-    $p = $split($principal, $count);
+    // Each row is the even share of the total (the last absorbs rounding); interest and fees are
+    // split the same way and the principal is the rest, so every installment is exactly the
+    // monthly amount instead of three separately rounded parts.
+    $t = $split($principal + $interest + $fees, $count);
     $i = $split($interest, $count);
     $f = $split($fees, $count);
+    $p = array_map(static fn ($n) => round($t[$n] - $i[$n] - $f[$n], 2), array_keys($t));
 
     for ($n = 0; $n < $count; $n++) {
         $due = $p[$n] + $i[$n] + $f[$n];

@@ -55,6 +55,7 @@ function multiuser_upgrade(): void
         }
         return;
     }
+    @set_time_limit(600);   // one-time backup + upgrade of all existing data
     $backup = database_backup('before_multiuser');
     run_sql_file(APP_ROOT . '/db/upgrade_multiuser.sql');
     $result = multiuser_assign_owners();

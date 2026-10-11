@@ -3,8 +3,9 @@
  * Installment Plans module (tables: installment_plans, installment_schedules).
  *
  * One plan per transaction (transaction_id is UNIQUE). Saving a plan
- * generates its schedule automatically. Amounts can only be changed while
- * no installment has been paid; after that only status/notes-like fields.
+ * generates its schedule automatically. Once installments are paid the amounts
+ * can still be corrected (plan_correct_amounts): the rows are updated in
+ * place and what was already paid is kept.
  * status is VARCHAR(30) with default 'active'; the app uses active,
  * completed and cancelled.
  */
@@ -54,22 +55,130 @@ function plan_fields(bool $isNew, ?array $current = null): array
     return $fields;
 }
 
-function plan_validate(array $fields, array $input, ?string $id = null): array
+/**
+ * Validate the plan and keep its amounts consistent: principal + interest +
+ * fees = total repayment = installment amount × number of installments.
+ * The installment amount is what the bank bills each month, so when only it
+ * was changed (e.g. a wrong amount was typed), the total follows it and the
+ * difference from the principal is the add-on interest.
+ */
+function plan_validate(array $fields, array $input, ?string $id = null, ?array $current = null): array
 {
     [$data, $errors] = validate_fields($fields, $input, $id);
 
-    if ($data['start_date'] && $data['first_due_date'] && $data['first_due_date'] < $data['start_date']) {
+    if (isset($data['start_date'], $data['first_due_date']) && $data['first_due_date'] < $data['start_date']) {
         $errors['first_due_date'] = 'First due date cannot be before the start date.';
     }
-    if (!array_intersect_key($errors, array_flip(['total_principal', 'interest_amount', 'fees_amount', 'number_of_installments']))) {
-        $computed = (float) $data['total_principal'] + (float) $data['interest_amount'] + (float) $data['fees_amount'];
-        $data['total_repayment'] ??= number_format($computed, 2, '.', '');
-        if ($data['installment_amount'] === null && (int) $data['number_of_installments'] > 0) {
-            $data['installment_amount'] = number_format(round((float) $data['total_repayment'] / (int) $data['number_of_installments'], 2), 2, '.', '');
+    if (array_intersect_key($errors, array_flip(['total_principal', 'interest_amount', 'fees_amount', 'number_of_installments', 'total_repayment', 'installment_amount']))) {
+        return [$data, $errors];
+    }
+
+    $n = max(1, (int) $data['number_of_installments']);
+    $money = static fn (float $v) => number_format(round($v, 2), 2, '.', '');
+    $computed = (float) $data['total_principal'] + (float) $data['interest_amount'] + (float) $data['fees_amount'];
+    $monthly = $data['installment_amount'] === null ? null : (float) $data['installment_amount'];
+    $fits = static fn (float $total) => $monthly === null || abs($monthly * $n - $total) < 0.01 * $n;
+
+    if ($data['total_repayment'] === null) {
+        $total = $monthly !== null && !$fits($computed) ? $monthly * $n : $computed;
+    } else {
+        $total = (float) $data['total_repayment'];
+        $monthlyChanged = $current !== null && $monthly !== null && abs($monthly - (float) $current['installment_amount']) >= 0.005;
+        $totalChanged = $current === null || abs($total - (float) $current['total_repayment']) >= 0.005;
+        if (!$fits($total) && $monthlyChanged && !$totalChanged) {
+            $total = $monthly * $n;      // only the monthly amount was corrected
+        }
+    }
+    if (!$fits($total)) {
+        $monthly = null;                 // follows the total below
+    }
+
+    // The schedule is built from principal, interest and fees: make them add up to the total.
+    if (abs($total - $computed) >= 0.005) {
+        $interest = $total - (float) $data['total_principal'] - (float) $data['fees_amount'];
+        if ($interest >= 0) {
+            $data['interest_amount'] = $money($interest);
+        } elseif ($total - (float) $data['fees_amount'] >= 0) {
+            $data['total_principal'] = $money($total - (float) $data['fees_amount']);
+            $data['interest_amount'] = '0.00';
+        } else {
+            $errors['total_repayment'] = 'The total repayment cannot be less than the fees.';
+        }
+    }
+    $data['total_repayment'] = $money($total);
+    $data['installment_amount'] = $money($monthly ?? $total / $n);
+
+    return [$data, $errors];
+}
+
+/**
+ * Correct the amounts of a plan that already has payments, without losing
+ * them: every installment row is updated in place (rows referenced by
+ * payments, selections or penalties are never deleted), rows are added or
+ * removed at the end when the number of installments changes, and what was
+ * paid is spread again oldest first (borrower obligations are re-synced by
+ * the caller). Returns an error message, or null. Run inside a transaction.
+ */
+function plan_correct_amounts(array $plan, array $data): ?string
+{
+    $rows = db_all('SELECT * FROM installment_schedules WHERE installment_plan_id = :p ORDER BY installment_number FOR UPDATE', [':p' => $plan['id']]);
+    $paid = round(array_sum(array_map(static fn ($r) => (float) $r['amount_paid'], $rows)), 2);
+    if ((float) $data['total_repayment'] < $paid - 0.004) {
+        return 'Already paid on this plan: ' . format_money($paid) . '. The total repayment cannot be less than that.';
+    }
+
+    $count = (int) $data['number_of_installments'];
+    $built = build_schedule((float) $data['total_principal'], (float) $data['interest_amount'], (float) $data['fees_amount'],
+        $count, $data['first_due_date'] ?? $plan['first_due_date'], $data['frequency'] ?? $plan['frequency']);
+
+    // Rows beyond the new count go only when nothing points to them.
+    foreach (array_slice($rows, $count) as $row) {
+        $used = (int) db_value(
+            'SELECT (SELECT COUNT(*) FROM borrower_payment_allocations WHERE installment_schedule_id = :a)
+                  + (SELECT COUNT(*) FROM borrower_payment_selections WHERE installment_schedule_id = :b)
+                  + (SELECT COUNT(*) FROM applied_penalties WHERE installment_schedule_id = :c)',
+            [':a' => $row['id'], ':b' => $row['id'], ':c' => $row['id']]
+        );
+        if ($used > 0) {
+            return 'Installment #' . $row['installment_number'] . ' has payments or penalties recorded on it, so the plan cannot have fewer than '
+                . $row['installment_number'] . ' installments.';
         }
     }
 
-    return [$data, $errors];
+    $left = $paid;
+    foreach ($built as $i => $new) {
+        $row = $rows[$i] ?? null;
+        $due = (float) $new['amount_due'];
+        $waived = $row && in_array($row['status'], ['waived', 'cancelled'], true);
+        $put = $waived ? 0.0 : min($due, $left);
+        $left = round($left - $put, 2);
+        $values = [
+            'principal_amount' => $new['principal_amount'],
+            'interest_amount'  => $new['interest_amount'],
+            'fee_amount'       => $new['fee_amount'],
+            'amount_due'       => $new['amount_due'],
+        ];
+        if (!$waived) {
+            $values += [
+                'amount_paid'      => number_format($put, 2, '.', ''),
+                'remaining_amount' => number_format(max(0, $due - $put), 2, '.', ''),
+                'status'           => schedule_status_after_payment($due, $put, $row['due_date'] ?? $new['due_date']),
+                'paid_at'          => $put >= $due - 0.004 ? ($row['paid_at'] ?? date('Y-m-d H:i:s')) : null,
+            ];
+        }
+        if ($row) {
+            db_update('installment_schedules', $values, $row['id']);
+        } else {
+            db_insert('installment_schedules', ['id' => new_uuid(), 'installment_plan_id' => $plan['id'],
+                'installment_number' => $new['installment_number'], 'due_date' => $new['due_date']] + $values);
+        }
+    }
+    foreach (array_slice($rows, $count) as $row) {
+        db_exec('DELETE FROM installment_schedules WHERE id = :id', [':id' => $row['id']]);
+    }
+    db_update('installment_plans', ['end_date' => db_value('SELECT MAX(due_date) FROM installment_schedules WHERE installment_plan_id = :p', [':p' => $plan['id']])], $plan['id']);
+
+    return null;
 }
 
 /**

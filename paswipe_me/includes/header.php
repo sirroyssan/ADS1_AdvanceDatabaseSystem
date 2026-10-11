@@ -12,6 +12,12 @@
 
 defined('APP_ROOT') or exit('No direct access.');
 
+// Always an HTML page, whatever default_mimetype the server's php.ini has
+// (a wrong default makes browsers download index.php instead of showing it).
+if (!headers_sent()) {
+    header('Content-Type: text/html; charset=UTF-8');
+}
+
 $pageTitle   = $pageTitle ?? 'Dashboard';
 $activeNav   = $activeNav ?? '';
 $pageStyles  = $pageStyles ?? [];

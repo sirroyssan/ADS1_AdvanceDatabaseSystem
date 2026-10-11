@@ -316,6 +316,8 @@ function penalty_run_if_due(): void
     if (is_file($marker) && trim((string) @file_get_contents($marker)) === $today) {
         return;
     }
+    // The daily jobs cover every user's records: give them time on slower XAMPP machines.
+    @set_time_limit(300);
     // Write the marker first so two simultaneous requests do not both run it.
     if (@file_put_contents($marker, $today, LOCK_EX) === false) {
         error_log('[' . APP_NAME . '] Cannot write ' . PENALTY_RUN_MARKER . '; the daily penalty check runs on every request.');
