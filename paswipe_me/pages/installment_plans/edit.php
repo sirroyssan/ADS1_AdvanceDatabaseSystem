@@ -36,6 +36,26 @@ if (is_post()) {
     foreach ($amountFields as $name) {
         $amountsChanged = $amountsChanged || abs((float) ($data[$name] ?? 0) - (float) $plan[$name]) >= 0.005;
     }
+    // A plan made from terms (interest method, fees) keeps them: a new principal or term is
+    // recalculated with them; interest or fees typed by hand become the plan's fixed amounts.
+    if (!$errors && $amountsChanged && !empty($plan['interest_method'])) {
+        $byHand = abs((float) $data['interest_amount'] - (float) $plan['interest_amount']) >= 0.005
+            || abs((float) $data['fees_amount'] - (float) $plan['fees_amount']) >= 0.005;
+        if ($byHand) {
+            $data += ['interest_method' => (float) $data['interest_amount'] > 0 ? 'fixed_amount' : 'none', 'fee_type' => (float) $data['fees_amount'] > 0 ? 'fixed' : 'none',
+                      'fee_value' => $data['fees_amount'], 'fee_billing' => $plan['fee_billing'] ?? 'spread'];
+        }
+        $calc = installment_compute([
+            'principal' => $data['total_principal'], 'months' => $data['number_of_installments'],
+            'interest_method' => $data['interest_method'] ?? $plan['interest_method'], 'interest_rate' => $plan['interest_rate'],
+            'interest_amount' => $data['interest_amount'], 'fee_type' => $data['fee_type'] ?? $plan['fee_type'],
+            'fee_value' => $data['fee_value'] ?? $plan['fee_value'], 'fee_billing' => $data['fee_billing'] ?? $plan['fee_billing'],
+        ], $data['first_due_date'] ?? $plan['first_due_date']);
+        $data['interest_amount'] = $calc['interest'];
+        $data['fees_amount'] = $calc['fees'];
+        $data['total_repayment'] = $calc['total'];
+        $data['installment_amount'] = $calc['monthly'];
+    }
 
     if (!$errors) {
         try {
@@ -57,7 +77,7 @@ if (is_post()) {
                 }
                 db_update('installment_plans', $data, $plan['id']);
                 if (!$locked) {
-                    plan_generate_schedule($plan['id'], $data);
+                    plan_generate_schedule($plan['id'], $data + $plan);
                 }
                 if ($locked && $amountsChanged) {
                     // Borrower payments flow into the corrected installments again.

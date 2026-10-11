@@ -136,6 +136,25 @@
         });
 
         /* ------------------------------------------------------------------
+         * Fields shown only for one value of another field:
+         * data-show-if="f_payment_type=installment" (on the input) hides its form group otherwise.
+         * ------------------------------------------------------------------ */
+        scope.querySelectorAll('[data-show-if]').forEach(function (input) {
+            if (!App.once(input, 'M8')) return;
+            var rule = input.getAttribute('data-show-if').split('=');
+            var source = document.getElementById(rule[0]);
+            var group = input.closest('.form-group') || input;
+            if (!source) return;
+            function apply() {
+                var show = source.value === rule[1];
+                group.hidden = !show;
+                input.disabled = !show;   // hidden terms are not sent
+            }
+            source.addEventListener('change', apply);
+            apply();
+        });
+
+        /* ------------------------------------------------------------------
          * Inline "add" panels: <button data-toggle-panel="panel-id">
          * ------------------------------------------------------------------ */
         scope.querySelectorAll('[data-toggle-panel]').forEach(function (button) {

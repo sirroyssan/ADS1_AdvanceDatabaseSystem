@@ -142,29 +142,6 @@ function statement_view_url(string $cardId, array $period): string
         : url('pages/statements/view.php', ['card' => $cardId, 'start' => $period['start'], 'end' => $period['end']]);
 }
 
-/**
- * One-time token for a form that must not be saved twice (a double click or a
- * resent request): issued with the form, used up by the first successful save.
- */
-function form_once_token(string $form): string
-{
-    $token = bin2hex(random_bytes(16));
-    $_SESSION['form_once'][$form][$token] = time();
-    // Keep the list short.
-    $_SESSION['form_once'][$form] = array_slice($_SESSION['form_once'][$form], -20, null, true);
-
-    return $token;
-}
-
-function form_once_use(string $form, string $token): bool
-{
-    if ($token === '' || !isset($_SESSION['form_once'][$form][$token])) {
-        return false;
-    }
-    unset($_SESSION['form_once'][$form][$token]);
-
-    return true;
-}
 
 /**
  * Card and period shown above the SOA / payment forms (taken from the

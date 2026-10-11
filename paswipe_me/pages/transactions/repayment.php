@@ -46,6 +46,9 @@ try {
         }
         if ($errors) {
             flash('error', 'Repayment not recorded: ' . reset($errors));
+        } elseif (!form_once_use('transaction_repayment', input_string($_POST, 'once'))) {
+            // The same form sent twice (double click, refresh) records once.
+            flash('info', 'This repayment was already recorded.');
         } else {
             borrowed_record_repayment($purchase, $data, $currentUser['id'], true);
             flash('success', 'Repayment of ' . format_money($data['amount']) . ' recorded.');

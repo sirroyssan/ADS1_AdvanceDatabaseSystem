@@ -28,15 +28,35 @@ $errors = [];
 if (is_post()) {
     require_csrf('pages/transactions/create.php');
     [$data, $errors] = transaction_validate($fields, $_POST);
+    [$data, $terms, $errors] = transaction_installment_terms($data, $errors);
+    // The same form sent twice (double click, refresh) saves once.
+    if (!$errors && !form_once_use('transaction_create', input_string($_POST, 'once'))) {
+        flash('info', 'This transaction was already saved.');
+        redirect('pages/transactions/index.php');
+    }
 
     if (!$errors) {
         try {
             $id = new_uuid();
             $data['transaction_number'] ??= generate_reference('TXN', 'transactions', 'transaction_number');
             $data = transaction_resolve_borrower($data);
-            card_usage_apply([$data['credit_card_id']], fn () => db_insert('transactions', ['id' => $id] + $data + ['created_by' => $currentUser['id'], 'updated_by' => $currentUser['id']]));
+            $planId = null;
+            // One database transaction: the purchase, and for an installment purchase its plan and schedule.
+            card_usage_apply([$data['credit_card_id']], function () use ($id, $data, $terms, $currentUser, &$planId) {
+                db_insert('transactions', ['id' => $id] + $data + ['created_by' => $currentUser['id'], 'updated_by' => $currentUser['id']]);
+                if ($terms !== null) {
+                    $planId = installment_plan_create(['id' => $id, 'transaction_date' => $data['transaction_date']], $terms, $terms['rule']);
+                }
+            });
             log_activity('create', 'transaction', $id, 'Recorded transaction ' . $data['transaction_number'] . ' for ' . format_money($data['amount']), null, $data);
-            flash('success', 'Transaction ' . $data['transaction_number'] . ' was recorded. You can now add the purchased items.');
+            if ($planId) {
+                $plan = db_row('SELECT * FROM installment_plans WHERE id = :id', [':id' => $planId]);
+                log_activity('create', 'installment_plan', $planId, 'Created ' . $plan['number_of_installments'] . '-installment plan with transaction ' . $data['transaction_number'], null, $plan);
+                flash('success', 'Transaction ' . $data['transaction_number'] . ' of ' . format_money($data['amount']) . ' was recorded with its installment plan: '
+                    . $plan['number_of_installments'] . ' × ' . format_money($plan['installment_amount']) . ', first due ' . format_date($plan['first_due_date']) . ' (' . installment_terms_text($plan) . ').');
+            } else {
+                flash('success', 'Transaction ' . $data['transaction_number'] . ' was recorded. You can now add the purchased items.');
+            }
             if ($repay = borrowed_after_save($id)) {
                 flash('info', $repay);
             }
@@ -60,10 +80,11 @@ require APP_ROOT . '/includes/header.php';
 <section class="page-header">
     <div>
         <h2 class="page-header__title">Add transaction</h2>
-        <p class="page-header__subtitle">Products, receipts and installment plans are added from the transaction page after saving.</p>
+        <p class="page-header__subtitle">Choose Installment as the payment type to save the installment plan and its schedule together with the transaction. Products and receipts are added after saving.</p>
     </div>
 </section>
 
-<?= render_record_form(url('pages/transactions/create.php', array_filter(['period' => $reconcile])), $fields, $data, $errors, 'Save transaction', url('pages/transactions/index.php')) ?>
+<?= render_record_form(url('pages/transactions/create.php', array_filter(['period' => $reconcile])), $fields, $data, $errors, 'Save transaction', url('pages/transactions/index.php'),
+    form_once_field('transaction_create')) ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

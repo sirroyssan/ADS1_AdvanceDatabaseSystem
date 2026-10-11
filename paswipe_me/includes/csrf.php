@@ -47,3 +47,33 @@ function require_csrf(string $redirectPath = 'pages/dashboard.php'): void
         redirect($redirectPath);
     }
 }
+
+/**
+ * One-time token for a form that must not be saved twice (a double click or a
+ * resent request): issued with the form, used up by the first successful save.
+ */
+function form_once_token(string $form): string
+{
+    $token = bin2hex(random_bytes(16));
+    $_SESSION['form_once'][$form][$token] = time();
+    // Keep the list short.
+    $_SESSION['form_once'][$form] = array_slice($_SESSION['form_once'][$form], -20, null, true);
+
+    return $token;
+}
+
+function form_once_use(string $form, string $token): bool
+{
+    if ($token === '' || !isset($_SESSION['form_once'][$form][$token])) {
+        return false;
+    }
+    unset($_SESSION['form_once'][$form][$token]);
+
+    return true;
+}
+
+/** Hidden field carrying a one-time token for $form. */
+function form_once_field(string $form): string
+{
+    return '<input type="hidden" name="once" value="' . e(form_once_token($form)) . '">';
+}

@@ -35,13 +35,8 @@ function schedule_due_date(string $firstDue, int $index, string $frequency): str
 function build_schedule(float $principal, float $interest, float $fees, int $count, string $firstDue, string $frequency): array
 {
     $rows = [];
-    $split = static function (float $total, int $count): array {
-        $cents = (int) round($total * 100);
-        $base = intdiv($cents, $count);
-        $parts = array_fill(0, $count, $base);
-        $parts[$count - 1] += $cents - $base * $count;
-        return array_map(static fn ($c) => $c / 100, $parts);
-    };
+    // Rounded to the nearest centavo, the last row absorbs the difference (installment_split).
+    $split = static fn (float $total, int $count): array => array_map(static fn ($c) => $c / 100, installment_split((int) round($total * 100), $count));
 
     // Each row is the even share of the total (the last absorbs rounding); interest and fees are
     // split the same way and the principal is the rest, so every installment is exactly the

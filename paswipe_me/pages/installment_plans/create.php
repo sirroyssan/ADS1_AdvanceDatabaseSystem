@@ -21,6 +21,10 @@ $errors = [];
 if (is_post()) {
     require_csrf('pages/installment_plans/create.php');
     [$data, $errors] = plan_validate($fields, $_POST);
+    if (!$errors && !form_once_use('plan_create', input_string($_POST, 'once'))) {
+        flash('info', 'This installment plan was already created.');
+        redirect('pages/installment_plans/index.php');
+    }
 
     if (!$errors) {
         try {
@@ -58,6 +62,7 @@ require APP_ROOT . '/includes/header.php';
     <div class="alert alert--info"><?= icon('info') ?><span>Every open transaction already has a plan. <a data-modal-form href="<?= e(url('pages/transactions/create.php')) ?>">Record a transaction</a> first.</span></div>
 <?php endif; ?>
 
-<?= render_record_form(url('pages/installment_plans/create.php'), $fields, $data, $errors, 'Create plan', url('pages/installment_plans/index.php')) ?>
+<?= render_record_form(url('pages/installment_plans/create.php'), $fields, $data, $errors, 'Create plan', url('pages/installment_plans/index.php'),
+    form_once_field('plan_create')) ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

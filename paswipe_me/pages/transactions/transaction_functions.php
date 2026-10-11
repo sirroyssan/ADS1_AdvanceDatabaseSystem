@@ -15,7 +15,7 @@ defined('APP_ROOT') or exit('No direct access.');
 const TXN_LOCKED_STATUSES = ['cancelled', 'refunded'];
 const TXN_ITEM_LOCKED_STATUSES = ['completed', 'cancelled', 'refunded'];
 
-function transaction_fields(?array $current = null): array
+function transaction_fields(?array $current = null, bool $withInstallment = true): array
 {
     // Borrowers with a sign-in account see the transaction in their own account right after it is saved.
     $borrowers = borrower_options($current['borrower_id'] ?? null);
@@ -26,7 +26,7 @@ function transaction_fields(?array $current = null): array
         }
     }
 
-    return [
+    $fields = [
         'transaction_number' => ['label' => 'Transaction number', 'type' => 'text', 'max' => 50,
                                  'unique' => ['transactions', 'transaction_number', 'This transaction number is already used.'],
                                  'help' => 'Leave blank to generate one automatically.'],
@@ -49,6 +49,85 @@ function transaction_fields(?array $current = null): array
         'location'           => ['label' => 'Location', 'type' => 'textarea', 'rows' => 2],
         'notes'              => ['label' => 'Notes', 'type' => 'textarea', 'rows' => 3],
     ];
+
+    return $withInstallment ? $fields + transaction_installment_fields() : $fields;
+}
+
+/**
+ * Installment terms on the transaction form (shown for payment type
+ * "installment"): saving the transaction also saves its plan and monthly
+ * schedule (includes/installments.php). A rule fills the terms; without one
+ * they are entered here.
+ */
+function transaction_installment_fields(): array
+{
+    $show = ['data-show-if' => 'f_payment_type=installment'];
+    $rules = [];
+    foreach (installment_rules_for_card(null) as $r) {
+        $rules[$r['id']] = $r['name'] . ' — ' . implode('/', installment_rule_terms($r)) . ' mo';
+    }
+
+    return [
+        'inst_rule_id'         => ['label' => 'Installment: bank rule', 'type' => 'select', 'options' => $rules, 'empty_label' => $rules ? '— Enter the terms below —' : '— No rules yet (Installment Rules) —',
+                                   'attrs' => $show, 'help' => 'A rule fills the method, rate and fee below (they are then ignored).'],
+        'inst_months'          => ['label' => 'Installment: number of months', 'type' => 'int', 'min' => 1, 'max' => 360, 'attrs' => $show],
+        'inst_interest_method' => ['label' => 'Installment: interest', 'type' => 'select', 'options' => INSTALLMENT_METHODS, 'initial' => 'none', 'attrs' => $show],
+        'inst_interest_rate'   => ['label' => 'Installment: interest rate (%)', 'type' => 'decimal', 'scale' => 4, 'digits' => 8, 'min' => 0, 'attrs' => $show,
+                                   'help' => 'Per month for add-on per month and reducing balance; for the whole term for add-on total.'],
+        'inst_interest_amount' => ['label' => 'Installment: fixed interest amount', 'type' => 'decimal', 'min' => 0, 'attrs' => $show],
+        'inst_fee_type'        => ['label' => 'Installment: processing fee', 'type' => 'select', 'options' => INSTALLMENT_FEE_TYPES, 'initial' => 'none', 'attrs' => $show],
+        'inst_fee_value'       => ['label' => 'Installment: fee (₱ or %)', 'type' => 'decimal', 'scale' => 4, 'digits' => 15, 'min' => 0, 'attrs' => $show],
+        'inst_fee_billing'     => ['label' => 'Installment: fee billed', 'type' => 'select', 'options' => INSTALLMENT_FEE_BILLING, 'initial' => 'spread', 'attrs' => $show],
+        'inst_first_due_date'  => ['label' => 'Installment: first due date', 'type' => 'date', 'attrs' => $show,
+                                   'help' => 'Leave blank for the payment due date of the statement this purchase is billed on (recorded SOA or the card\'s due-date rule).'],
+    ];
+}
+
+/**
+ * Take the installment terms out of the form data (they are not transaction
+ * columns) and check them. Returns [data without terms, terms or null, errors].
+ */
+function transaction_installment_terms(array $data, array $errors, bool $required = true): array
+{
+    $terms = null;
+    $inst = [];
+    foreach (array_keys(transaction_installment_fields()) as $name) {
+        $inst[substr($name, 5)] = $data[$name] ?? null;
+        unset($data[$name]);
+    }
+    if (($data['payment_type'] ?? '') !== 'installment' || $errors) {
+        return [$data, null, $errors];
+    }
+    // When editing, the terms may stay empty: the plan can still be added later.
+    if (!$required && !$inst['months'] && !$inst['rule_id']) {
+        return [$data, null, $errors];
+    }
+
+    $rule = $inst['rule_id'] ? installment_rule_find($inst['rule_id']) : null;
+    $terms = [
+        'principal' => $data['amount'], 'months' => $inst['months'],
+        'interest_method' => $rule['interest_method'] ?? $inst['interest_method'], 'interest_rate' => $rule ? $rule['interest_rate'] : $inst['interest_rate'],
+        'interest_amount' => $inst['interest_amount'], 'fee_type' => $rule['fee_type'] ?? $inst['fee_type'],
+        'fee_value' => $rule ? $rule['fee_value'] : $inst['fee_value'], 'fee_billing' => $rule['fee_billing'] ?? ($inst['fee_billing'] ?: 'spread'),
+        'first_due_date' => $inst['first_due_date'], 'rule' => $rule,
+    ];
+    foreach (installment_terms_errors($terms, 'inst_') as $field => $message) {
+        $errors[$field === 'inst_principal' ? 'amount' : $field] = $message;
+    }
+    if ($rule && !isset($errors['inst_months']) && ($problem = installment_rule_problem($rule, $data['credit_card_id'], (float) $data['amount'], (int) $terms['months'], $data['transaction_date']))) {
+        $errors['inst_rule_id'] = $problem;
+    }
+    if (!$errors && !$terms['first_due_date']) {
+        // The payment due date of the statement that bills installment 1 - never guessed.
+        $due = borrowed_due_for($data['credit_card_id'], $data['transaction_date']);
+        if ($due['date'] === null) {
+            $errors['inst_first_due_date'] = 'This card has no recorded statement or due-date rule for ' . format_date($data['transaction_date']) . '. Enter the first due date.';
+        } else {
+            $terms['first_due_date'] = $due['date'];
+        }
+    }
+
+    return [$data, $errors ? null : $terms, $errors];
 }
 
 function transaction_validate(array $fields, array $input, ?string $id = null): array

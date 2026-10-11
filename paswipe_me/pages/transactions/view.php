@@ -196,6 +196,7 @@ require APP_ROOT . '/includes/header.php';
                             <?= csrf_field() ?>
                             <input type="hidden" name="id" value="<?= e($id) ?>">
                             <input type="hidden" name="action" value="record">
+                            <?= form_once_field('transaction_repayment') ?>
                             <?= render_fields([
                                 'amount'           => ['label' => 'Amount received', 'type' => 'decimal', 'required' => true, 'help' => 'Up to ' . format_money($l['outstanding']) . '. Partial amounts are fine.'],
                                 'payment_date'     => ['label' => 'Date received', 'type' => 'date', 'required' => true],

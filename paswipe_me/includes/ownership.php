@@ -81,6 +81,7 @@ const OWNERSHIP = [
     'agreement_templates'     => 'owner',
     'demand_letter_templates' => 'owner',
     'documents'               => 'owner',
+    'installment_rules'       => 'owner',
     'transactions'            => 'card',
     'bank_charges'            => 'card',
     'cash_advances'           => 'card',

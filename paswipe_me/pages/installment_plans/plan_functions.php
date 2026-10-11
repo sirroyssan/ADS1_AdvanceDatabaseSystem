@@ -128,8 +128,7 @@ function plan_correct_amounts(array $plan, array $data): ?string
     }
 
     $count = (int) $data['number_of_installments'];
-    $built = build_schedule((float) $data['total_principal'], (float) $data['interest_amount'], (float) $data['fees_amount'],
-        $count, $data['first_due_date'] ?? $plan['first_due_date'], $data['frequency'] ?? $plan['frequency']);
+    $built = installment_plan_rows(['first_due_date' => $data['first_due_date'] ?? $plan['first_due_date'], 'frequency' => $data['frequency'] ?? $plan['frequency']] + $data + $plan);
 
     // Rows beyond the new count go only when nothing points to them.
     foreach (array_slice($rows, $count) as $row) {
@@ -188,14 +187,8 @@ function plan_generate_schedule(string $planId, array $plan): void
 {
     db_exec('DELETE FROM installment_schedules WHERE installment_plan_id = :id', [':id' => $planId]);
 
-    $rows = build_schedule(
-        (float) $plan['total_principal'],
-        (float) $plan['interest_amount'],
-        (float) $plan['fees_amount'],
-        (int) $plan['number_of_installments'],
-        $plan['first_due_date'],
-        $plan['frequency']
-    );
+    // The plan's own terms (interest method, fees), or an even split for plans entered by hand.
+    $rows = installment_plan_rows($plan);
 
     foreach ($rows as $row) {
         db_insert('installment_schedules', ['id' => new_uuid(), 'installment_plan_id' => $planId] + $row);

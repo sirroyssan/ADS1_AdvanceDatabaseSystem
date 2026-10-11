@@ -38,6 +38,11 @@ if (is_post()) {
     if (!isset($errors['payment_date']) && $data['payment_date'] > date('Y-m-d')) {
         $errors['payment_date'] = 'The payment date cannot be in the future.';
     }
+    // The same report sent twice (double click, refresh) is saved once.
+    if (!$errors && !form_once_use('borrowed_repay', input_string($_POST, 'once'))) {
+        flash('info', 'This repayment was already reported.');
+        redirect('pages/borrowed/view.php', ['id' => $item['id']]);
+    }
 
     if (!$errors) {
         try {
@@ -80,6 +85,7 @@ require APP_ROOT . '/includes/header.php';
     </div>
 </section>
 
-<?= render_record_form(url('pages/borrowed/repay.php', ['id' => $item['id']]), $fields, $data, $errors, 'Report repayment', url('pages/borrowed/view.php', ['id' => $item['id']])) ?>
+<?= render_record_form(url('pages/borrowed/repay.php', ['id' => $item['id']]), $fields, $data, $errors, 'Report repayment', url('pages/borrowed/view.php', ['id' => $item['id']]),
+    form_once_field('borrowed_repay')) ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

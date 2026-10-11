@@ -23,6 +23,7 @@ $navigation = [
             ['key' => 'merchants',       'label' => 'Merchants',       'icon' => 'store',  'path' => 'pages/merchants/index.php'],
             ['key' => 'payment_methods', 'label' => 'Payment Methods', 'icon' => 'wallet', 'path' => 'pages/payment_methods/index.php'],
             ['key' => 'penalty_rules',   'label' => 'Penalty Rules',   'icon' => 'scale',  'path' => 'pages/penalty_rules/index.php'],
+            ['key' => 'installment_rules', 'label' => 'Installment Rules', 'icon' => 'layers', 'path' => 'pages/installment_rules/index.php'],
         ],
     ],
     [
