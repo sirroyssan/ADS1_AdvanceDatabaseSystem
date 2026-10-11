@@ -1,5 +1,6 @@
 -- PA-KASKAS multi-user upgrade: each financial record has one owner.
--- Applied automatically on first page load (includes/multiuser.php), after a
+-- Applied automatically on first page load (includes/multiuser.php: multiuser_schema(),
+-- which adds each part only when missing), after a
 -- backup of every table is written to storage/backups/. Safe to run twice.
 --
 -- Cards already have their owner (credit_cards.owner_user_id). Records that

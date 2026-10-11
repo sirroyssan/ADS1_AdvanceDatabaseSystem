@@ -57,7 +57,7 @@ function multiuser_upgrade(): void
     }
     @set_time_limit(600);   // one-time backup + upgrade of all existing data
     $backup = database_backup('before_multiuser');
-    run_sql_file(APP_ROOT . '/db/upgrade_multiuser.sql');
+    multiuser_schema();
     $result = multiuser_assign_owners();
 
     $summary = [];
@@ -66,6 +66,46 @@ function multiuser_upgrade(): void
     }
     log_activity('multiuser_upgrade', 'system', null, 'Multi-user upgrade. Backup: ' . basename($backup) . '. ' . implode('; ', $summary), null, null, SYSTEM_ACTOR);
     @file_put_contents(APP_ROOT . '/' . MULTIUSER_MARKER, date('c') . "\n" . $backup, LOCK_EX);
+    @file_put_contents(APP_ROOT . '/' . MULTIUSER_MARKER_V2, date('c') . "\n", LOCK_EX);   // this run included the second pass
+}
+
+/**
+ * The schema change of db/upgrade_multiuser.sql, applied step by step so it
+ * works on every MariaDB/MySQL version XAMPP ships: each part is added only
+ * when missing, and the new column copies users.id's character set and
+ * collation so the foreign key always matches. If the server still refuses
+ * the foreign key, the app works without it (ownership is enforced by the
+ * application) and the reason is logged.
+ */
+function multiuser_schema(): void
+{
+    $users = db_row(
+        "SELECT CHARACTER_SET_NAME AS cs, COLLATION_NAME AS co FROM information_schema.COLUMNS
+          WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'users' AND COLUMN_NAME = 'id'"
+    );
+    $type = 'CHAR(36)' . ($users && $users['cs'] ? ' CHARACTER SET ' . $users['cs'] . ' COLLATE ' . $users['co'] : '');
+    $names = [
+        'borrowers' => 'borrowers', 'penalty_rules' => 'penalty_rules', 'agreement_templates' => 'agreement_templates',
+        'demand_letter_templates' => 'letter_templates', 'documents' => 'documents',
+    ];
+    foreach ($names as $table => $short) {
+        $t = db_identifier($table);
+        $has = static fn (string $sql) => (int) db_value($sql, [':t' => $table]) > 0;
+        if (!$has("SELECT COUNT(*) FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = 'owner_user_id'")) {
+            db()->exec("ALTER TABLE $t ADD COLUMN owner_user_id $type NULL AFTER id");
+        }
+        if (!$has("SELECT COUNT(*) FROM information_schema.STATISTICS WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = 'owner_user_id'")) {
+            db()->exec("CREATE INDEX idx_{$short}_owner ON $t (owner_user_id)");
+        }
+        if (!$has("SELECT COUNT(*) FROM information_schema.KEY_COLUMN_USAGE WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t
+                    AND COLUMN_NAME = 'owner_user_id' AND REFERENCED_TABLE_NAME = 'users'")) {
+            try {
+                db()->exec("ALTER TABLE $t ADD CONSTRAINT fk_{$short}_owner FOREIGN KEY (owner_user_id) REFERENCES users (id)");
+            } catch (PDOException $e) {
+                error_log('[' . APP_NAME . '] Multi-user upgrade: foreign key on ' . $table . '.owner_user_id not added (' . $e->getMessage() . '). The application still enforces ownership.');
+            }
+        }
+    }
 }
 
 /**
@@ -76,16 +116,22 @@ function database_backup(string $label): string
 {
     $dir = APP_ROOT . '/storage/backups';
     if (!is_dir($dir)) {
-        mkdir($dir, 0750, true);
+        @mkdir($dir, 0750, true);
         @file_put_contents($dir . '/.htaccess', "Require all denied\nDeny from all\n");
     }
     $file = $dir . '/' . $label . '_' . date('Ymd_His') . '.sql';
-    $out = fopen($file, 'wb');
+    $out = @fopen($file, 'wb');
+    if ($out === false) {
+        // No upgrade without a backup: say exactly what to fix.
+        throw new UpgradeException('The database upgrade needs a backup first, but the folder storage/backups cannot be written. '
+            . 'Make sure the paswipe_me/storage folder exists and is not read-only (right-click → Properties → uncheck Read-only), then reload this page. '
+            . 'Nothing in your data was changed.');
+    }
     fwrite($out, "-- PA-KASKAS data backup " . date('c') . "\n-- Restore into the same schema: mysql pa_swipe_ako < this file\nSET FOREIGN_KEY_CHECKS = 0;\n");
     foreach (db()->query("SHOW FULL TABLES WHERE Table_type = 'BASE TABLE'")->fetchAll(PDO::FETCH_NUM) as [$table]) {
         fwrite($out, "\n-- " . $table . "\nDELETE FROM `" . $table . "`;\n");
         $stmt = db()->query('SELECT * FROM `' . $table . '`');
-        while ($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
+        while (($row = $stmt->fetch(PDO::FETCH_ASSOC)) !== false) {
             $values = array_map(static fn ($v) => $v === null ? 'NULL' : db()->quote((string) $v), $row);
             fwrite($out, 'INSERT INTO `' . $table . '` (`' . implode('`, `', array_keys($row)) . '`) VALUES (' . implode(', ', $values) . ");\n");
         }

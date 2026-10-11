@@ -353,10 +353,10 @@ function card_periods_page(array $ctx, int $page, int $perPage = 6, ?string $tod
     return [array_slice($periods, ($page - 1) * $perPage, $perPage), $pages, $page];
 }
 
-/** "September 2026" - the month of the period's cutoff. */
-function statement_month_label(string $cutoff): string
+/** "September 2026" - the month of the period's cutoff ("—" for a statement without dates). */
+function statement_month_label(?string $cutoff): string
 {
-    return (new DateTimeImmutable($cutoff))->format('F Y');
+    return $cutoff ? (new DateTimeImmutable($cutoff))->format('F Y') : '—';
 }
 
 function statement_period_lines(string $cardId, string $start, string $end): array
@@ -624,7 +624,7 @@ function statement_expected(array $statement, array $summary): array
 {
     $start = $statement['period_start_date'];
     $previousSoa = $start ? db_row(
-        'SELECT id, total_amount_due, cutoff_date FROM credit_card_statements WHERE credit_card_id = :c AND COALESCE(cutoff_date, statement_date) = :d AND soa_recorded_at IS NOT NULL',
+        'SELECT id, total_amount_due, cutoff_date, statement_date FROM credit_card_statements WHERE credit_card_id = :c AND COALESCE(cutoff_date, statement_date) = :d AND soa_recorded_at IS NOT NULL',
         [':c' => $statement['credit_card_id'], ':d' => date_add_days($start, -1)]
     ) : null;
 
@@ -639,7 +639,7 @@ function statement_expected(array $statement, array $summary): array
     if (($statement['soa_previous_balance'] ?? null) !== null) {
         [$previous, $basis] = [(float) $statement['soa_previous_balance'], 'previous balance printed on this SOA'];
     } elseif ($previousSoa) {
-        [$previous, $basis] = [(float) $previousSoa['total_amount_due'], 'previous SOA you recorded (' . statement_month_label($previousSoa['cutoff_date']) . ')'];
+        [$previous, $basis] = [(float) $previousSoa['total_amount_due'], 'previous SOA you recorded (' . statement_month_label($previousSoa['cutoff_date'] ?: $previousSoa['statement_date']) . ')'];
     } else {
         [$previous, $basis] = [$carried, 'carried over by your records (charges − payments before this period)'];
     }

@@ -9,6 +9,11 @@
 
 defined('APP_ROOT') or exit('No direct access.');
 
+/** A database upgrade could not run; its message says what to fix. */
+class UpgradeException extends RuntimeException
+{
+}
+
 /**
  * Plain-language hint for the most common XAMPP setup problems.
  */
@@ -35,6 +40,10 @@ function setup_hint(Throwable $e): string
         return 'A database error occurred. Open setup_check.php to verify the database setup.';
     }
 
+    if ($e instanceof UpgradeException) {
+        return $e->getMessage();
+    }
+
     if ($e instanceof Error && str_contains($e->getMessage(), 'undefined function mb_')) {
         return 'The PHP "mbstring" extension is disabled. Enable extension=mbstring in xampp/php/php.ini and restart Apache.';
     }
@@ -58,7 +67,10 @@ function render_error_page(string $hint, ?string $details = null): void
     $name = htmlspecialchars(defined('APP_NAME') ? APP_NAME : 'Application', ENT_QUOTES, 'UTF-8');
     $detailsHtml = '';
 
-    if ($details !== null && defined('APP_DEBUG') && APP_DEBUG) {
+    // Details are shown with APP_DEBUG, and always when the browser is on the same
+    // computer as the server (XAMPP on localhost): nobody else can see them there.
+    $local = in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true);
+    if ($details !== null && ((defined('APP_DEBUG') && APP_DEBUG) || $local)) {
         $detailsHtml = '<pre style="white-space:pre-wrap;background:#f4f6fa;border:1px solid #e1e5ee;'
             . 'padding:12px;border-radius:8px;font-size:13px;">' . htmlspecialchars($details, ENT_QUOTES, 'UTF-8') . '</pre>';
     } else {
@@ -74,6 +86,7 @@ function render_error_page(string $hint, ?string $details = null): void
         . '<main style="max-width:640px;margin:40px auto;background:#fff;border:1px solid #e1e5ee;border-radius:14px;padding:28px;">'
         . '<h1 style="margin:0 0 8px;font-size:22px;">Something went wrong</h1>'
         . '<p style="margin:0 0 16px;font-size:16px;">' . $hint . '</p>'
+        . ($details !== null && ((defined('APP_DEBUG') && APP_DEBUG) || $local) ? '<p style="margin:0 0 8px;font-size:14px;">Copy the text below when you report this problem:</p>' : '')
         . $detailsHtml
         . '</main></body></html>';
 }
