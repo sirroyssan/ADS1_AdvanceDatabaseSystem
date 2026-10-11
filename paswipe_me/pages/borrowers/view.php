@@ -31,6 +31,15 @@ $collect = collection_totals($id);
 // Card purchases assigned to this borrower (the transactions themselves) and what is still owed on them.
 $purchases = borrowed_owner_purchases($id);
 $purchaseTotals = borrowed_totals($purchases);
+// The figures cover both: obligations and the card transactions assigned to this borrower.
+$figures = [
+    'charged'   => (float) $balance['total_charged'] + $purchaseTotals['responsible'],
+    'paid'      => (float) $balance['total_paid'] + $purchaseTotals['repaid'],
+    'outstanding' => (float) $balance['outstanding'] + $purchaseTotals['remaining'],
+    'overdue'   => (float) $balance['overdue'] + $purchaseTotals['overdue_amount'],
+    'penalties' => (float) $collect['penalties'] + $purchaseTotals['penalties'],
+    'total'     => (float) $collect['total_due'] + $purchaseTotals['outstanding'],
+];
 $payments = db_all(
     'SELECT id, payment_number, payment_date, amount, status FROM borrower_payments WHERE borrower_id = :id ORDER BY payment_date DESC LIMIT 10',
     [':id' => $id]
@@ -66,13 +75,50 @@ require APP_ROOT . '/includes/header.php';
 </section>
 
 <section class="figure-grid" aria-label="Balances">
-    <div class="figure"><p class="figure__label">Total charged</p><p class="figure__value"><?= e(format_money($balance['total_charged'])) ?></p></div>
-    <div class="figure"><p class="figure__label">Total paid</p><p class="figure__value"><?= e(format_money($balance['total_paid'])) ?></p></div>
-    <div class="figure"><p class="figure__label">Outstanding</p><p class="figure__value"><?= e(format_money($balance['outstanding'])) ?></p></div>
-    <div class="figure"><p class="figure__label">Overdue</p><p class="figure__value<?= (float) $balance['overdue'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($balance['overdue'])) ?></p></div>
-    <div class="figure"><p class="figure__label">Unpaid penalties</p><p class="figure__value<?= (float) $collect['penalties'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($collect['penalties'])) ?></p></div>
-    <div class="figure figure--total"><p class="figure__label">Total to pay</p><p class="figure__value"><?= e(format_money($collect['total_due'])) ?></p>
-        <p class="figure__note text-muted">Outstanding + penalties</p></div>
+    <div class="figure"><p class="figure__label">Total charged</p><p class="figure__value"><?= e(format_money($figures['charged'])) ?></p></div>
+    <div class="figure"><p class="figure__label">Total paid</p><p class="figure__value"><?= e(format_money($figures['paid'])) ?></p>
+        <?php if ($purchaseTotals['reported'] > 0): ?><p class="figure__note text-muted"><?= e(format_money($purchaseTotals['reported'])) ?> reported, to confirm</p><?php endif; ?></div>
+    <div class="figure"><p class="figure__label">Outstanding</p><p class="figure__value"><?= e(format_money($figures['outstanding'])) ?></p></div>
+    <div class="figure"><p class="figure__label">Overdue</p><p class="figure__value<?= $figures['overdue'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($figures['overdue'])) ?></p></div>
+    <div class="figure"><p class="figure__label">Unpaid penalties</p><p class="figure__value<?= $figures['penalties'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($figures['penalties'])) ?></p></div>
+    <div class="figure figure--total"><p class="figure__label">Total to pay</p><p class="figure__value"><?= e(format_money($figures['total'])) ?></p>
+        <p class="figure__note text-muted">Outstanding + penalties<?= $purchases ? ' · includes ' . e(count($purchases)) . ' card transaction(s)' : '' ?></p></div>
+</section>
+
+<section class="panel subpanel" aria-labelledby="purchases-title">
+    <header class="panel__header">
+        <h3 id="purchases-title"><?= icon('credit-card') ?> Card purchases (<?= e(count($purchases)) ?>)</h3>
+        <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/transactions/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Add transaction</span></a>
+    </header>
+    <?php if (!$purchases): ?>
+        <p class="empty-inline">No card transactions are assigned to this borrower. Choose this borrower when you record a transaction and it appears here right away.</p>
+    <?php else: ?>
+        <p class="field-help">Outstanding <?= e(format_money($purchaseTotals['outstanding'])) ?> · repaid <?= e(format_money($purchaseTotals['repaid'])) ?>
+            <?= $purchaseTotals['reported'] > 0 ? ' · ' . e(format_money($purchaseTotals['reported'])) . ' reported, to confirm' : '' ?>
+            <?= $purchaseTotals['overdue'] ? ' · <span class="text-danger">' . e($purchaseTotals['overdue']) . ' overdue</span>' : '' ?></p>
+        <div class="table-wrap">
+            <table class="table table--cards table--compact">
+                <thead><tr><th scope="col">Transaction</th><th scope="col">Card</th><th scope="col" class="num">Amount</th><th scope="col" class="num">Repaid</th>
+                    <th scope="col" class="num">Penalty</th><th scope="col" class="num">Outstanding</th><th scope="col">Repay by</th><th scope="col">Status</th></tr></thead>
+                <tbody>
+                <?php foreach ($purchases as $p): ?>
+                    <?php $l = $p['ledger']; ?>
+                    <tr>
+                        <td data-label="Transaction"><a data-modal-form class="table-link" href="<?= e(url('pages/transactions/view.php', ['id' => $p['id']])) ?>"><?= e($p['merchant_name'] ?: $p['transaction_number']) ?></a>
+                            <span class="text-muted"><?= e(format_date($p['transaction_date'])) ?><?= $p['merchant_name'] ? ' · ' . e($p['transaction_number']) : '' ?></span></td>
+                        <td data-label="Card"><?= e($p['card_nickname']) ?> <span class="text-muted">•••• <?= e($p['last_four']) ?></span></td>
+                        <td data-label="Amount" class="num"><?= e(format_money($l['responsible'])) ?></td>
+                        <td data-label="Repaid" class="num"><?= e(format_money($l['repaid'])) ?><?= $l['reported'] > 0 ? '<br><span class="text-muted">' . e(format_money($l['reported'])) . ' reported</span>' : '' ?></td>
+                        <td data-label="Penalty" class="num"><?= e(format_money($l['penalty_unpaid'])) ?></td>
+                        <td data-label="Outstanding" class="num"><strong><?= e(format_money($l['outstanding'])) ?></strong></td>
+                        <td data-label="Repay by"><?= e(borrowed_due_text($l, true)) ?><?= $l['review'] ? '<br><span class="text-danger">Needs review: no penalty rule</span>' : '' ?></td>
+                        <td data-label="Status"><?= borrowed_status_badge($l['status']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
 </section>
 
 <div class="detail-layout">
@@ -168,42 +214,6 @@ require APP_ROOT . '/includes/header.php';
         </section>
     </div>
 </div>
-
-<section class="panel panel--flush" aria-labelledby="purchases-title">
-    <header class="panel__header">
-        <h3 id="purchases-title"><?= icon('credit-card') ?> Card purchases (<?= e(count($purchases)) ?>)</h3>
-        <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/transactions/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Add transaction</span></a>
-    </header>
-    <?php if (!$purchases): ?>
-        <p class="empty-inline">No card transactions are assigned to this borrower. Choose this borrower when you record a transaction and it appears here right away.</p>
-    <?php else: ?>
-        <p class="field-help">Outstanding <?= e(format_money($purchaseTotals['outstanding'])) ?> · repaid <?= e(format_money($purchaseTotals['repaid'])) ?>
-            <?= $purchaseTotals['reported'] > 0 ? ' · ' . e(format_money($purchaseTotals['reported'])) . ' reported, to confirm' : '' ?>
-            <?= $purchaseTotals['overdue'] ? ' · <span class="text-danger">' . e($purchaseTotals['overdue']) . ' overdue</span>' : '' ?></p>
-        <div class="table-wrap">
-            <table class="table table--cards table--compact">
-                <thead><tr><th scope="col">Transaction</th><th scope="col">Card</th><th scope="col" class="num">Amount</th><th scope="col" class="num">Repaid</th>
-                    <th scope="col" class="num">Penalty</th><th scope="col" class="num">Outstanding</th><th scope="col">Repay by</th><th scope="col">Status</th></tr></thead>
-                <tbody>
-                <?php foreach ($purchases as $p): ?>
-                    <?php $l = $p['ledger']; ?>
-                    <tr>
-                        <td data-label="Transaction"><a data-modal-form class="table-link" href="<?= e(url('pages/transactions/view.php', ['id' => $p['id']])) ?>"><?= e($p['merchant_name'] ?: $p['transaction_number']) ?></a>
-                            <span class="text-muted"><?= e(format_date($p['transaction_date'])) ?> · <?= e($p['transaction_number']) ?></span></td>
-                        <td data-label="Card"><?= e($p['card_nickname']) ?> <span class="text-muted">•••• <?= e($p['last_four']) ?></span></td>
-                        <td data-label="Amount" class="num"><?= e(format_money($l['responsible'])) ?></td>
-                        <td data-label="Repaid" class="num"><?= e(format_money($l['repaid'])) ?><?= $l['reported'] > 0 ? '<br><span class="text-muted">' . e(format_money($l['reported'])) . ' reported</span>' : '' ?></td>
-                        <td data-label="Penalty" class="num"><?= e(format_money($l['penalty_unpaid'])) ?></td>
-                        <td data-label="Outstanding" class="num"><strong><?= e(format_money($l['outstanding'])) ?></strong></td>
-                        <td data-label="Repay by"><?= e(borrowed_due_text($l)) ?><?= $l['review'] ? '<br><span class="text-danger">Needs review: no penalty rule</span>' : '' ?></td>
-                        <td data-label="Status"><?= borrowed_status_badge($l['status']) ?></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    <?php endif; ?>
-</section>
 
 <section class="panel subpanel">
     <header class="panel__header">

@@ -39,6 +39,13 @@ $result = run_list(
     $where,
     $params
 );
+// Add what is owed on the card transactions assigned to each listed borrower.
+foreach ($result['rows'] as &$row) {
+    $owed = borrowed_totals(borrowed_owner_purchases($row['id']));
+    $row['outstanding'] = (float) $row['outstanding'] + $owed['outstanding'];
+    $row['overdue'] = (float) $row['overdue'] + $owed['overdue_amount'];
+}
+unset($row);
 
 $pageTitle = 'Borrowers';
 $activeNav = 'borrowers';

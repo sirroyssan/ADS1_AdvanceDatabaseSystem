@@ -665,14 +665,17 @@ function borrowed_status_badge(string $status): string
 }
 
 /** Repay-by text of a ledger: date and where it comes from, or why there is none. */
-function borrowed_due_text(array $ledger): string
+function borrowed_due_text(array $ledger, bool $short = false): string
 {
     if ($ledger['status'] === 'repaid') {
         return 'Fully repaid';
     }
     $due = $ledger['next_due'];
     if ($due === null) {
-        return 'Not available yet - the card\'s statement / due date is not set';
+        return $short ? 'Not available yet' : 'Not available yet - the card\'s statement / due date is not set';
+    }
+    if ($short) {
+        return format_date($due['date']) . ($due['statement'] ? ' · ' . $due['statement'] : '');
     }
 
     return format_date($due['date']) . match ($due['source']) {
