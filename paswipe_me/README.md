@@ -1122,6 +1122,28 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - The database adds UNIQUE keys: one plan per transaction, one schedule row per number, and one
   statement item per source.
 
+## Borrower portal shows everything owed (`portal_all_items()` in `includes/portal.php`)
+
+The borrower's **My Account** and **What I Owe** list every record they owe the card owner, each once:
+
+- cash loan shares;
+- cash advances given to them;
+- card purchases made on the owner's card, one-time and installment;
+- other agreed amounts.
+
+**Each row shows:**
+- the type and item;
+- amount, paid and outstanding;
+- late charges;
+- **due this period** (overdue plus the current installment, e.g. "Installment 2 of 12");
+- the next due date and the status.
+
+**What the totals include:** the Outstanding + Penalties = Total to pay figures, Overdue, Next due and
+Total paid all count card purchases as well as obligations. What I Owe can be filtered by type and
+by open or closed.
+
+**Penalties:** late charges on card purchases appear in the penalties list.
+
 ## One payment form for every borrower repayment (`includes/payment_form.php`)
 
 "Submit a payment" (portal) and "Repay" on a card purchase open the **same form**. It has the same

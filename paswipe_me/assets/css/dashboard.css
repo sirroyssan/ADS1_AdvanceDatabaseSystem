@@ -2708,3 +2708,8 @@ html.has-modal-form {
 .recon-steps ol { margin: 6px 0 0; padding-left: 20px; display: grid; gap: 6px; }
 
 .mono { font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace; letter-spacing: .02em; white-space: nowrap; }
+
+/* Keeps a reference number or date on one line inside narrow table cells. */
+.nowrap {
+    white-space: nowrap;
+}

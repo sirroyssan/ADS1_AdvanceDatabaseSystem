@@ -173,3 +173,112 @@ function portal_balance_summary(string $borrowerId): array
         [':b' => $borrowerId, ':b2' => $borrowerId]
     );
 }
+
+/**
+ * Everything a borrower owes the owner, one row per record, newest problems first:
+ * obligations (cash loan shares, cash advances given, agreed amounts) and card
+ * purchases made on the owner's card (straight or installment). A purchase is
+ * listed once: as the transaction, or - for older ones tracked as an obligation -
+ * as that obligation. $openOnly drops what is fully paid.
+ *
+ * @return array<int, array{kind: string, type: string, ref: string, title: string, date: ?string, link: string,
+ *                          amount: float, paid: float, outstanding: float, penalties: float, total: float,
+ *                          due_now: float, due_date: ?string, installment: ?string, overdue: bool, status: string}>
+ */
+function portal_all_items(string $borrowerId, bool $openOnly = true): array
+{
+    $today = date('Y-m-d');
+    $items = [];
+    $obligations = db_all(
+        "SELECT o.*, COALESCE(pen.penalties_unpaid, 0) AS penalties_unpaid, t.payment_type, t.transaction_number, t.notes AS txn_notes, m.merchant_name
+           FROM borrower_obligations o " . penalty_totals_join() . "
+           LEFT JOIN transactions t ON t.id = o.transaction_id
+           LEFT JOIN merchants m ON m.id = t.merchant_id
+          WHERE o.borrower_id = :b AND o.status NOT IN ('cancelled', 'written_off')",
+        [':b' => $borrowerId]
+    );
+    foreach ($obligations as $o) {
+        $outstanding = (float) $o['outstanding_amount'];
+        $penalties = (float) $o['penalties_unpaid'];
+        if ($openOnly && $outstanding + $penalties <= 0.004) {
+            continue;
+        }
+        $due = borrowed_obligation_due_now($o, $today, round($outstanding + $penalties, 2), $penalties);
+        $items[] = [
+            'kind' => 'obligation',
+            'type' => match (true) {
+                $o['cash_loan_allocation_id'] !== null => 'Cash loan',
+                $o['payment_type'] === 'cash_advance' => 'Cash advance',
+                $o['payment_type'] === 'installment' => 'Installment purchase',
+                $o['payment_type'] === 'cash_loan' => 'Cash loan',
+                $o['transaction_id'] !== null => 'Card purchase',
+                default => 'Amount owed',
+            },
+            'ref' => $o['obligation_number'], 'title' => $o['description'] ?: ($o['merchant_name'] ?: ($o['transaction_number'] ?: ($o['notes'] ? excerpt($o['notes'], 50) : 'Amount owed'))),
+            'date' => $o['obligation_date'], 'link' => url('portal/obligation.php', ['id' => $o['id']]),
+            'amount' => (float) $o['total_amount_due'], 'paid' => (float) $o['total_paid'], 'outstanding' => $outstanding, 'penalties' => $penalties,
+            'total' => round($outstanding + $penalties, 2), 'due_now' => $outstanding + $penalties > 0.004 ? $due['due_now'] : 0.0,
+            'due_date' => $due['current']['due']['date'] ?? $o['due_date'],
+            'installment' => $due['current'] !== null ? 'Installment ' . $due['current']['n'] . ' of ' . $due['installments'] : null,
+            'overdue' => (float) $o['overdue_amount'] > 0.004 || ($o['due_date'] && $o['due_date'] < $today && $outstanding > 0.004),
+            'status' => $o['status'],
+        ];
+    }
+
+    $purchases = borrowed_with_ledgers(db_all(
+        borrowed_select_sql() . " WHERE t.borrower_id = :b AND t.status NOT IN ('cancelled', 'refunded') ORDER BY t.transaction_date DESC",
+        [':b' => $borrowerId]
+    ));
+    foreach ($purchases as $p) {
+        $l = $p['ledger'];
+        if ($l['mode'] !== 'transaction' || ($openOnly && $l['outstanding'] <= 0.004)) {
+            continue;   // older purchases tracked as an obligation are listed above
+        }
+        $items[] = [
+            'kind' => 'purchase',
+            'type' => match ($p['payment_type']) {
+                'installment' => 'Installment purchase',
+                'cash_advance' => 'Cash advance',
+                'cash_loan' => 'Cash loan',
+                default => 'Card purchase',
+            },
+            'ref' => $p['transaction_number'],
+            'title' => ($p['merchant_name'] ?: ($p['notes'] ? excerpt($p['notes'], 50) : 'Purchase')) . ' · ' . $p['issuer'] . ' •••• ' . $p['last_four'],
+            'date' => $p['transaction_date'], 'link' => url('pages/borrowed/view.php', ['id' => $p['id']]),
+            'amount' => $l['responsible'], 'paid' => $l['repaid'], 'outstanding' => $l['remaining'], 'penalties' => $l['penalty_unpaid'],
+            'total' => $l['outstanding'], 'due_now' => $l['status'] === 'repaid' ? 0.0 : $l['due_now'],
+            'due_date' => $l['next_due']['date'] ?? null, 'installment' => borrowed_installment_text($l),
+            'overdue' => $l['status'] === 'overdue', 'status' => $l['status'],
+        ];
+    }
+
+    // Overdue first, then by the next due date (unknown dates last), then newest.
+    usort($items, static fn ($a, $b) => [$b['overdue'], $a['due_date'] === null, $a['due_date'], $b['date']] <=> [$a['overdue'], $b['due_date'] === null, $b['due_date'], $a['date']]);
+
+    return $items;
+}
+
+/** Totals over portal_all_items(). */
+function portal_items_totals(array $items): array
+{
+    $sum = ['amount' => 0.0, 'paid' => 0.0, 'outstanding' => 0.0, 'penalties' => 0.0, 'total' => 0.0, 'due_now' => 0.0, 'overdue' => 0.0, 'next' => null];
+    foreach ($items as $i) {
+        foreach (['amount', 'paid', 'outstanding', 'penalties', 'total', 'due_now'] as $k) {
+            $sum[$k] += $i[$k];
+        }
+        if ($i['overdue']) {
+            $sum['overdue'] += $i['total'];
+        }
+        if ($i['total'] > 0.004 && $i['due_date'] !== null && $i['due_date'] >= date('Y-m-d') && ($sum['next'] === null || $i['due_date'] < $sum['next']['due_date'])) {
+            $sum['next'] = $i;
+        }
+    }
+
+    return array_map(static fn ($v) => is_float($v) ? round($v, 2) : $v, $sum);
+}
+
+/** Status label of an item row (obligation statuses and card purchase statuses). */
+function portal_item_status(array $item): string
+{
+    return $item['kind'] === 'purchase' ? borrowed_status_badge($item['status']) : badge($item['status']);
+}
