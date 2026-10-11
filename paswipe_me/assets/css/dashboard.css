@@ -2726,3 +2726,144 @@ html.has-modal-form {
 .table tbody tr.is-overdue td {
     background: #fff5f5;
 }
+
+/* My notifications (pages/notifications/inbox.php): new ones stand out, read ones fade */
+.notice-filters {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 12px;
+}
+
+.notice-filters .chip {
+    padding: 4px 12px;
+    background: #eef0f4;
+    color: var(--text-muted);
+    text-decoration: none;
+}
+
+.notice-filters .chip.is-active {
+    background: var(--primary-soft);
+    color: var(--primary);
+}
+
+.notice-list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+}
+
+.notice + .notice {
+    border-top: 1px solid var(--border, #e5e7eb);
+}
+
+.notice__link {
+    display: flex;
+    gap: 12px;
+    align-items: flex-start;
+    padding: 14px 18px;
+    color: inherit;
+    text-decoration: none;
+    transition: background-color .15s ease, opacity .3s ease;
+}
+
+.notice__link:hover,
+.notice__link:focus-visible {
+    background: var(--primary-soft);
+}
+
+.notice__dot {
+    flex: none;
+    width: 9px;
+    height: 9px;
+    margin-top: 6px;
+    border-radius: 50%;
+    background: transparent;
+}
+
+.notice.is-unread .notice__dot {
+    background: var(--primary, #1d4ed8);
+}
+
+.notice.is-unread {
+    background: #f5f8ff;
+}
+
+.notice.is-unread .notice__title {
+    color: var(--primary, #1d4ed8);
+}
+
+.notice.is-read .notice__link {
+    opacity: .55;
+}
+
+.notice.is-read .notice__title {
+    font-weight: 500;
+}
+
+.notice.is-read .notice__link:hover {
+    opacity: .85;
+}
+
+.notice__body {
+    display: flex;
+    flex: 1;
+    flex-direction: column;
+    gap: 3px;
+    min-width: 0;
+}
+
+.notice__top {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    font-size: 12px;
+}
+
+.notice__message {
+    color: var(--text-muted);
+    font-size: 13px;
+}
+
+.notice__open {
+    display: inline-flex;
+    flex: none;
+    gap: 4px;
+    align-items: center;
+    color: var(--primary, #1d4ed8);
+    font-size: 13px;
+    font-weight: 600;
+}
+
+.notice-kind {
+    display: inline-flex;
+    gap: 4px;
+    align-items: center;
+    padding: 1px 8px;
+    border-radius: 999px;
+    background: #eef0f4;
+    color: #374151;
+    font-size: 12px;
+    font-weight: 600;
+}
+
+.notice-kind--borrower_payment,
+.notice-kind--transaction { background: #e7f6ee; color: #166534; }
+.notice-kind--authorization_request { background: #fff4e0; color: #9a5b00; }
+.notice-kind--demand_letter { background: #fdecec; color: #b42318; }
+
+.notice-decision .status-form .form-group,
+.notice-decision .status-form .btn--block {
+    flex: 1 1 100%;
+}
+
+.notice-decision .status-form + .status-form {
+    margin-top: 14px;
+    padding-top: 14px;
+    border-top: 1px dashed var(--border, #e5e7eb);
+}
+
+@media (max-width: 640px) {
+    .notice__open span { display: none; }
+}

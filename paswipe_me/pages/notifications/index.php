@@ -60,7 +60,7 @@ require APP_ROOT . '/includes/header.php';
 
 <?= render_print_header($state, $result['total'], $result['pager']) ?>
 <?= render_list_header($state, 'Messages sent to users. In-app messages appear under the bell icon.', url('pages/notifications/create.php'), 'Send Notification',
-    '<a href="' . e(url('pages/notifications/index.php', ['mine' => 'unread'])) . '" class="btn btn--outline">' . icon('bell') . ' <span>My unread</span></a>') ?>
+    '<a href="' . e(url('pages/notifications/inbox.php')) . '" class="btn btn--outline">' . icon('bell') . ' <span>My notifications</span></a>') ?>
 <?= render_list_toolbar($state) ?>
 
 <section class="panel panel--flush" aria-label="Notification list">

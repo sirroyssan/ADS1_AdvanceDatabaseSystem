@@ -13,6 +13,7 @@ $navigation = [
         'label' => null,
         'items' => [
             ['key' => 'dashboard', 'label' => 'Dashboard', 'icon' => 'dashboard', 'path' => 'pages/dashboard.php'],
+            ['key' => 'inbox',     'label' => 'My Notifications', 'icon' => 'bell', 'path' => 'pages/notifications/inbox.php'],
             ['key' => 'borrowed',  'label' => 'Amounts to Repay', 'icon' => 'wallet', 'path' => 'pages/borrowed/index.php', 'borrowed' => true],
         ],
     ],
@@ -74,7 +75,7 @@ $navigation = [
         'label' => 'System',
         'items' => [
             ['key' => 'users',         'label' => 'Users & Roles', 'icon' => 'shield',  'path' => 'pages/users/index.php', 'admin' => true],
-            ['key' => 'notifications', 'label' => 'Notifications', 'icon' => 'bell',    'path' => 'pages/notifications/index.php'],
+            ['key' => 'notifications', 'label' => 'Sent Notifications', 'icon' => 'bell',    'path' => 'pages/notifications/index.php'],
             ['key' => 'activity_logs', 'label' => 'Activity Logs', 'icon' => 'history', 'path' => 'pages/activity_logs/index.php'],
             ['key' => 'staff_accounts', 'label' => 'Staff Accounts', 'icon' => 'users', 'path' => 'pages/staff_accounts/index.php'],
             ['key' => 'authorizations', 'label' => 'Authorization Requests', 'icon' => 'shield', 'path' => 'pages/authorizations/index.php'],
@@ -136,6 +137,7 @@ if (($layout ?? 'admin') !== 'portal' && !array_intersect(ADMIN_ROLES, (array) (
             'label' => null,
             'items' => [
                 ['key' => 'staff_home', 'label' => 'Staff Dashboard', 'icon' => 'dashboard', 'path' => 'pages/staff/index.php'],
+                ['key' => 'inbox',      'label' => 'My Notifications', 'icon' => 'bell', 'path' => 'pages/notifications/inbox.php'],
             ],
         ],
         [

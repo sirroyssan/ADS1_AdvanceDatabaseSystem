@@ -586,6 +586,17 @@ Users with the **Borrower** role sign in to their own portal instead of the admi
 
 No schema change.
 
+**My Notifications** (`pages/notifications/inbox.php`, for the owner, admins and staff; the bell opens it):
+- **What you see:** only notifications addressed to you. Each one shows its kind (Payment, Card repayment, Authorization request, Notice, ...), taken from `entity_type`. New ones stand out with a dot; read ones fade and leave the bell count. You can filter by Unread or by kind, and use *Mark all as read*.
+- **Opening one** (`pages/notifications/open.php`) shows it in a modal and marks it read. The modal holds the record and, when it is yours to decide, the decision:
+  - **Payment:** approve, or reject / ask for a correction / cancel with a reason. This posts to `borrower_payments/review.php`.
+  - **Card repayment:** confirm received, or reject with a reason. This posts to `transactions/repayment.php`. The repayment the notification names comes first.
+  - **Authorization request:** approve and apply, or reject with a reason. This posts to `authorizations/decide.php`.
+  - **Staff** see the outcome of their own requests.
+- **Server-side checks:** the decisions go to the same handlers as the full pages, so the role, ownership, the record's current status and the "not your own request" rule are all checked on the server again.
+- **Not found:** someone else's notification, or a record outside your books, opens as "not found".
+- **Old list:** the full list of sent notifications is now under *Sent Notifications*.
+
 ## Penalties and payment order (`includes/penalties.php`)
 
 **Rule assignment:**
@@ -1327,7 +1338,7 @@ pages/borrower_payments/    payment_functions, index, create, edit, view, review
 pages/documents/            document_functions, index, create, edit, view, download, delete
 pages/agreements/           agreement_functions, index, create, edit, view, related, delete
 pages/demand_letters/       letter_functions, index, create, edit, view, delete
-pages/notifications/        notification_functions, index, create, view
+pages/notifications/        notification_functions, index, create, view, inbox, open
 pages/activity_logs/        index, view
 pages/reports/              index, borrower_balances, overdue, pending_payments, collections, transactions, card_utilization
 ```
@@ -1339,7 +1350,7 @@ pages/reports/              index, borrower_balances, overdue, pending_payments,
 | File | Reason |
 |---|---|
 | includes/sidebar.php | all modules linked, "Soon" placeholders removed, new groups |
-| includes/header.php | bell links to unread notifications; profile/password in the menu |
+| includes/header.php | bell links to My Notifications; profile/password in the menu |
 | includes/footer.php | loads shared `modules.js` |
 | includes/bootstrap.php | loads the new helper files |
 | includes/functions.php | `fill_template()` for templates |

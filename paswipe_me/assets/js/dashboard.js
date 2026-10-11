@@ -262,4 +262,20 @@
 
     window.App.setLoading = setLoading;
     window.App.resetLoading = resetLoading;
+
+    /* My notifications: an opened notification fades at once and leaves the bell count. */
+    document.addEventListener('click', function (event) {
+        var link = event.target.closest('a[data-notice]');
+        var item = link && link.closest('.notice');
+        if (!item || !item.classList.contains('is-unread')) return;
+        item.classList.remove('is-unread');
+        item.classList.add('is-read');
+        var chip = item.querySelector('.status--info');
+        if (chip) chip.remove();
+        var dot = document.querySelector('.notification-bell .badge-dot');
+        if (dot && /^\d+$/.test(dot.textContent.trim())) {
+            var left = parseInt(dot.textContent, 10) - 1;
+            if (left > 0) dot.textContent = left; else dot.remove();
+        }
+    });
 })();

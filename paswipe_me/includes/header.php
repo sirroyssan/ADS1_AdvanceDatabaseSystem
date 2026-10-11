@@ -83,7 +83,7 @@ $initials = strtoupper(mb_substr(user_display_name($currentUser), 0, 1));
             </div>
 
             <div class="topbar__right">
-                <a class="icon-button notification-bell" href="<?= e($isPortal ? url('portal/notifications.php') : (in_array('staff', (array) ($_SESSION['user_roles'] ?? []), true) && !array_intersect(ADMIN_ROLES, (array) ($_SESSION['user_roles'] ?? [])) ? url('pages/authorizations/index.php') : url('pages/notifications/index.php', ['mine' => 'unread']))) ?>"
+                <a class="icon-button notification-bell" href="<?= e($isPortal ? url('portal/notifications.php') : url('pages/notifications/inbox.php')) ?>"
                    aria-label="<?= e($unreadNotifications) ?> unread notifications"
                    title="<?= e($unreadNotifications) ?> unread notification(s)">
                     <?= icon('bell') ?>
