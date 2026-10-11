@@ -25,10 +25,23 @@ if (is_post()) {
 
     if (!$errors) {
         try {
-            db_update('borrower_obligations', $data + ['updated_by' => $currentUser['id']], $obligation['id']);
+            db_transaction(static function () use (&$data, &$errors, $obligation, $currentUser) {
+                // A cash loan share: the allocation on the cash loan and the description follow the amount.
+                if ($obligation['cash_loan_allocation_id']) {
+                    require_once APP_ROOT . '/pages/cash_loans/cash_loan_functions.php';
+                    [$data['description'], $error] = cash_loan_allocation_follow($obligation, (float) $data['original_amount'], (string) $data['description']);
+                    if ($error !== null) {
+                        throw new DomainException($error);
+                    }
+                }
+                db_update('borrower_obligations', $data + ['updated_by' => $currentUser['id']], $obligation['id']);
+                schedule_sync_obligation($obligation['id']);
+            });
             log_activity('update', 'obligation', $obligation['id'], 'Updated obligation ' . $data['obligation_number'], array_intersect_key($obligation, $data), $data);
             flash('success', 'Obligation ' . $data['obligation_number'] . ' was updated.');
             redirect('pages/obligations/view.php', ['id' => $obligation['id']]);
+        } catch (DomainException $e) {
+            $errors['original_amount'] = $e->getMessage();
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
         }

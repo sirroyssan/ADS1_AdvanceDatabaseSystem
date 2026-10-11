@@ -163,3 +163,36 @@ function cash_loan_usage_message(array $loan): string
 
     return 'It uses ' . format_money($charge['total']) . ' of the card\'s credit.';
 }
+
+/**
+ * Keep a cash loan allocation and its obligation in step when the obligation's
+ * original amount (the person's share) is corrected: the allocation takes the
+ * new amount (never more than the loan's cash not allocated to others) and an
+ * automatic "share of ₱..." description is rewritten. Returns [description,
+ * error|null]; call inside the transaction that saves the obligation.
+ */
+function cash_loan_allocation_follow(array $obligation, float $newAmount, string $description): array
+{
+    $allocation = db_row('SELECT * FROM cash_loan_allocations WHERE id = :a FOR UPDATE', [':a' => $obligation['cash_loan_allocation_id']]);
+    if (!$allocation) {
+        return [$description, null];
+    }
+    $loan = db_row('SELECT * FROM cash_loans WHERE id = :l FOR UPDATE', [':l' => $allocation['cash_loan_id']]);
+    if (abs((float) $allocation['allocated_amount'] - $newAmount) >= 0.005) {
+        $others = (float) db_value('SELECT COALESCE(SUM(allocated_amount), 0) FROM cash_loan_allocations WHERE cash_loan_id = :l AND id <> :a',
+            [':l' => $loan['id'], ':a' => $allocation['id']]);
+        $room = cash_loan_distributable($loan) - $others;
+        if ($newAmount > $room + 0.004) {
+            return [$description, 'Cash loan ' . $loan['loan_reference'] . ' has ' . format_money(cash_loan_distributable($loan)) . ', and '
+                . format_money($others) . ' of it is allocated to others: this share can be at most ' . format_money(max(0, $room))
+                . '. Reduce the other allocations on the cash loan first.'];
+        }
+        db_update('cash_loan_allocations', ['allocated_amount' => number_format($newAmount, 2, '.', '')], $allocation['id']);
+        log_activity('update_allocation', 'cash_loan', $loan['id'], 'Allocation ' . format_money($allocation['allocated_amount']) . ' → ' . format_money($newAmount)
+            . ' (obligation ' . $obligation['obligation_number'] . ')', ['allocated_amount' => $allocation['allocated_amount']], ['allocated_amount' => $newAmount]);
+    }
+    // The automatic description names the share; keep it true.
+    $description = preg_replace('/share of ₱[\d,]+(\.\d{1,2})?/u', 'share of ' . format_money($newAmount), $description, 1) ?? $description;
+
+    return [$description, null];
+}
