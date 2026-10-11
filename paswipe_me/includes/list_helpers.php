@@ -151,7 +151,9 @@ function render_breadcrumb(array $trail): string
     // Borrower portal pages ($layout = 'portal') start at "My Account".
     $portal = ($GLOBALS['layout'] ?? 'admin') === 'portal';
     $html = '<nav class="breadcrumb no-print" aria-label="Breadcrumb">'
-        . ($portal ? '<a href="' . e(url('portal/index.php')) . '">My Account</a>' : '<a href="' . e(url('pages/dashboard.php')) . '">Dashboard</a>');
+        . ($portal ? '<a href="' . e(url('portal/index.php')) . '">My Account</a>'
+            : (in_array('staff', (array) ($_SESSION['user_roles'] ?? []), true) && !array_intersect(ADMIN_ROLES, (array) ($_SESSION['user_roles'] ?? []))
+                ? '<a href="' . e(url('pages/staff/index.php')) . '">Staff Dashboard</a>' : '<a href="' . e(url('pages/dashboard.php')) . '">Dashboard</a>'));
 
     foreach ($trail as $label => $link) {
         $html .= '<span aria-hidden="true">/</span>';

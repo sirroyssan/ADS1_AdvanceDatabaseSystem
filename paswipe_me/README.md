@@ -1122,6 +1122,92 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - The database adds UNIQUE keys: one plan per transaction, one schedule row per number, and one
   statement item per source.
 
+## Staff dashboard, receipts and authorized corrections (`includes/staff.php`, `includes/receipts.php`, `includes/authorizations.php`)
+
+**Staff accounts:**
+- The owner creates them under **System → Staff Accounts** (role `staff`, linked in `staff_members`).
+- A staff member works on that owner's books only: `owner_id()` returns their employer, so every
+  owner-scoped query shows only that owner's records.
+- Staff are **not** in `ADMIN_ROLES`, so every owner page (edit, delete, override, settings, penalty
+  rules, statements, reset, ...) answers 403 on the server.
+- A deactivated staff account is signed out.
+
+**What staff can use:**
+- **Staff Dashboard** (`pages/staff/index.php`), with figures read from the database:
+  - card transactions recorded (total, this month, today);
+  - payments received today;
+  - outstanding borrower balances, including due this period;
+  - card payments due;
+  - overdue borrower repayments;
+  - upcoming card due dates;
+  - overdue borrowers;
+  - recent transactions and payments;
+  - quick actions.
+- **Record transaction:** the normal transaction form, including installments.
+- **Transactions list:** searchable and filterable.
+- **Credit Cards** and **Installment Plans:** read only.
+- **Card Due Dates** (`pages/staff/due_dates.php`):
+  - one row per recorded bank SOA, with statement cutoff, statement balance, minimum due, paid, total
+    still due and payment due date;
+  - the billing period open today, with its cutoff and the due date from the card's own rule;
+  - days left, and the status: Paid, Partially Paid, Overdue, Due Soon (7 days) or Upcoming;
+  - amounts appear only once the SOA is recorded, and cutoff and due date are always shown separately.
+- **Receive Payment** (`pages/staff/receive.php`), in four steps:
+  1. Choose the borrower and see everything they owe and their recent payments.
+  2. Enter the amount tendered, date, method, reference and remarks, and put the amount on the
+     items or installments being paid.
+  3. **Review.**
+  4. **Confirm.**
+
+  On confirm, the server checks everything again (amount > 0, never more than owed, fully assigned,
+  no future date) and saves once, using a one-time token and a lock on the borrower. In one database
+  transaction it saves:
+  - a confirmed repayment for each card purchase paid;
+  - one approved payment for the obligations, applied at once (late charges, interest, principal;
+    installments and statuses follow);
+  - the receipt.
+
+  It never creates or changes a card purchase.
+- **Receipts** (`pages/staff/receipts.php`, `receipt.php`):
+  - receipt number `AR-…`;
+  - date and time, borrower, staff member, each item with its original amount, balance before, paid
+    and balance after;
+  - previous balance, amount tendered, remaining balance, method and reference, remarks;
+  - signature lines.
+
+  **Print receipt** opens a clean print page with no menus. Every print is counted, and later copies
+  are marked "REPRINT · copy n". Printing never records a payment.
+
+**Edit / delete of confirmed records (staff):**
+- **Edit** or **Delete** on a transaction or receipted payment opens the authorization form. It shows:
+  - the message *"Administrator authorization is required to modify or delete this record. Please
+    contact the card owner or authorized administrator for approval."*;
+  - the record details and the requested action;
+  - the corrected values (edit) and the reason;
+  - an optional owner sign-in.
+- Without the owner's sign-in the request waits in **Authorization Requests**. There the owner sees
+  the original and requested values and approves or rejects in their own session (with a confirmation
+  dialog; a rejection needs a note).
+- If the owner is present, they can enter their own sign-in and password in the form. The server
+  checks it (`password_verify()`, never stored).
+- **Who may approve:** only the owner of that record's books, never the requester. Five failed
+  attempts in 15 minutes lock the requester out. Every failure is logged.
+- **Applying the change:** only after approval, in one DB transaction, through the existing rules.
+  - Transaction edit: date, amount, references, notes. Used credit is recalculated. The amount of an
+    installment purchase is changed by the owner in the Installment module.
+  - Payment edit: the amount through the owner's override (allocations taken back newest first),
+    plus date, method, reference and notes.
+- **"Delete" is a void, never an erase:**
+  - A transaction becomes cancelled, leaves the used credit, and its unpaid plan and obligations are
+    cancelled. It is refused while it has repayments.
+  - A payment's allocations are reversed (balances, installments and penalties restored) and it
+    becomes cancelled.
+  - A receipt becomes **VOID** when none of its payments counts, otherwise **AMENDED** with the
+    change noted.
+- **Audit:** `authorization_requests` keeps the requester, the approver or rejecter, the record, the
+  action, the reason, the original and proposed values, times, the method and the result. Activity
+  logs record each request, decision, failure and print. Staff have no page to change either.
+
 ## Borrower portal shows everything owed (`portal_all_items()` in `includes/portal.php`)
 
 The borrower's **My Account** and **What I Owe** list every record they owe the card owner, each once:

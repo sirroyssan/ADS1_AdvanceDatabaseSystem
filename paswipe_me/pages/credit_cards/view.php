@@ -6,7 +6,8 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/credit_card_functions.php';
 
-$currentUser = require_admin();
+$currentUser = require_staff_area();
+$canManage = user_is_admin($currentUser);   // staff: read only
 
 $card = find_or_redirect(credit_card_find(request_id()), 'pages/credit_cards/index.php', 'Credit card');
 $id = $card['id'];
@@ -63,7 +64,7 @@ require APP_ROOT . '/includes/header.php';
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/credit_cards/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
-        <a data-modal-form href="<?= e(url('pages/credit_cards/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+        <?php if ($canManage): ?><a data-modal-form href="<?= e(url('pages/credit_cards/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a><?php endif; ?>
     </div>
 </section>
 
@@ -117,7 +118,7 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel">
             <header class="panel__header">
                 <h3>Cash loans on this card</h3>
-                <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/cash_loans/create.php', ['credit_card_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
+                <?php if ($canManage): ?>                <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/cash_loans/create.php', ['credit_card_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a><?php endif; ?>
             </header>
             <?php if (!$cashLoans): ?>
                 <p class="empty-inline">No cash loans on this card.</p>
@@ -125,7 +126,7 @@ require APP_ROOT . '/includes/header.php';
                 <ul class="child-list">
                     <?php foreach ($cashLoans as $l): ?>
                         <?php $charge = cash_loan_card_charge($l); ?>
-                        <li><a href="<?= e(url('pages/cash_loans/view.php', ['id' => $l['id']])) ?>"><?= e($l['loan_reference']) ?></a>
+                        <li><?= $canManage ? '<a href="' . e(url('pages/cash_loans/view.php', ['id' => $l['id']])) . '">' . e($l['loan_reference']) . '</a>' : '<span>' . e($l['loan_reference']) . '</span>' ?>
                             <span><?= $charge['counts'] ? e(format_money($charge['total'])) . ' charged' : 'Not charged' ?> <?= badge($l['status']) ?></span></li>
                     <?php endforeach; ?>
                 </ul>
@@ -135,14 +136,14 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel">
             <header class="panel__header">
                 <h3>Penalty rules for <?= e(bank_canonical($card['issuer'])) ?></h3>
-                <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/penalty_rules/index.php')) ?>"><span>Manage</span></a>
+<?php if ($canManage): ?><a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/penalty_rules/index.php')) ?>"><span>Manage</span></a><?php endif; ?>
             </header>
             <?php if (!$bankRules): ?>
                 <p class="empty-inline">No active penalty rule for this bank. Borrowers' items from this card are not charged automatically.</p>
             <?php else: ?>
                 <ul class="child-list">
                     <?php foreach ($bankRules as $r): ?>
-                        <li><a href="<?= e(url('pages/penalty_rules/view.php', ['id' => $r['id']])) ?>"><?= e($r['name']) ?></a><span><?= e(penalty_rule_summary($r)) ?></span></li>
+                        <li><?= $canManage ? '<a href="' . e(url('pages/penalty_rules/view.php', ['id' => $r['id']])) . '">' . e($r['name']) . '</a>' : '<span>' . e($r['name']) . '</span>' ?><span><?= e(penalty_rule_summary($r)) ?></span></li>
                     <?php endforeach; ?>
                 </ul>
             <?php endif; ?>
@@ -151,7 +152,7 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel">
             <header class="panel__header">
                 <h3>Statements</h3>
-                <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/statements/index.php', ['card' => $id])) ?>"><span>View all</span></a>
+                <a class="btn btn--sm btn--outline no-print" href="<?= e($canManage ? url('pages/statements/index.php', ['card' => $id]) : url('pages/staff/due_dates.php', ['card' => $id])) ?>"><span>View all</span></a>
             </header>
             <p class="field-help"><?= e(card_billing_summary($card)) ?></p>
             <div class="open-cycle">
@@ -164,19 +165,23 @@ require APP_ROOT . '/includes/header.php';
             <?php else: ?>
                 <ul class="child-list">
                     <?php foreach ($statements as $s): ?>
-                        <li><span><a data-modal-form href="<?= e(url('pages/statements/view.php', ['id' => $s['id']])) ?>"><?= e(statement_month_label($s['cutoff_date'] ?: $s['statement_date'])) ?></a>
+                        <li><span><?= $canManage ? '<a data-modal-form href="' . e(url('pages/statements/view.php', ['id' => $s['id']])) . '">' . e(statement_month_label($s['cutoff_date'] ?: $s['statement_date'])) . '</a>' : e(statement_month_label($s['cutoff_date'] ?: $s['statement_date'])) ?>
                                 <br><?= statement_status_badge($s['pay_status'], $s['due_date']) ?></span>
                             <span><?= e(format_money($s['total_amount_due'])) ?> · due <?= e(format_date($s['due_date'])) ?>
-                                <?php if ((float) $s['remaining'] > 0.004): ?>
+                                <?php if ((float) $s['remaining'] > 0.004 && $canManage): ?>
                                     <a data-modal-form class="btn btn--sm btn--primary no-print" href="<?= e(url('pages/statements/pay.php', ['id' => $s['id']])) ?>"><?= icon('wallet') ?> <span>Pay</span></a>
                                 <?php endif; ?></span></li>
                     <?php endforeach; ?>
                 </ul>
             <?php endif; ?>
+            <?php if ($canManage): ?>
             <p class="field-help no-print"><a data-modal-form href="<?= e(url('pages/statements/create.php', ['credit_card_id' => $id])) ?>">Record an SOA</a> · <a href="<?= e(url('pages/statements/index.php', ['card' => $id])) ?>">All billing periods</a></p>
+            <?php else: ?>
+            <p class="field-help no-print"><a href="<?= e(url('pages/staff/due_dates.php', ['card' => $id])) ?>">Due dates of this card</a></p>
+            <?php endif; ?>
         </section>
 
-        <section class="panel panel--danger no-print">
+        <section class="panel panel--danger no-print"<?= $canManage ? '' : ' hidden' ?>>
             <header class="panel__header"><h3>Delete or close</h3></header>
             <?php if ($usage['total'] > 0): ?>
                 <p class="field-help">This card has <?= e(usage_text($usage)) ?>, so it must be kept. Change its status (closed, blocked, inactive) instead.</p>
@@ -196,7 +201,7 @@ require APP_ROOT . '/includes/header.php';
 <section class="panel subpanel">
     <header class="panel__header">
         <h3>Billing cycles</h3>
-        <button type="button" class="btn btn--sm btn--outline no-print" data-modal-panel="add-cycle" data-modal-subtitle="Only when the bank uses a different schedule for an upcoming period. Normal periods follow the card's cutoff day."><?= icon('plus') ?> <span>Add special cycle</span></button>
+        <button type="button" class="btn btn--sm btn--outline no-print"<?= $canManage ? '' : ' hidden' ?> data-modal-panel="add-cycle" data-modal-subtitle="Only when the bank uses a different schedule for an upcoming period. Normal periods follow the card's cutoff day."><?= icon('plus') ?> <span>Add special cycle</span></button>
     </header>
     <p class="field-help">Periods follow the statement cutoff day set on the card. A recorded SOA keeps its own period.</p>
     <form method="post" action="<?= e($related) ?>" class="inline-panel no-print" id="add-cycle" hidden novalidate data-validate>
@@ -226,7 +231,7 @@ require APP_ROOT . '/includes/header.php';
                             <?php if ($hasStatement): ?>
                                 <span class="text-muted">Statement</span>
                             <?php else: ?>
-                                <?= post_button($related, ['id' => $id, 'action' => 'delete_cycle', 'item_id' => $c['id']], 'Delete cycle', 'trash', 'icon-button icon-button--danger', 'Delete this billing cycle?', true) ?>
+                                <?= !$canManage ? '' : post_button($related, ['id' => $id, 'action' => 'delete_cycle', 'item_id' => $c['id']], 'Delete cycle', 'trash', 'icon-button icon-button--danger', 'Delete this billing cycle?', true) ?>
                             <?php endif; ?>
                         </div></td>
                     </tr>

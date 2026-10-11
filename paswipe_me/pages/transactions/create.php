@@ -6,7 +6,7 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/transaction_functions.php';
 
-$currentUser = require_admin();
+$currentUser = require_staff_area();
 
 $fields = transaction_fields();
 $preset = [];

@@ -2713,3 +2713,16 @@ html.has-modal-form {
 .nowrap {
     white-space: nowrap;
 }
+
+/* Staff dashboard quick actions. */
+.quick-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    margin-bottom: 1.25rem;
+}
+
+/* A row that is past its due date. */
+.table tbody tr.is-overdue td {
+    background: #fff5f5;
+}

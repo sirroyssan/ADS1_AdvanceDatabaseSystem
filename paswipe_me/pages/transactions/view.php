@@ -7,7 +7,9 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/transaction_functions.php';
 
-$currentUser = require_admin();
+$currentUser = require_staff_area();
+// Staff see the record and can ask the owner to change it; changing it directly is the owner's.
+$canManage = user_is_admin($currentUser);
 
 $txn = find_or_redirect(transaction_find(request_id()), 'pages/transactions/index.php', 'Transaction');
 $id = $txn['id'];
@@ -45,6 +47,10 @@ $quickStatuses = match ($txn['status']) {
     'completed' => ['refunded'],
     default    => [],
 };
+if (!$canManage) {
+    $quickStatuses = [];   // status changes, items and attachments are the owner's
+    $itemsLocked = true;
+}
 
 $pageTitle = 'Transaction Details';
 $activeNav = 'transactions';
@@ -67,8 +73,11 @@ require APP_ROOT . '/includes/header.php';
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/transactions/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
-        <?php if (!$isLocked): ?>
+        <?php if (!$isLocked && $canManage): ?>
             <a data-modal-form href="<?= e(url('pages/transactions/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+        <?php elseif (!$isLocked): ?>
+            <a data-modal-form href="<?= e(url('pages/authorizations/request.php', ['type' => 'transaction', 'id' => $id, 'action' => 'edit'])) ?>" class="btn btn--outline"><?= icon('lock') ?> <span>Edit</span></a>
+            <a data-modal-form href="<?= e(url('pages/authorizations/request.php', ['type' => 'transaction', 'id' => $id, 'action' => 'delete'])) ?>" class="btn btn--outline"><?= icon('trash') ?> <span>Delete</span></a>
         <?php endif; ?>
     </div>
 </section>
@@ -84,7 +93,7 @@ require APP_ROOT . '/includes/header.php';
             'Amount'             => '<strong>' . e(format_money($txn['amount'])) . '</strong> ' . e($txn['currency']),
             'Transaction type'   => e(humanize($txn['transaction_type'])),
             'Payment type'       => e(humanize($txn['payment_type'])),
-            'Borrower'           => $txn['borrower_id'] ? related_link($txn['borrower_id'], borrower_name($txn) . ' (' . $txn['borrower_number'] . ')', 'pages/borrowers/view.php') : 'Owner\'s own purchase',
+            'Borrower'           => $txn['borrower_id'] ? ($canManage ? related_link($txn['borrower_id'], borrower_name($txn) . ' (' . $txn['borrower_number'] . ')', 'pages/borrowers/view.php') : e(borrower_name($txn) . ' (' . $txn['borrower_number'] . ')')) : 'Owner\'s own purchase',
             'Merchant'           => related_link($txn['merchant_id'], $txn['merchant_name'] ? $txn['merchant_name'] . ($txn['branch'] ? ' — ' . $txn['branch'] : '') : null, 'pages/merchants/view.php'),
             'Category'           => related_link($txn['category_id'], $txn['category_name'], 'pages/categories/view.php'),
             'Reference number'   => show($txn['reference_number']),
@@ -121,7 +130,7 @@ require APP_ROOT . '/includes/header.php';
             <header class="panel__header"><h3>Installment plan</h3></header>
             <?php if ($plan): ?>
                 <p><?= related_link($plan['id'], $plan['number_of_installments'] . ' × ' . format_money($plan['installment_amount']) . ' (' . $plan['frequency'] . ')', 'pages/installment_plans/view.php') ?> <?= badge($plan['status']) ?></p>
-            <?php elseif (!$isLocked): ?>
+            <?php elseif (!$isLocked && $canManage): ?>
                 <p class="field-help">No installment plan.</p>
                 <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/installment_plans/create.php', ['transaction_id' => $id])) ?>"><?= icon('plus') ?> <span>Create plan</span></a>
             <?php else: ?>
@@ -133,7 +142,7 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel">
             <header class="panel__header">
                 <h3>Borrower obligations</h3>
-                <?php if (!$isLocked && $txn['borrower_id']): ?>
+                <?php if (!$isLocked && $txn['borrower_id'] && $canManage): ?>
                     <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/obligations/create.php', ['borrower_id' => $txn['borrower_id'], 'transaction_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
                 <?php endif; ?>
             </header>
@@ -150,7 +159,7 @@ require APP_ROOT . '/includes/header.php';
         </section>
         <?php endif; ?>
 
-        <?php if ($txn['status'] === 'draft'): ?>
+        <?php if ($txn['status'] === 'draft' && $canManage): ?>
             <section class="panel panel--danger no-print">
                 <header class="panel__header"><h3>Delete draft</h3></header>
                 <?php if ($usage['total'] > 0): ?>
@@ -173,11 +182,11 @@ require APP_ROOT . '/includes/header.php';
                 <?= borrowed_status_badge($l['status']) ?>
             </header>
             <p class="field-help">This transaction is what <?= e(borrower_name($txn)) ?> owes you: it counts once on your card, and the same record shows in their account.</p>
-            <?= borrowed_render_ledger($purchase, $l, true) ?>
+            <?= borrowed_render_ledger($purchase, $l, $canManage) ?>
             <?php if ($l['mode'] === 'transaction'): ?>
                 <h4 class="form-section">Repayments</h4>
-                <?= borrowed_render_repayments($repayments, static function ($r) use ($related, $id) {
-                    if (!in_array($r['status'], BORROWED_REPORTED_STATUSES, true)) {
+                <?= borrowed_render_repayments($repayments, static function ($r) use ($related, $id, $canManage) {
+                    if (!$canManage || !in_array($r['status'], BORROWED_REPORTED_STATUSES, true)) {
                         return '';
                     }
                     $url = url('pages/transactions/repayment.php');
@@ -189,7 +198,9 @@ require APP_ROOT . '/includes/header.php';
                         . '<input type="text" name="reason" maxlength="1000" placeholder="Reason" aria-label="Reason for rejecting" required> '
                         . '<button type="submit" class="btn btn--sm btn--outline">' . icon('x') . ' <span>Reject</span></button></form>';
                 }) ?>
-                <?php if ($l['outstanding'] > 0.004 && !$isLocked): ?>
+                <?php if ($l['outstanding'] > 0.004 && !$isLocked && !$canManage): ?>
+                    <p class="no-print"><a class="btn btn--sm btn--primary" href="<?= e(url('pages/staff/receive.php', ['borrower_id' => $txn['borrower_id']])) ?>"><?= icon('wallet') ?> <span>Receive a payment</span></a></p>
+                <?php elseif ($l['outstanding'] > 0.004 && !$isLocked): ?>
                     <details class="no-print">
                         <summary>Record a repayment you received</summary>
                         <form method="post" action="<?= e(url('pages/transactions/repayment.php')) ?>" class="status-form">
@@ -251,6 +262,6 @@ require APP_ROOT . '/includes/header.php';
     <?php endif; ?>
 </section>
 
-<?= render_attachments_panel($attachments, $related, ['id' => $id], false, !$isLocked) ?>
+<?= render_attachments_panel($attachments, $related, ['id' => $id], false, !$isLocked && $canManage) ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

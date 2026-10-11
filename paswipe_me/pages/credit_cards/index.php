@@ -6,7 +6,8 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/credit_card_functions.php';
 
-$currentUser = require_admin();
+$currentUser = require_staff_area();
+$canManage = user_is_admin($currentUser);   // staff: read only
 
 $state = list_state([
     'path'    => 'pages/credit_cards/index.php',
@@ -49,12 +50,12 @@ require APP_ROOT . '/includes/header.php';
 ?>
 
 <?= render_print_header($state, $result['total'], $result['pager']) ?>
-<?= render_list_header($state, 'The owner\'s credit cards, limits and available credit.', url('pages/credit_cards/create.php')) ?>
+<?= render_list_header($state, 'The owner\'s credit cards, limits and available credit.', ($canManage ? url('pages/credit_cards/create.php') : null)) ?>
 <?= render_list_toolbar($state) ?>
 
 <section class="panel panel--flush" aria-label="Credit card list">
     <?php if ($result['total'] === 0): ?>
-        <?= render_empty_state($state, url('pages/credit_cards/create.php'), 'Add the owner\'s credit cards (last four digits only).', 'credit-card') ?>
+        <?= render_empty_state($state, $canManage ? url('pages/credit_cards/create.php') : null, 'Add the owner\'s credit cards (last four digits only).', 'credit-card') ?>
     <?php else: ?>
         <div class="table-wrap">
             <table class="table table--cards">
@@ -89,7 +90,7 @@ require APP_ROOT . '/includes/header.php';
                         <td class="actions no-print">
                             <div class="row-actions">
                                 <?= icon_link(url('pages/credit_cards/view.php', ['id' => $row['id']]), 'eye', 'View ' . $row['card_nickname']) ?>
-                                <?= icon_link(url('pages/credit_cards/edit.php', ['id' => $row['id']]), 'edit', 'Edit ' . $row['card_nickname']) ?>
+                                <?= $canManage ? icon_link(url('pages/credit_cards/edit.php', ['id' => $row['id']]), 'edit', 'Edit ' . $row['card_nickname']) : '' ?>
                             </div>
                         </td>
                     </tr>

@@ -368,53 +368,7 @@ function render_payment_form(array $s, string $action, string $cancelUrl): strin
         <?php endif; ?>
         <?= render_fields($s['fields'], $s['data'], $errors) ?>
 
-        <fieldset class="pay-for" data-pay-for>
-            <legend>What is this payment for?</legend>
-            <p class="field-help">Tick the items or installments you are paying and the amount for each. Late charges on an item are paid first from what you put on it.
-                <?= array_filter($s['groups'], static fn ($g) => $g['kind'] === 'obligation') ? 'Anything you do not assign is posted by the owner.' : 'Put the whole amount on the items you are paying.' ?></p>
-            <?php if (isset($errors['selection'])): ?><p class="field-error"><?= e($errors['selection']) ?></p><?php endif; ?>
-            <?php if (!$s['groups']): ?>
-                <p class="empty-inline">You have nothing open to pay right now.</p>
-            <?php else: ?>
-                <div class="table-wrap">
-                    <table class="table table--cards table--compact pay-for__table">
-                        <thead><tr><th scope="col" class="col-check"><span class="visually-hidden">Pay</span></th><th scope="col">Item</th><th scope="col">Due</th><th scope="col" class="num">To pay</th><th scope="col" class="num">Amount you are paying</th></tr></thead>
-                        <?php foreach ($s['groups'] as $g): ?>
-                            <tbody>
-                            <tr class="pay-for__group"><td colspan="5"><strong><?= e($g['title']) ?></strong>
-                                <?= $g['subtitle'] ? ' · ' . e($g['subtitle']) : '' ?>
-                                <span class="text-muted"> · total to pay <?= e(format_money($g['owed'])) ?><?= $g['penalties'] > 0 ? ' (incl. ' . e(format_money($g['penalties'])) . ' late charges)' : '' ?></span></td></tr>
-                            <?php if ($g['months']): ?>
-                                <tr class="pay-for__months"><td colspan="5"><span class="text-muted">Monthly amounts (paid oldest month first):</span>
-                                    <?php foreach (array_slice($g['months'], 0, 4) as $m): ?>
-                                        <span class="pay-for__month">#<?= e($m['installment_number']) ?> · <?= e(format_date($m['due_date'])) ?> · <?= e(format_money($m['remaining_amount'])) ?><?= $m['status'] === 'overdue' ? ' <span class="status status--danger">Overdue</span>' : '' ?></span>
-                                    <?php endforeach; ?>
-                                    <?= count($g['months']) > 4 ? '<span class="text-muted">+' . e(count($g['months']) - 4) . ' more</span>' : '' ?>
-                                    <a href="<?= e($g['link']) ?>">See schedule</a></td></tr>
-                            <?php endif; ?>
-                            <?php foreach ($g['rows'] as $r): ?>
-                                <?php $on = array_key_exists($r['key'], $s['chosen']); ?>
-                                <tr>
-                                    <td class="col-check"><input type="checkbox" name="select[<?= e($r['key']) ?>]" value="1" data-pay-check <?= $on ? 'checked' : '' ?>
-                                               id="sel-<?= e(md5($r['key'])) ?>"></td>
-                                    <td data-label="Item"><label for="sel-<?= e(md5($r['key'])) ?>"><?= e($r['label']) ?></label>
-                                        <?= $r['overdue'] ? ' <span class="status status--danger">Overdue</span>' : '' ?></td>
-                                    <td data-label="Due"><?= $r['due_date'] ? e(format_date($r['due_date'])) : '<span class="text-muted">—</span>' ?></td>
-                                    <td data-label="To pay" class="num"><?= e(format_money($r['owed'])) ?></td>
-                                    <td data-label="Amount you are paying" class="num">
-                                        <input type="text" inputmode="decimal" class="input-num" name="select_amount[<?= e($r['key']) ?>]" data-pay-amount data-owed="<?= e(number_format($r['owed'], 2, '.', '')) ?>"
-                                               value="<?= e($on ? $s['chosen'][$r['key']] : '') ?>" <?= $on ? '' : 'disabled' ?> aria-label="Amount for <?= e($g['title'] . ' ' . $r['label']) ?>">
-                                    </td>
-                                </tr>
-                            <?php endforeach; ?>
-                            </tbody>
-                        <?php endforeach; ?>
-                    </table>
-                </div>
-                <p class="pay-for__summary" aria-live="polite">Assigned <strong data-pay-assigned>₱0.00</strong> of <strong data-pay-total>₱0.00</strong> paid ·
-                    not assigned <strong data-pay-rest>₱0.00</strong><?= array_filter($s['groups'], static fn ($g) => $g['kind'] === 'obligation') ? ' <span class="text-muted">(the owner will post it)</span>' : '' ?></p>
-            <?php endif; ?>
-        </fieldset>
+        <?= render_payment_for_table($s['groups'], $s['chosen'], $errors) ?>
 
         <div class="form-grid">
             <div class="form-group form-group--full">
@@ -432,6 +386,68 @@ function render_payment_form(array $s, string $action, string $cancelUrl): strin
             <button type="submit" class="btn btn--primary" data-loading-text="Sending…"><?= icon('check') ?> <span class="btn__label"><?= $payment ? 'Save and resubmit' : 'Submit payment' ?></span></button>
         </div>
     </form>
+    <?php
+
+    return (string) ob_get_clean();
+}
+
+/**
+ * "What is this payment for?" - every open item of the borrower, one row per
+ * installment, with a box for the amount (assets/js/portal-pay.js keeps the
+ * assigned / not assigned summary). Shared by the borrower form and the staff
+ * "Receive payment" form.
+ */
+function render_payment_for_table(array $groups, array $chosen, array $errors, ?string $help = null): string
+{
+    ob_start();
+    ?>
+        <fieldset class="pay-for" data-pay-for>
+            <legend>What is this payment for?</legend>
+            <p class="field-help"><?= $help !== null ? e($help) : 'Tick the items or installments you are paying and the amount for each. Late charges on an item are paid first from what you put on it. '
+                . (array_filter($groups, static fn ($g) => $g['kind'] === 'obligation') ? 'Anything you do not assign is posted by the owner.' : 'Put the whole amount on the items you are paying.') ?></p>
+            <?php if (isset($errors['selection'])): ?><p class="field-error"><?= e($errors['selection']) ?></p><?php endif; ?>
+            <?php if (!$groups): ?>
+                <p class="empty-inline">You have nothing open to pay right now.</p>
+            <?php else: ?>
+                <div class="table-wrap">
+                    <table class="table table--cards table--compact pay-for__table">
+                        <thead><tr><th scope="col" class="col-check"><span class="visually-hidden">Pay</span></th><th scope="col">Item</th><th scope="col">Due</th><th scope="col" class="num">To pay</th><th scope="col" class="num">Amount you are paying</th></tr></thead>
+                        <?php foreach ($groups as $g): ?>
+                            <tbody>
+                            <tr class="pay-for__group"><td colspan="5"><strong><?= e($g['title']) ?></strong>
+                                <?= $g['subtitle'] ? ' · ' . e($g['subtitle']) : '' ?>
+                                <span class="text-muted"> · total to pay <?= e(format_money($g['owed'])) ?><?= $g['penalties'] > 0 ? ' (incl. ' . e(format_money($g['penalties'])) . ' late charges)' : '' ?></span></td></tr>
+                            <?php if ($g['months']): ?>
+                                <tr class="pay-for__months"><td colspan="5"><span class="text-muted">Monthly amounts (paid oldest month first):</span>
+                                    <?php foreach (array_slice($g['months'], 0, 4) as $m): ?>
+                                        <span class="pay-for__month">#<?= e($m['installment_number']) ?> · <?= e(format_date($m['due_date'])) ?> · <?= e(format_money($m['remaining_amount'])) ?><?= $m['status'] === 'overdue' ? ' <span class="status status--danger">Overdue</span>' : '' ?></span>
+                                    <?php endforeach; ?>
+                                    <?= count($g['months']) > 4 ? '<span class="text-muted">+' . e(count($g['months']) - 4) . ' more</span>' : '' ?>
+                                    <a href="<?= e($g['link']) ?>">See schedule</a></td></tr>
+                            <?php endif; ?>
+                            <?php foreach ($g['rows'] as $r): ?>
+                                <?php $on = array_key_exists($r['key'], $chosen); ?>
+                                <tr>
+                                    <td class="col-check"><input type="checkbox" name="select[<?= e($r['key']) ?>]" value="1" data-pay-check <?= $on ? 'checked' : '' ?>
+                                               id="sel-<?= e(md5($r['key'])) ?>"></td>
+                                    <td data-label="Item"><label for="sel-<?= e(md5($r['key'])) ?>"><?= e($r['label']) ?></label>
+                                        <?= $r['overdue'] ? ' <span class="status status--danger">Overdue</span>' : '' ?></td>
+                                    <td data-label="Due"><?= $r['due_date'] ? e(format_date($r['due_date'])) : '<span class="text-muted">—</span>' ?></td>
+                                    <td data-label="To pay" class="num"><?= e(format_money($r['owed'])) ?></td>
+                                    <td data-label="Amount you are paying" class="num">
+                                        <input type="text" inputmode="decimal" class="input-num" name="select_amount[<?= e($r['key']) ?>]" data-pay-amount data-owed="<?= e(number_format($r['owed'], 2, '.', '')) ?>"
+                                               value="<?= e($on ? $chosen[$r['key']] : '') ?>" <?= $on ? '' : 'disabled' ?> aria-label="Amount for <?= e($g['title'] . ' ' . $r['label']) ?>">
+                                    </td>
+                                </tr>
+                            <?php endforeach; ?>
+                            </tbody>
+                        <?php endforeach; ?>
+                    </table>
+                </div>
+                <p class="pay-for__summary" aria-live="polite">Assigned <strong data-pay-assigned>₱0.00</strong> of <strong data-pay-total>₱0.00</strong> paid ·
+                    not assigned <strong data-pay-rest>₱0.00</strong><?= $help === null && array_filter($groups, static fn ($g) => $g['kind'] === 'obligation') ? ' <span class="text-muted">(the owner will post it)</span>' : '' ?></p>
+            <?php endif; ?>
+        </fieldset>
     <?php
 
     return (string) ob_get_clean();

@@ -6,7 +6,8 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/plan_functions.php';
 
-$currentUser = require_admin();
+$currentUser = require_staff_area();
+$canManage = user_is_admin($currentUser);   // staff: read only
 
 $state = list_state([
     'path'    => 'pages/installment_plans/index.php',
@@ -52,12 +53,12 @@ require APP_ROOT . '/includes/header.php';
 ?>
 
 <?= render_print_header($state, $result['total'], $result['pager']) ?>
-<?= render_list_header($state, 'Installment terms of card transactions and their payment schedules.', url('pages/installment_plans/create.php')) ?>
+<?= render_list_header($state, 'Installment terms of card transactions and their payment schedules.', ($canManage ? url('pages/installment_plans/create.php') : null)) ?>
 <?= render_list_toolbar($state) ?>
 
 <section class="panel panel--flush" aria-label="Installment plan list">
     <?php if ($result['total'] === 0): ?>
-        <?= render_empty_state($state, url('pages/installment_plans/create.php'), 'Create a plan for a transaction bought on installment.', 'repeat') ?>
+        <?= render_empty_state($state, $canManage ? url('pages/installment_plans/create.php') : null, 'Create a plan for a transaction bought on installment.', 'repeat') ?>
     <?php else: ?>
         <div class="table-wrap">
             <table class="table table--cards">
@@ -88,7 +89,7 @@ require APP_ROOT . '/includes/header.php';
                         <td class="actions no-print">
                             <div class="row-actions">
                                 <?= icon_link(url('pages/installment_plans/view.php', ['id' => $row['id']]), 'eye', 'View plan') ?>
-                                <?= icon_link(url('pages/installment_plans/edit.php', ['id' => $row['id']]), 'edit', 'Edit plan') ?>
+                                <?= $canManage ? icon_link(url('pages/installment_plans/edit.php', ['id' => $row['id']]), 'edit', 'Edit plan') : '' ?>
                             </div>
                         </td>
                     </tr>

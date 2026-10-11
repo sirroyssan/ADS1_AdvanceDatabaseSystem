@@ -6,7 +6,8 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/plan_functions.php';
 
-$currentUser = require_admin();
+$currentUser = require_staff_area();
+$canManage = user_is_admin($currentUser);   // staff: read only
 
 $plan = find_or_redirect(plan_find(request_id()), 'pages/installment_plans/index.php', 'Installment plan');
 $schedule = db_all('SELECT * FROM installment_schedules WHERE installment_plan_id = :id ORDER BY installment_number', [':id' => $plan['id']]);
@@ -37,7 +38,7 @@ require APP_ROOT . '/includes/header.php';
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/installment_plans/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print schedule</span></button>
-        <a data-modal-form href="<?= e(url('pages/installment_plans/edit.php', ['id' => $plan['id']])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+        <?php if ($canManage): ?>        <a data-modal-form href="<?= e(url('pages/installment_plans/edit.php', ['id' => $plan['id']])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a><?php endif; ?>
     </div>
 </section>
 
@@ -54,7 +55,7 @@ require APP_ROOT . '/includes/header.php';
         <?= render_details([
             'Transaction'            => related_link($plan['transaction_id'], $plan['transaction_number'], 'pages/transactions/view.php'),
             'Card'                   => related_link($plan['credit_card_id'], $plan['card_nickname'] . ' •••• ' . $plan['last_four'], 'pages/credit_cards/view.php'),
-            'Borrower'               => $plan['borrower_id'] ? related_link($plan['borrower_id'], borrower_name($plan), 'pages/borrowers/view.php') : 'Owner',
+            'Borrower'               => $plan['borrower_id'] ? ($canManage ? related_link($plan['borrower_id'], borrower_name($plan), 'pages/borrowers/view.php') : e(borrower_name($plan))) : 'Owner',
             'Total principal'        => e(format_money($plan['total_principal'])),
             'Interest amount'        => e(format_money($plan['interest_amount'])),
             'Fees amount'            => e(format_money($plan['fees_amount'])),
@@ -76,7 +77,7 @@ require APP_ROOT . '/includes/header.php';
             <p class="field-help">Use <strong>Pay</strong> on a row to record what was paid to the bank for that installment; the plan becomes Completed when every row is paid or waived.</p>
             <p class="field-help">Borrower repayments are recorded separately in Borrower Payments.</p>
         </section>
-        <section class="panel panel--danger no-print">
+        <section class="panel panel--danger no-print"<?= $canManage ? '' : ' hidden' ?>>
             <header class="panel__header"><h3>Delete plan</h3></header>
             <?php if ($locked): ?>
                 <p class="field-help">Payments are recorded on this schedule, so the plan is kept. Set its status to Cancelled instead.</p>
@@ -92,12 +93,12 @@ require APP_ROOT . '/includes/header.php';
 <section class="panel subpanel">
     <header class="panel__header">
         <h3><?= icon('calendar') ?> Payment schedule</h3>
-        <?php if ($schedule && $plan['status'] === 'active'): ?>
+        <?php if ($schedule && $plan['status'] === 'active' && $canManage): ?>
             <button type="button" class="btn btn--sm btn--outline no-print" data-modal-panel="shift-dates"
                     data-modal-subtitle="The bank changed the due date? Move every installment to the new monthly due day."><?= icon('calendar') ?> <span>Change due dates</span></button>
         <?php endif; ?>
     </header>
-    <?php if ($schedule && $plan['status'] === 'active'): ?>
+    <?php if ($schedule && $plan['status'] === 'active' && $canManage): ?>
         <?= render_schedule_shift_form(url('pages/installment_plans/related.php'), $plan['id'], $schedule[0]['due_date'], $plan['frequency'], count($schedule)) ?>
     <?php endif; ?>
     <p class="field-help no-print">Updated automatically from the borrower's approved payments (oldest installment first); statuses follow today's date. The amount paid toward the bank installments is recorded as a card payment automatically.</p>
@@ -119,9 +120,9 @@ require APP_ROOT . '/includes/header.php';
                         <td data-label="#" class="num"><?= e($r['installment_number']) ?> of <?= e($plan['number_of_installments']) ?></td>
                         <td data-label="Billing date"><?= e(format_date($billed['date'])) ?></td>
                         <td data-label="Installment charge" class="num"><?= e(format_money($r['amount_due'])) ?></td>
-                        <td data-label="Statement"><a data-modal-form href="<?= e($where['statement_id']
+                        <td data-label="Statement"><?php if ($canManage): ?><a data-modal-form href="<?= e($where['statement_id']
                             ? url('pages/statements/view.php', ['id' => $where['statement_id']])
-                            : url('pages/statements/view.php', ['card' => $plan['credit_card_id'], 'start' => $where['start'], 'end' => $where['end']])) ?>"><?= e(statement_month_label($where['end'])) ?></a>
+                            : url('pages/statements/view.php', ['card' => $plan['credit_card_id'], 'start' => $where['start'], 'end' => $where['end']])) ?>"><?= e(statement_month_label($where['end'])) ?></a><?php else: ?><?= e(statement_month_label($where['end'])) ?><?php endif; ?>
                             <span class="text-muted"><?= $where['statement_id'] && $where['recorded'] ? '· SOA recorded' : '· SOA not recorded' ?></span></td>
                         <td data-label="Payment due"><?php $due = borrowed_due_of_period($planCtx, $where); /* same rule everywhere: recorded SOA, else the card's due-date rule */ ?>
                             <?= $due['date'] ? e(format_date($due['date'])) . ' <span class="text-muted">(' . e($due['source'] === 'statement' ? 'SOA' : 'card rule') . ')</span>' : '<span class="text-muted">not set</span>' ?>

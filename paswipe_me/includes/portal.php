@@ -205,7 +205,7 @@ function portal_all_items(string $borrowerId, bool $openOnly = true): array
         }
         $due = borrowed_obligation_due_now($o, $today, round($outstanding + $penalties, 2), $penalties);
         $items[] = [
-            'kind' => 'obligation',
+            'kind' => 'obligation', 'id' => $o['id'],
             'type' => match (true) {
                 $o['cash_loan_allocation_id'] !== null => 'Cash loan',
                 $o['payment_type'] === 'cash_advance' => 'Cash advance',
@@ -235,7 +235,7 @@ function portal_all_items(string $borrowerId, bool $openOnly = true): array
             continue;   // older purchases tracked as an obligation are listed above
         }
         $items[] = [
-            'kind' => 'purchase',
+            'kind' => 'purchase', 'id' => $p['id'],
             'type' => match ($p['payment_type']) {
                 'installment' => 'Installment purchase',
                 'cash_advance' => 'Cash advance',

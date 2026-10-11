@@ -32,6 +32,8 @@ $navigation = [
             ['key' => 'borrowers',         'label' => 'Borrowers',         'icon' => 'users',     'path' => 'pages/borrowers/index.php'],
             ['key' => 'obligations',       'label' => 'Obligations',       'icon' => 'file-text', 'path' => 'pages/obligations/index.php'],
             ['key' => 'borrower_payments', 'label' => 'Borrower Payments', 'icon' => 'receipt',   'path' => 'pages/borrower_payments/index.php'],
+            ['key' => 'staff_receive',     'label' => 'Receive Payment',   'icon' => 'wallet',    'path' => 'pages/staff/receive.php'],
+            ['key' => 'staff_receipts',    'label' => 'Receipts',          'icon' => 'file-text', 'path' => 'pages/staff/receipts.php'],
         ],
     ],
     [
@@ -74,6 +76,8 @@ $navigation = [
             ['key' => 'users',         'label' => 'Users & Roles', 'icon' => 'shield',  'path' => 'pages/users/index.php', 'admin' => true],
             ['key' => 'notifications', 'label' => 'Notifications', 'icon' => 'bell',    'path' => 'pages/notifications/index.php'],
             ['key' => 'activity_logs', 'label' => 'Activity Logs', 'icon' => 'history', 'path' => 'pages/activity_logs/index.php'],
+            ['key' => 'staff_accounts', 'label' => 'Staff Accounts', 'icon' => 'users', 'path' => 'pages/staff_accounts/index.php'],
+            ['key' => 'authorizations', 'label' => 'Authorization Requests', 'icon' => 'shield', 'path' => 'pages/authorizations/index.php'],
             ['key' => 'data_reset',    'label' => 'Reset Test Data', 'icon' => 'trash', 'path' => 'pages/data_reset/index.php'],
             ['key' => 'profile',       'label' => 'My Profile',    'icon' => 'user',    'path' => 'pages/profile/index.php'],
         ],
@@ -124,6 +128,42 @@ if (($layout ?? 'admin') === 'portal') {
     ];
 }
 
+// Staff keep the owner's books: only the staff pages (each one is also checked on the server).
+if (($layout ?? 'admin') !== 'portal' && !array_intersect(ADMIN_ROLES, (array) ($_SESSION['user_roles'] ?? []))
+    && in_array('staff', (array) ($_SESSION['user_roles'] ?? []), true)) {
+    $navigation = [
+        [
+            'label' => null,
+            'items' => [
+                ['key' => 'staff_home', 'label' => 'Staff Dashboard', 'icon' => 'dashboard', 'path' => 'pages/staff/index.php'],
+            ],
+        ],
+        [
+            'label' => 'Daily Work',
+            'items' => [
+                ['key' => 'transactions',    'label' => 'Transactions',    'icon' => 'layers',    'path' => 'pages/transactions/index.php'],
+                ['key' => 'staff_receive',   'label' => 'Receive Payment', 'icon' => 'wallet',    'path' => 'pages/staff/receive.php'],
+                ['key' => 'staff_receipts',  'label' => 'Receipts',        'icon' => 'file-text', 'path' => 'pages/staff/receipts.php'],
+                ['key' => 'staff_due_dates', 'label' => 'Card Due Dates',  'icon' => 'calendar',  'path' => 'pages/staff/due_dates.php'],
+            ],
+        ],
+        [
+            'label' => 'Records',
+            'items' => [
+                ['key' => 'credit_cards',   'label' => 'Credit Cards',           'icon' => 'credit-card', 'path' => 'pages/credit_cards/index.php'],
+                ['key' => 'installments',   'label' => 'Installment Plans',      'icon' => 'repeat',      'path' => 'pages/installment_plans/index.php'],
+                ['key' => 'authorizations', 'label' => 'My Change Requests',     'icon' => 'shield',      'path' => 'pages/authorizations/index.php'],
+            ],
+        ],
+        [
+            'label' => 'Account',
+            'items' => [
+                ['key' => 'profile', 'label' => 'My Profile', 'icon' => 'user', 'path' => 'pages/profile/index.php'],
+            ],
+        ],
+    ];
+}
+
 // "Amounts to Repay" only for users who have card purchases assigned to them.
 if (!borrowed_has_items()) {
     foreach ($navigation as &$group) {
@@ -138,7 +178,8 @@ if (!borrowed_has_items()) {
         <span class="brand-mark"><?= icon('credit-card') ?></span>
         <span class="sidebar__brand-text">
             <strong><?= e(APP_NAME) ?></strong>
-            <small><?= ($layout ?? 'admin') === 'portal' ? 'Borrower Portal' : 'Admin Panel' ?></small>
+            <small><?= ($layout ?? 'admin') === 'portal' ? 'Borrower Portal'
+                : (in_array('staff', (array) ($_SESSION['user_roles'] ?? []), true) && !array_intersect(ADMIN_ROLES, (array) ($_SESSION['user_roles'] ?? [])) ? 'Staff Panel' : 'Admin Panel') ?></small>
         </span>
         <button type="button" class="icon-button sidebar__close" data-sidebar-close aria-label="Close navigation">
             <?= icon('x') ?>

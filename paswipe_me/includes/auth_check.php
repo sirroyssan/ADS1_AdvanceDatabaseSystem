@@ -13,11 +13,12 @@
 require_once __DIR__ . '/bootstrap.php';
 
 // Display order when a user has more than one role (user_roles allows several).
-const ROLE_PRIORITY = ['owner', 'admin', 'borrower'];
+const ROLE_PRIORITY = ['owner', 'admin', 'staff', 'borrower'];
 
 const ROLE_LABELS = [
     'owner'    => 'Owner',
     'admin'    => 'Administrator',
+    'staff'    => 'Staff',
     'borrower' => 'Borrower',
 ];
 

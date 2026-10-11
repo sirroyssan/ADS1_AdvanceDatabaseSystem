@@ -49,6 +49,10 @@ function owner_id(): string
     if (array_intersect(ADMIN_ROLES, (array) ($_SESSION['user_roles'] ?? []))) {
         return $id;
     }
+    // Staff keep the books of the owner they work for (active link only).
+    if (in_array('staff', (array) ($_SESSION['user_roles'] ?? []), true)) {
+        return $lender[$id] ??= (staff_employer($id) ?? OWNER_NONE);
+    }
 
     return $lender[$id] ??= (string) (db_value(
         'SELECT b.owner_user_id FROM borrower_user_accounts a JOIN borrowers b ON b.id = a.borrower_id
@@ -82,6 +86,8 @@ const OWNERSHIP = [
     'demand_letter_templates' => 'owner',
     'documents'               => 'owner',
     'installment_rules'       => 'owner',
+    'payment_receipts'        => 'owner',
+    'authorization_requests'  => 'owner',
     'transactions'            => 'card',
     'bank_charges'            => 'card',
     'cash_advances'           => 'card',

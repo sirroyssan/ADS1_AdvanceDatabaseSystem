@@ -21,6 +21,9 @@ function home_for(array $roles): string
         return 'pages/dashboard.php';
     }
 
+    if (in_array('staff', $roles, true)) {
+        return 'pages/staff/index.php';
+    }
     if (in_array('borrower', $roles, true)) {
         return 'portal/index.php';
     }

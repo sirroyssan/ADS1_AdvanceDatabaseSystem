@@ -6,8 +6,8 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 
 // Every signed-in role manages its own profile; borrowers see it inside the portal layout.
-$currentUser = require_role(array_merge(ADMIN_ROLES, ['borrower']));
-$layout = user_is_admin($currentUser) ? 'admin' : 'portal';
+$currentUser = require_role(array_merge(ADMIN_ROLES, ['staff', 'borrower']));
+$layout = user_is_admin($currentUser) || user_is_staff($currentUser) ? 'admin' : 'portal';
 
 $errors = [];
 

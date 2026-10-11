@@ -6,7 +6,7 @@
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/transaction_functions.php';
 
-$currentUser = require_admin();
+$currentUser = require_staff_area();
 
 $state = list_state([
     'path'    => 'pages/transactions/index.php',
@@ -105,7 +105,8 @@ require APP_ROOT . '/includes/header.php';
                             <div class="row-actions">
                                 <?= icon_link(url('pages/transactions/view.php', ['id' => $row['id']]), 'eye', 'View ' . $row['transaction_number']) ?>
                                 <?php if (!in_array($row['status'], TXN_LOCKED_STATUSES, true)): ?>
-                                    <?= icon_link(url('pages/transactions/edit.php', ['id' => $row['id']]), 'edit', 'Edit ' . $row['transaction_number']) ?>
+                                    <?= user_is_admin($currentUser) ? icon_link(url('pages/transactions/edit.php', ['id' => $row['id']]), 'edit', 'Edit ' . $row['transaction_number'])
+                                        : icon_link(url('pages/authorizations/request.php', ['type' => 'transaction', 'id' => $row['id'], 'action' => 'edit']), 'lock', 'Request to edit ' . $row['transaction_number']) ?>
                                 <?php endif; ?>
                             </div>
                         </td>
