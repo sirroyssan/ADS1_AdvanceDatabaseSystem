@@ -42,7 +42,9 @@ function cash_loan_fields(bool $isNew, ?array $current = null): array
         'payment_frequency'    => ['label' => 'Payment frequency', 'type' => 'select', 'options' => enum_options(ENUM_FREQUENCY), 'empty_label' => '— Not set —'],
         'start_date'           => ['label' => 'Start date', 'type' => 'date'],
         'first_due_date'       => ['label' => 'First due date', 'type' => 'date'],
-        'end_date'             => ['label' => 'End date', 'type' => 'date'],
+        'end_date'             => ['label' => 'End date (last installment)', 'type' => 'date',
+                                   'attrs' => ['data-end-from' => 'f_first_due_date,f_term_months,f_payment_frequency'],
+                                   'help' => 'Calculated from the first due date and the term. Enter it yourself only when the loan has no term.'],
         'notes'                => ['label' => 'Notes', 'type' => 'textarea', 'rows' => 3],
     ];
 }
@@ -50,6 +52,11 @@ function cash_loan_fields(bool $isNew, ?array $current = null): array
 function cash_loan_validate(array $fields, array $input, ?string $id = null): array
 {
     [$data, $errors] = validate_fields($fields, $input, $id);
+
+    // The last installment follows from the first due date and the term.
+    if (!isset($errors['term_months']) && !isset($errors['first_due_date']) && $data['term_months'] && $data['first_due_date']) {
+        $data['end_date'] = schedule_due_date($data['first_due_date'], (int) $data['term_months'] - 1, $data['payment_frequency'] ?: 'monthly');
+    }
 
     if ($data['start_date'] && $data['first_due_date'] && $data['first_due_date'] < $data['start_date']) {
         $errors['first_due_date'] = 'First due date cannot be before the start date.';
@@ -108,7 +115,7 @@ function allocation_fields(): array
     return [
         'borrower_id'      => ['label' => 'Person', 'type' => 'select', 'options' => borrower_options(), 'empty_label' => '— Me (card owner) —'],
         'allocation_type'  => ['label' => 'Responsibility', 'type' => 'select', 'options' => CASH_LOAN_ALLOCATION_TYPES, 'required' => true, 'initial' => 'reimburse',
-                               'help' => 'You stay responsible to the bank for the whole loan. "Owes me" can become an obligation that follows the loan\'s monthly schedule.'],
+                               'help' => 'You stay responsible to the bank for the whole loan. "Owes me" creates the person\'s obligation at once (active), repaid over the loan\'s term and due on its last installment date.'],
         'allocated_amount' => ['label' => 'Amount', 'type' => 'decimal', 'required' => true, 'min' => 0],
         'description'      => ['label' => 'Description', 'type' => 'text', 'max' => 500],
     ];
@@ -195,4 +202,152 @@ function cash_loan_allocation_follow(array $obligation, float $newAmount, string
     $description = preg_replace('/share of ₱[\d,]+(\.\d{1,2})?/u', 'share of ' . format_money($newAmount), $description, 1) ?? $description;
 
     return [$description, null];
+}
+
+/**
+ * Date of the loan's last installment: from its repayment schedule, else the
+ * first due date plus the term (counted the way the schedule is built), else
+ * the end date entered on the loan.
+ */
+function cash_loan_last_due(array $loan): ?string
+{
+    if (!empty($loan['id'])) {
+        $last = db_value("SELECT MAX(due_date) FROM cash_loan_schedules WHERE cash_loan_id = :l AND status <> 'cancelled'", [':l' => $loan['id']]);
+        if ($last) {
+            return $last;
+        }
+    }
+    if ((int) ($loan['term_months'] ?? 0) > 0 && !empty($loan['first_due_date'])) {
+        return schedule_due_date($loan['first_due_date'], (int) $loan['term_months'] - 1, $loan['payment_frequency'] ?: 'monthly');
+    }
+
+    return $loan['end_date'] ?: null;
+}
+
+/**
+ * Build the loan's repayment schedule from its own terms (term, first due
+ * date, total repayment) when it has none yet. Returns the number of
+ * installments created (0 when it already has one or the terms are not
+ * complete). Call inside a transaction.
+ */
+function cash_loan_generate_schedule(array $loan): int
+{
+    if ((int) db_value('SELECT COUNT(*) FROM cash_loan_schedules WHERE cash_loan_id = :id', [':id' => $loan['id']]) > 0
+        || !$loan['term_months'] || !$loan['first_due_date'] || (float) $loan['total_repayment'] <= 0) {
+        return 0;
+    }
+    // Same principal as the card usage calculation.
+    $loanPrincipal = cash_loan_principal($loan);
+    $principal = $loanPrincipal > 0 ? min((float) $loan['total_repayment'], $loanPrincipal) : (float) $loan['total_repayment'];
+    $charges = (float) $loan['total_repayment'] - $principal;
+    $rows = build_schedule($principal, $charges, 0, (int) $loan['term_months'], $loan['first_due_date'], $loan['payment_frequency'] ?? 'monthly');
+    foreach ($rows as $row) {
+        db_insert('cash_loan_schedules', ['id' => new_uuid(), 'cash_loan_id' => $loan['id']] + $row);
+    }
+    if (!$loan['end_date']) {
+        db_update('cash_loans', ['end_date' => end($rows)['due_date']], $loan['id']);
+    }
+
+    return count($rows);
+}
+
+/**
+ * Turn an "owes me" allocation into the person's obligation, status active:
+ * their share, repaid over the loan's term and due on the loan's last
+ * installment date (the loan's schedule is built first when its terms are
+ * complete). Returns [obligation id, number, installments] or null when the
+ * allocation is not a debt of one of your borrowers or already has one.
+ * Call inside a transaction.
+ */
+function cash_loan_allocation_obligation(array $loan, string $allocationId, string $userId): ?array
+{
+    $allocation = db_row('SELECT * FROM cash_loan_allocations WHERE id = :i AND cash_loan_id = :l FOR UPDATE', [':i' => $allocationId, ':l' => $loan['id']]);
+    // Only a part someone repays to the card owner is a debt.
+    if (!$allocation || !in_array($allocation['allocation_type'], CASH_LOAN_DEBT_TYPES, true)
+        || !$allocation['borrower_id'] || !owns('borrowers', $allocation['borrower_id']) || $allocation['obligation_id']) {
+        return null;
+    }
+    cash_loan_generate_schedule($loan);
+    $due = cash_loan_last_due($loan);
+    $installments = (int) db_value("SELECT COUNT(*) FROM cash_loan_schedules WHERE cash_loan_id = :l AND status <> 'cancelled'", [':l' => $loan['id']]) ?: (int) $loan['term_months'];
+
+    $obligationId = new_uuid();
+    $number = generate_reference('OBL', 'borrower_obligations', 'obligation_number');
+    db_insert('borrower_obligations', [
+        'id' => $obligationId, 'obligation_number' => $number, 'borrower_id' => $allocation['borrower_id'],
+        'cash_loan_allocation_id' => $allocation['id'],
+        'description' => 'Cash loan ' . $loan['loan_reference'] . ' — share of ' . format_money($allocation['allocated_amount'])
+            . ($installments ? ' over ' . $installments . ' months' : '') . ($allocation['description'] ? ' — ' . $allocation['description'] : ''),
+        'obligation_date' => $loan['start_date'] ?: date('Y-m-d'),
+        'original_amount' => $allocation['allocated_amount'], 'total_amount_due' => $allocation['allocated_amount'],
+        'total_paid' => '0.00', 'outstanding_amount' => $allocation['allocated_amount'], 'status' => 'active',
+        'due_date' => $due,
+        'created_by' => $userId, 'updated_by' => $userId,
+    ]);
+    db_update('cash_loan_allocations', ['obligation_id' => $obligationId], $allocation['id']);
+    schedule_sync_obligation($obligationId);
+    notify_borrower($allocation['borrower_id'], 'obligation_created', 'New item: ' . $number,
+        format_money($allocation['allocated_amount']) . ' (your share of cash loan ' . $loan['loan_reference'] . ') was added to your balance'
+        . ($due ? ', last payment due ' . format_date($due) : '') . '.', 'obligation', $obligationId);
+
+    return [$obligationId, $number, $installments];
+}
+
+/**
+ * Save an edited loan and keep its schedule and its borrowers' obligations in
+ * step with the terms:
+ *   - a new term or total repayment rebuilds a schedule nothing was paid on
+ *     yet (refused once payments were made on it);
+ *   - a new first due date or frequency moves the existing schedule;
+ *   - a loan with obligations but no schedule gets one once its terms are
+ *     complete;
+ *   - obligations due on the loan's old last installment move to the new one,
+ *     and their "over N months" text follows the term.
+ * Returns [old last due, new last due] when the last due date changed.
+ * Call inside a transaction.
+ */
+function cash_loan_terms_follow(array $loan, array &$data, string $userId): ?array
+{
+    $oldLast = cash_loan_last_due($loan);
+    $rows = (int) db_value('SELECT COUNT(*) FROM cash_loan_schedules WHERE cash_loan_id = :l', [':l' => $loan['id']]);
+    $frequency = $data['payment_frequency'] ?? null;
+    $termChanged = (int) $data['term_months'] !== (int) $loan['term_months']
+        || abs((float) $data['total_repayment'] - (float) $loan['total_repayment']) >= 0.005;
+    $datesChanged = $data['first_due_date'] !== $loan['first_due_date'] || $frequency !== $loan['payment_frequency'];
+
+    $rebuild = false;
+    if ($rows > 0 && $termChanged) {
+        $paid = (float) db_value('SELECT COALESCE(SUM(amount_paid), 0) FROM cash_loan_schedules WHERE cash_loan_id = :l', [':l' => $loan['id']]);
+        if ($paid > 0.004) {
+            throw new DomainException(format_money($paid) . ' was already paid on this loan\'s schedule, so its term and total repayment can no longer change.');
+        }
+        // A plan nothing was paid on: rebuilt below from the new terms.
+        db_exec('DELETE FROM cash_loan_schedules WHERE cash_loan_id = :l', [':l' => $loan['id']]);
+        $rows = 0;
+        $rebuild = true;
+    } elseif ($rows > 0 && $datesChanged && $data['first_due_date']) {
+        $data['end_date'] = schedule_shift_dates('cash_loan_schedules', 'cash_loan_id', $loan['id'], $data['first_due_date'], $frequency ?? 'monthly');
+    }
+    db_update('cash_loans', $data + ['updated_by' => $userId], $loan['id']);
+
+    $ids = array_column(db_all(
+        "SELECT o.id FROM borrower_obligations o JOIN cash_loan_allocations a ON a.id = o.cash_loan_allocation_id
+          WHERE a.cash_loan_id = :l AND o.status <> 'cancelled'", [':l' => $loan['id']]), 'id');
+    $fresh = db_row('SELECT * FROM cash_loans WHERE id = :l', [':l' => $loan['id']]);
+    if ($rows === 0 && ($ids || $rebuild)) {
+        cash_loan_generate_schedule($fresh);
+    }
+    if ($termChanged && (int) $fresh['term_months'] > 0) {
+        foreach ($ids as $oid) {
+            $description = (string) db_value('SELECT description FROM borrower_obligations WHERE id = :id', [':id' => $oid]);
+            $new = preg_replace('/ over \d+ months/', ' over ' . (int) $fresh['term_months'] . ' months', $description, 1);
+            if ($new !== null && $new !== $description) {
+                db_update('borrower_obligations', ['description' => $new], $oid);
+            }
+        }
+    }
+    $newLast = cash_loan_last_due($fresh);
+    schedule_move_obligations($ids, $oldLast, $newLast);
+
+    return $oldLast !== $newLast && $newLast !== null ? [$oldLast, $newLast] : null;
 }

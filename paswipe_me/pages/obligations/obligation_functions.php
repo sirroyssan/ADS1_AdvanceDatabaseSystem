@@ -42,10 +42,42 @@ function obligation_fields(bool $isNew, ?array $current = null): array
         $fields['status'] = ['label' => 'Status', 'type' => 'select', 'options' => enum_options(['pending', 'active']), 'required' => true, 'initial' => 'active'];
     } else {
         $fields['obligation_number']['required'] = true;
-        $fields['borrower_id']['readonly'] = true;
+        $lock = obligation_borrower_lock($current);
+        if ($lock !== null) {
+            $fields['borrower_id']['readonly'] = true;
+            $fields['borrower_id']['help'] = 'The borrower cannot be changed: ' . $lock;
+        } else {
+            $fields['borrower_id']['help'] = 'Picked the wrong person? Choose the right borrower here; nothing has been paid on this yet.';
+        }
     }
 
     return $fields;
+}
+
+/**
+ * Why an obligation's borrower can no longer be changed, or null when it can
+ * (a wrong person picked by mistake): nothing paid or chosen in a payment,
+ * not tied to a transaction's borrower, no agreement or notice made for it.
+ */
+function obligation_borrower_lock(array $o): ?string
+{
+    if ((float) $o['total_paid'] > 0.004
+        || (int) db_value('SELECT COUNT(*) FROM borrower_payment_allocations WHERE obligation_id = :o', [':o' => $o['id']]) > 0) {
+        return 'payments were already applied to it.';
+    }
+    if ((int) db_value("SELECT COUNT(*) FROM borrower_payment_selections s JOIN borrower_payments p ON p.id = s.borrower_payment_id
+                         WHERE s.obligation_id = :o AND p.status NOT IN ('rejected', 'cancelled')", [':o' => $o['id']]) > 0) {
+        return 'a payment the borrower submitted for it is waiting for review.';
+    }
+    if ($o['transaction_id']) {
+        return 'it belongs to a card transaction; change the borrower on the transaction.';
+    }
+    if ((int) db_value('SELECT COUNT(*) FROM agreements WHERE obligation_id = :o', [':o' => $o['id']])
+        + (int) db_value('SELECT COUNT(*) FROM demand_letters WHERE obligation_id = :o', [':o' => $o['id']]) > 0) {
+        return 'an agreement or notice was already made for this borrower.';
+    }
+
+    return null;
 }
 
 /**

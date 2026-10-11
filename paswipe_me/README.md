@@ -1112,8 +1112,12 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 **Cash loans: who carries what** (`pages/cash_loans/`):
 - The card owner is the account holder, responsible to the bank for every installment.
 - Each allocation has a defined responsibility:
-  - *Owes me*: the person repays this part to the card owner. It can become an obligation, which
-    repays its share of each loan installment. Older rows typed "borrower" mean the same.
+  - *Owes me*: the person repays this part to the card owner. Saving the allocation **creates the
+    person's obligation at once** (status *active*; no "Create obligation" click): their share, over
+    the loan's term, due on the loan's last installment date. The loan's repayment schedule is built
+    from its own terms at the same time if it has none yet. The person is notified. Older rows typed
+    "borrower" mean the same; older allocations without an obligation keep the *Create obligation*
+    button.
   - *My own share*: no other person, no debt.
   - *Contribution*: helps pay, not owed.
 - For each allocation, the loan page shows the amount per month (allocated ÷ term, the last month
@@ -1121,6 +1125,22 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - Example: ₱130,000 over 24 months is ₱100,000 owed by ate (₱4,166.67 a month) and ₱30,000 own share
   (₱1,250.00 a month), ₱5,416.67 a month combined.
 - No one becomes a co-borrower automatically.
+- **End date from the term:** the loan's *End date (last installment)* is calculated from the first
+  due date and the term, on the same day of the month (e.g. first due Jun 23, 2026 + 24 months →
+  May 23, 2028). It is shown live in the form and calculated again on the server.
+- **Changing the terms** (`cash_loan_terms_follow()`):
+  - A new term or total repayment rebuilds the schedule, as long as nothing was paid on it.
+    Once payments exist, the change is refused.
+  - A new first due date moves the schedule.
+  - Obligations due on the old last date move to the new one, and their "over N months" text follows.
+- **Wrong borrower on an obligation:** the obligation's *Borrower* can be changed on its Edit form as
+  long as:
+  - nothing was paid on it or chosen in a submitted payment;
+  - it is not a card transaction's (change that on the transaction);
+  - no agreement or notice was made for it.
+
+  The cash loan allocation moves with it. The change is logged (`change_borrower`) and the new
+  person is notified. Otherwise the field is locked and shows why; the server checks this again.
 
 **Cash advance given to someone:**
 - The withdrawal is one `cash_advances` row and is billed once.

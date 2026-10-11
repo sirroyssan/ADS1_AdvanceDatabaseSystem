@@ -136,6 +136,49 @@
         });
 
         /* ------------------------------------------------------------------
+         * Last installment date: data-end-from="f_first_due,f_term,f_frequency"
+         * = first due date + (term - 1) periods, the same day of the month
+         * (the server calculates it again). Read-only while it is calculated.
+         * ------------------------------------------------------------------ */
+        scope.querySelectorAll('[data-end-from]').forEach(function (target) {
+            if (!App.once(target, 'M9')) return;
+            var ids = target.getAttribute('data-end-from').split(',');
+            var first = document.getElementById(ids[0]);
+            var term = document.getElementById(ids[1]);
+            var freq = document.getElementById(ids[2]);
+            if (!first || !term) return;
+            function pad(n) { return (n < 10 ? '0' : '') + n; }
+            function update() {
+                var m = /^(\d{4})-(\d{2})-(\d{2})$/.exec(first.value);
+                var count = parseInt(term.value, 10);
+                if (!m || !(count > 0)) {
+                    target.readOnly = false;
+                    return;
+                }
+                var f = freq ? freq.value : '';
+                var date;
+                if (f === 'weekly' || f === 'biweekly') {
+                    date = new Date(Date.UTC(+m[1], +m[2] - 1, +m[3] + (f === 'weekly' ? 7 : 14) * (count - 1)));
+                } else {
+                    var months = (+m[2] - 1) + (f === 'quarterly' ? 3 : 1) * (count - 1);
+                    var year = +m[1] + Math.floor(months / 12);
+                    var month = months % 12;
+                    var last = new Date(Date.UTC(year, month + 1, 0)).getUTCDate();
+                    date = new Date(Date.UTC(year, month, Math.min(+m[3], last)));
+                }
+                target.value = date.getUTCFullYear() + '-' + pad(date.getUTCMonth() + 1) + '-' + pad(date.getUTCDate());
+                target.readOnly = true;
+            }
+            [first, term, freq].forEach(function (el) {
+                if (el) {
+                    el.addEventListener('input', update);
+                    el.addEventListener('change', update);
+                }
+            });
+            update();
+        });
+
+        /* ------------------------------------------------------------------
          * Fields shown only for one value of another field:
          * data-show-if="f_payment_type=installment" (on the input) hides its form group otherwise.
          * ------------------------------------------------------------------ */

@@ -26,24 +26,10 @@ if (is_post()) {
         try {
             $moved = null;
             card_usage_apply([$loan['credit_card_id'], $data['credit_card_id']], function () use ($loan, &$data, $currentUser, &$moved) {
-                // A new first due date (or frequency) moves the existing repayment schedule with it.
-                $hasSchedule = (int) db_value('SELECT COUNT(*) FROM cash_loan_schedules WHERE cash_loan_id = :l', [':l' => $loan['id']]) > 0;
-                if ($hasSchedule && $data['first_due_date'] && ($data['first_due_date'] !== $loan['first_due_date'] || ($data['payment_frequency'] ?? null) !== $loan['payment_frequency'])) {
-                    $newEnd = schedule_shift_dates('cash_loan_schedules', 'cash_loan_id', $loan['id'], $data['first_due_date'], $data['payment_frequency'] ?? 'monthly');
-                    if (array_key_exists('end_date', $data) && ($data['end_date'] === $loan['end_date'] || !$data['end_date'])) {
-                        $data['end_date'] = $newEnd;
-                    }
-                    $moved = [$loan['end_date'], $newEnd];
-                }
-                db_update('cash_loans', $data + ['updated_by' => $currentUser['id']] + ($moved && !array_key_exists('end_date', $data) ? ['end_date' => $moved[1]] : []), $loan['id']);
-                if ($moved) {
-                    schedule_move_obligations(array_column(db_all(
-                        "SELECT o.id FROM borrower_obligations o JOIN cash_loan_allocations a ON a.id = o.cash_loan_allocation_id
-                          WHERE a.cash_loan_id = :l AND o.status <> 'cancelled'", [':l' => $loan['id']]), 'id'), $moved[0], $moved[1]);
-                }
+                $moved = cash_loan_terms_follow($loan, $data, $currentUser['id']);
             }, true);
             if ($moved) {
-                flash('info', 'The repayment schedule moved with the new first due date: it now ends ' . format_date($moved[1]) . '. Amounts and payments were kept.');
+                flash('info', 'The repayment schedule follows the new terms: the last installment is now due ' . format_date($moved[1]) . '. The borrowers\' obligations follow.');
             }
             log_activity('update', 'cash_loan', $loan['id'], 'Updated cash loan ' . $data['loan_reference'], array_intersect_key($loan, $data), $data);
             flash('success', 'Cash loan ' . $data['loan_reference'] . ' was updated. ' . cash_loan_usage_message($data));

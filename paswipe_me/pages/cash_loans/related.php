@@ -59,25 +59,13 @@ try {
                 flash('error', 'A schedule already exists.');
                 break;
             }
-            if (!$loan['term_months'] || !$loan['first_due_date'] || (float) $loan['total_repayment'] <= 0) {
+            $count = db_transaction(static fn () => cash_loan_generate_schedule($loan));
+            if ($count === 0) {
                 flash('error', 'Enter the term, first due date and total repayment first.');
                 break;
             }
-            // Same principal as the card usage calculation.
-            $loanPrincipal = cash_loan_principal($loan);
-            $principal = $loanPrincipal > 0 ? min((float) $loan['total_repayment'], $loanPrincipal) : (float) $loan['total_repayment'];
-            $charges = (float) $loan['total_repayment'] - $principal;
-            $rows = build_schedule($principal, $charges, 0, (int) $loan['term_months'], $loan['first_due_date'], $loan['payment_frequency'] ?? 'monthly');
-            db_transaction(function () use ($loan, $rows) {
-                foreach ($rows as $row) {
-                    db_insert('cash_loan_schedules', ['id' => new_uuid(), 'cash_loan_id' => $loan['id']] + $row);
-                }
-                if (!$loan['end_date']) {
-                    db_update('cash_loans', ['end_date' => end($rows)['due_date']], $loan['id']);
-                }
-            });
-            log_activity('generate_schedule', 'cash_loan', $loan['id'], 'Generated ' . count($rows) . '-row schedule');
-            flash('success', 'Repayment schedule with ' . count($rows) . ' installments was generated.');
+            log_activity('generate_schedule', 'cash_loan', $loan['id'], 'Generated ' . $count . '-row schedule');
+            flash('success', 'Repayment schedule with ' . $count . ' installments was generated.');
             break;
 
         case 'record_payment':
@@ -97,9 +85,25 @@ try {
                 flash('error', 'Allocation not saved: ' . reset($errors));
                 break;
             }
-            db_insert('cash_loan_allocations', ['id' => new_uuid(), 'cash_loan_id' => $loan['id']] + $data);
+            // An "owes me" part becomes the person's obligation at once (status active), over the loan's term.
+            $created = db_transaction(static function () use ($loan, $data, $currentUser) {
+                $allocationId = new_uuid();
+                db_insert('cash_loan_allocations', ['id' => $allocationId, 'cash_loan_id' => $loan['id']] + $data);
+                return cash_loan_allocation_obligation($loan, $allocationId, $currentUser['id']);
+            });
             log_activity('add_allocation', 'cash_loan', $loan['id'], 'Allocated ' . format_money($data['allocated_amount']), null, $data);
-            flash('success', 'Allocation of ' . format_money($data['allocated_amount']) . ' was added.');
+            if ($created) {
+                log_activity('create', 'obligation', $created[0], 'Created obligation ' . $created[1] . ' from cash loan ' . $loan['loan_reference']);
+                penalty_assign_on_create($created[0]);
+                $due = db_value('SELECT due_date FROM borrower_obligations WHERE id = :id', [':id' => $created[0]]);
+                flash('success', 'Allocation of ' . format_money($data['allocated_amount']) . ' was added. Obligation ' . $created[1] . ' was created (active)'
+                    . ($created[2] ? ': ' . $created[2] . ' monthly installments' : '') . ($due ? ', last one due ' . format_date($due) : '') . '.');
+                if (!$due) {
+                    flash('warning', 'The loan has no term and first due date yet, so the obligation has no due date. Enter them on the loan; the obligation follows.');
+                }
+            } else {
+                flash('success', 'Allocation of ' . format_money($data['allocated_amount']) . ' was added.');
+            }
             break;
 
         case 'delete_allocation':
@@ -108,36 +112,15 @@ try {
             break;
 
         case 'create_obligation':
-            $result = db_transaction(function () use ($loan, $itemId, $currentUser) {
-                $allocation = db_row('SELECT * FROM cash_loan_allocations WHERE id = :i AND cash_loan_id = :l FOR UPDATE', [':i' => $itemId, ':l' => $loan['id']]);
-                // Only a part someone repays to the card owner is a debt.
-                if (!$allocation || !in_array($allocation['allocation_type'], CASH_LOAN_DEBT_TYPES, true)
-                    || !owns('borrowers', $allocation['borrower_id']) || $allocation['obligation_id']) {
-                    return null;
-                }
-                $obligationId = new_uuid();
-                $number = generate_reference('OBL', 'borrower_obligations', 'obligation_number');
-                db_insert('borrower_obligations', [
-                    'id' => $obligationId, 'obligation_number' => $number, 'borrower_id' => $allocation['borrower_id'],
-                    'cash_loan_allocation_id' => $allocation['id'],
-                    'description' => 'Cash loan ' . $loan['loan_reference'] . ' — share of ' . format_money($allocation['allocated_amount'])
-                        . ($loan['term_months'] ? ' over ' . $loan['term_months'] . ' months' : '') . ($allocation['description'] ? ' — ' . $allocation['description'] : ''),
-                    'obligation_date' => $loan['start_date'] ?: date('Y-m-d'),
-                    'original_amount' => $allocation['allocated_amount'], 'total_amount_due' => $allocation['allocated_amount'],
-                    'total_paid' => '0.00', 'outstanding_amount' => $allocation['allocated_amount'], 'status' => 'active',
-                    'due_date' => $loan['end_date'],
-                    'created_by' => $currentUser['id'], 'updated_by' => $currentUser['id'],
-                ]);
-                db_update('cash_loan_allocations', ['obligation_id' => $obligationId], $allocation['id']);
-                return [$obligationId, $number];
-            });
+            // Older allocations made before obligations were created automatically.
+            $result = db_transaction(static fn () => cash_loan_allocation_obligation($loan, $itemId, $currentUser['id']));
             if ($result === null) {
                 flash('error', 'This allocation cannot be turned into an obligation.');
                 break;
             }
             log_activity('create', 'obligation', $result[0], 'Created obligation ' . $result[1] . ' from cash loan ' . $loan['loan_reference']);
             penalty_assign_on_create($result[0]);
-            flash('success', 'Obligation ' . $result[1] . ' was created. Adjust interest or due date there if agreed.');
+            flash('success', 'Obligation ' . $result[1] . ' was created (active).');
             break;
 
         default:
