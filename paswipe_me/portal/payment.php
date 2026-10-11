@@ -36,6 +36,11 @@ $history = db_all(
     [':p' => $id]
 );
 $selections = payment_selections($id);
+// A repayment of a card purchase made on the owner's card (same form, linked to the purchase).
+$purchase = $payment['transaction_id']
+    ? db_row('SELECT t.id, t.transaction_number, t.notes, m.merchant_name FROM transactions t LEFT JOIN merchants m ON m.id = t.merchant_id WHERE t.id = :t AND t.borrower_id = :b',
+        [':t' => $payment['transaction_id'], ':b' => $payment['borrower_id']])
+    : null;
 $canEdit = in_array($payment['status'], PAYMENT_EDITABLE_STATUSES, true);
 $canCancel = in_array($payment['status'], PORTAL_CANCELLABLE_STATUSES, true);
 
@@ -119,7 +124,13 @@ require APP_ROOT . '/includes/header.php';
 
         <section class="panel">
             <header class="panel__header"><h3>You chose to pay</h3></header>
-            <?php if (!$selections): ?>
+            <?php if ($purchase): ?>
+                <ul class="child-list">
+                    <li><a href="<?= e(url('pages/borrowed/view.php', ['id' => $purchase['id']])) ?>">Card purchase <?= e($purchase['merchant_name'] ?: ($purchase['notes'] ? excerpt($purchase['notes'], 40) : $purchase['transaction_number'])) ?></a>
+                        <span><?= e(format_money($payment['amount'])) ?></span></li>
+                </ul>
+                <p class="field-help">Taken off this purchase once the card owner confirms it (late charges first, then the oldest installment).</p>
+            <?php elseif (!$selections): ?>
                 <p class="empty-inline">No item chosen — the owner will post this payment.</p>
             <?php else: ?>
                 <ul class="child-list">
@@ -133,7 +144,9 @@ require APP_ROOT . '/includes/header.php';
 
         <section class="panel">
             <header class="panel__header"><h3>Applied to</h3></header>
-            <?php if (!$applied): ?>
+            <?php if ($purchase): ?>
+                <p class="empty-inline"><?= $payment['status'] === 'approved' ? 'Confirmed by the card owner and taken off the purchase.' : 'Not confirmed yet.' ?></p>
+            <?php elseif (!$applied): ?>
                 <p class="empty-inline"><?= $payment['status'] === 'approved' ? 'Approved — the owner will apply it shortly.' : 'Not applied yet.' ?></p>
             <?php else: ?>
                 <ul class="child-list">

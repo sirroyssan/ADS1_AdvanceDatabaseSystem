@@ -1,93 +1,69 @@
 <?php
 /**
- * Amounts to Repay - report a repayment of a borrowed purchase (amount, date,
- * reference). It is saved as reported; the card owner confirms it, and only
- * then is it taken off what is owed. Partial repayments are fine.
+ * Amounts to Repay - pay a card purchase. This is the same "Submit a payment"
+ * form as the borrower portal (includes/payment_form.php): how you paid, date,
+ * amount, reference, notes, proof, and what the payment is for - with this
+ * purchase's amount due this period ticked. The card owner confirms it, and
+ * only then is it taken off what is owed. Partial repayments are fine.
  */
 
 require_once __DIR__ . '/../../includes/auth_check.php';
-require_once APP_ROOT . '/pages/borrower_payments/payment_functions.php';
+require_once APP_ROOT . '/includes/payment_form.php';
 
 [$currentUser, $layout] = borrowed_require_user();
 
 $id = request_id();
 $item = find_or_redirect(is_valid_uuid($id) ? (borrowed_my_purchases($id)[0] ?? null) : null, 'pages/borrowed/index.php', 'Borrowed purchase');
 $l = $item['ledger'];
-$open = round($l['outstanding'] - $l['reported'], 2);
-if ($open <= 0.004) {
-    flash('info', 'Nothing left to report for this purchase' . ($l['reported'] > 0 ? ': your repayments are waiting for the card owner\'s confirmation.' : '.'));
+if ($l['outstanding'] - $l['reported'] <= 0.004) {
+    flash('info', 'Nothing left to pay on this purchase' . ($l['reported'] > 0 ? ': your repayments are waiting for the card owner\'s confirmation.' : '.'));
     redirect('pages/borrowed/view.php', ['id' => $item['id']]);
 }
 
-$fields = [
-    'amount'           => ['label' => 'Amount repaid', 'type' => 'decimal', 'required' => true, 'min_exclusive' => 0,
-                           'help' => ($l['due_now'] > 0.004 ? format_money($l['due_now']) . ' is due this period. ' : '') . 'Up to ' . format_money($open) . '. A partial repayment is fine.'],
-    'payment_date'     => ['label' => 'Date you paid', 'type' => 'date', 'required' => true, 'initial' => date('Y-m-d')],
-    'reference_number' => ['label' => 'Reference number', 'type' => 'text', 'max' => 150, 'help' => 'Optional: GCash / bank reference, or "cash".'],
-    'notes'            => ['label' => 'Notes', 'type' => 'textarea', 'rows' => 2],
-];
-// Suggest what is due this period (overdue + current installment); any amount up to the open balance is accepted.
-$suggest = $l['due_now'] > 0.004 ? min($l['due_now'], $open) : $open;
-$data = form_defaults($fields, ['amount' => number_format($suggest, 2, '.', '')]);
-$errors = [];
-
-if (is_post()) {
-    require_csrf('pages/borrowed/repay.php?id=' . $item['id']);
-    [$data, $errors] = validate_fields($fields, $_POST);
-    if (!isset($errors['amount']) && (float) $data['amount'] > $open + 0.004) {
-        $errors['amount'] = 'Only ' . format_money($open) . ' is left to repay on this purchase.';
-    }
-    if (!isset($errors['payment_date']) && $data['payment_date'] > date('Y-m-d')) {
-        $errors['payment_date'] = 'The payment date cannot be in the future.';
-    }
-    // The same report sent twice (double click, refresh) is saved once.
-    if (!$errors && !form_once_use('borrowed_repay', input_string($_POST, 'once'))) {
-        flash('info', 'This repayment was already reported.');
-        redirect('pages/borrowed/view.php', ['id' => $item['id']]);
-    }
-
-    if (!$errors) {
-        try {
-            if ($l['mode'] === 'obligation') {
-                // Older workflow: the repayment is reported for its obligation (applied when the owner approves it).
-                $paymentId = new_uuid();
-                db_transaction(static function () use ($paymentId, $data, $item, $l, $currentUser) {
-                    db_insert('borrower_payments', [
-                        'id' => $paymentId, 'payment_number' => generate_reference('PAY', 'borrower_payments', 'payment_number'), 'borrower_id' => $item['borrower_id'],
-                        'payment_date' => $data['payment_date'], 'amount' => $data['amount'], 'reference_number' => $data['reference_number'], 'notes' => $data['notes'],
-                        'status' => 'submitted', 'allocation_status' => 'unallocated', 'submitted_at' => date('Y-m-d H:i:s'),
-                    ]);
-                    payment_selections_save($paymentId, [['obligation_id' => $l['obligation']['id'], 'installment_schedule_id' => null, 'amount' => (float) $data['amount']]]);
-                    payment_log(['id' => $paymentId, 'status' => null], 'submitted', 'submitted', 'Repayment reported by the borrower', $currentUser['id']);
-                });
-                notify_lender($item['borrower_id'], 'payment_submitted', 'Repayment to confirm',
-                    'A repayment of ' . format_money($data['amount']) . ' was reported for ' . $item['transaction_number'] . '. Please confirm it.', 'borrower_payment', $paymentId);
-            } else {
-                borrowed_record_repayment($item, $data, $currentUser['id'], false);
-            }
-            flash('success', 'Repayment of ' . format_money($data['amount']) . ' reported. The card owner confirms it, then it is taken off what you owe.');
-            redirect('pages/borrowed/view.php', ['id' => $item['id']]);
-        } catch (PDOException $e) {
-            $errors['_form'] = db_error_message($e);
+// The borrower record this purchase is assigned to (the card owner's record of you).
+$borrower = db_row('SELECT * FROM borrowers WHERE id = :b', [':b' => $item['borrower_id']]);
+if ($l['mode'] === 'obligation') {
+    // Older purchases tracked as an obligation are paid through that obligation.
+    $groups = payment_obligation_groups($borrower['id'], [$l['obligation']['id']]);
+    $preselect = array_column(array_slice($groups[0]['rows'] ?? [], 0, 1), 'key');
+} else {
+    // This purchase first, then the borrower's other open purchases from the same card owner.
+    $groups = payment_purchase_groups($borrower['id']);
+    usort($groups, static fn ($a, $b) => ($b['id'] === $item['id']) <=> ($a['id'] === $item['id']));
+    $preselect = [];
+    foreach ($groups as $g) {
+        if ($g['id'] === $item['id']) {
+            $preselect = $g['suggest'] ?: array_column(array_slice($g['rows'], 0, 1), 'key');
         }
     }
 }
 
-$pageTitle = 'Record Repayment';
+$state = payment_form_handle([
+    'borrower' => $borrower, 'user' => $currentUser, 'payment' => null, 'groups' => $groups, 'preselect' => $preselect,
+    'csrf_back' => 'pages/borrowed/repay.php?id=' . $item['id'],
+]);
+if (isset($state['saved'])) {
+    if ($state['message']) {
+        flash('success', $state['message']);
+    }
+    redirect('pages/borrowed/view.php', ['id' => $item['id']]);
+}
+
+$pageTitle = 'Submit Payment';
+$pageScripts = ['assets/js/portal-pay.js'];
 $activeNav = 'borrowed';
 require APP_ROOT . '/includes/header.php';
 ?>
 
-<?= render_breadcrumb(['Amounts to Repay' => url('pages/borrowed/index.php'), $item['transaction_number'] => url('pages/borrowed/view.php', ['id' => $item['id']]), 'Repay' => null]) ?>
+<?= render_breadcrumb(['Amounts to Repay' => url('pages/borrowed/index.php'), $item['transaction_number'] => url('pages/borrowed/view.php', ['id' => $item['id']]), 'Pay' => null]) ?>
 
 <section class="page-header">
     <div>
-        <h2 class="page-header__title">Record repayment</h2>
-        <p class="page-header__subtitle"><?= e($item['merchant_name'] ?: $item['transaction_number']) ?> · <?= e(format_money($l['outstanding'])) ?> outstanding · repay by <?= e(borrowed_due_text($l)) ?> · to <?= e($item['lender_name']) ?></p>
+        <h2 class="page-header__title">Submit a payment</h2>
+        <p class="page-header__subtitle">Pay first using one of the owner's accounts, then record it here with the reference number and proof.</p>
     </div>
 </section>
 
-<?= render_record_form(url('pages/borrowed/repay.php', ['id' => $item['id']]), $fields, $data, $errors, 'Report repayment', url('pages/borrowed/view.php', ['id' => $item['id']]),
-    form_once_field('borrowed_repay')) ?>
+<?= render_payment_form($state, url('pages/borrowed/repay.php', ['id' => $item['id']]), url('pages/borrowed/view.php', ['id' => $item['id']])) ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

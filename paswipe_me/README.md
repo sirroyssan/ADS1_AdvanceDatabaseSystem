@@ -1122,6 +1122,27 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - The database adds UNIQUE keys: one plan per transaction, one schedule row per number, and one
   statement item per source.
 
+## One payment form for every borrower repayment (`includes/payment_form.php`)
+
+"Submit a payment" (portal) and "Repay" on a card purchase open the **same form**. It has the same
+fields: how you paid, payment date, amount, reference, notes for the owner and proof of payment. It
+also has the same **What is this payment for?** table.
+
+- **The table lists everything open:** obligations (each installment, or the item) and card purchases
+  made on the owner's card (each open installment, plus late charges).
+- **Opened from a card purchase,** the form ticks that purchase's amount due this period (overdue plus
+  the current installment).
+- **Saving** happens in one database transaction:
+  - the amount put on a card purchase becomes a repayment of that purchase, which the card owner
+    confirms;
+  - the rest becomes one payment with the obligation choices, applied when the owner approves it;
+  - the proof file is attached to each payment it covers.
+- **When there are no obligations,** the whole amount must be put on items, because only the owner can
+  post unassigned money to an obligation.
+- **Payment method:** required whenever the owner has set up payment methods.
+- **Duplicate submits** save once.
+- **Fixing** a payment the owner sent back keeps its kind (card purchase or obligation).
+
 ## Reset test data (System → Reset Test Data, `includes/data_reset.php`)
 
 Clears **your own** test financial records so you can record from zero, and keeps your master data.

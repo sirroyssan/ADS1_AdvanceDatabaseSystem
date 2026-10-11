@@ -601,7 +601,7 @@ function borrowed_record_repayment(array $t, array $data, string $userId, bool $
         db_insert('borrower_payments', [
             'id' => $id, 'payment_number' => $number, 'borrower_id' => $t['borrower_id'], 'transaction_id' => $t['id'],
             'payment_date' => $data['payment_date'], 'amount' => $data['amount'], 'reference_number' => $data['reference_number'] ?? null,
-            'notes' => $data['notes'] ?? null, 'submitted_at' => $now,
+            'notes' => $data['notes'] ?? null, 'payment_method_id' => $data['payment_method_id'] ?? null, 'submitted_at' => $now,
             'status' => $confirmed ? 'approved' : 'submitted', 'allocation_status' => $confirmed ? 'fully_allocated' : 'unallocated',
         ] + ($confirmed ? ['approved_at' => $now, 'reviewed_at' => $now, 'reviewed_by' => $userId] : []));
         db_insert('payment_verification_logs', [
