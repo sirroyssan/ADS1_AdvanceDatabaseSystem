@@ -70,6 +70,13 @@ require APP_ROOT . '/includes/header.php';
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/borrowers/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
+        <?php if ($usage['total'] > 0 && $borrower['status'] !== 'inactive'): ?>
+            <?= post_button(url('pages/borrowers/delete.php'), ['id' => $id, 'action' => 'deactivate'], 'Mark as inactive', 'power', 'btn btn--warning',
+                'This borrower has ' . usage_text($usage) . ', so the record is kept. Mark them as inactive? Their history stays.', false, 'Deactivate borrower?') ?>
+        <?php elseif ($usage['total'] === 0): ?>
+            <?= post_button(url('pages/borrowers/delete.php'), ['id' => $id, 'action' => 'delete'], 'Delete', 'trash', 'btn btn--danger',
+                'No financial records yet. Delete this borrower with their addresses and contacts? This cannot be undone.', false, 'Delete borrower?') ?>
+        <?php endif; ?>
         <a data-modal-form href="<?= e(url('pages/borrowers/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
     </div>
 </section>
@@ -199,20 +206,6 @@ require APP_ROOT . '/includes/header.php';
             <?php endif; ?>
         </section>
 
-        <section class="panel panel--danger no-print">
-            <header class="panel__header"><h3>Delete or deactivate</h3></header>
-            <?php if ($usage['total'] > 0): ?>
-                <p class="field-help">This borrower has <?= e(usage_text($usage)) ?>, so the record must be kept.<?= $borrower['status'] !== 'inactive' ? ' Set the status to inactive instead.' : '' ?></p>
-                <?php if ($borrower['status'] !== 'inactive'): ?>
-                    <?= post_button(url('pages/borrowers/delete.php'), ['id' => $id, 'action' => 'deactivate'], 'Mark as inactive', 'power', 'btn btn--warning btn--block',
-                        'Mark this borrower as inactive? Their history is kept.', false, 'Deactivate borrower?') ?>
-                <?php endif; ?>
-            <?php else: ?>
-                <p class="field-help">No financial records yet. Deleting also removes the addresses and contacts.</p>
-                <?= post_button(url('pages/borrowers/delete.php'), ['id' => $id, 'action' => 'delete'], 'Delete borrower', 'trash', 'btn btn--danger btn--block',
-                    'Are you sure you want to delete this borrower with their addresses and contacts? This cannot be undone.') ?>
-            <?php endif; ?>
-        </section>
     </div>
 </div>
 
@@ -299,60 +292,58 @@ require APP_ROOT . '/includes/header.php';
     <?php endif; ?>
 </section>
 
-<div class="panel-grid">
-    <section class="panel subpanel">
-        <header class="panel__header">
-            <h3>Recent obligations</h3>
-            <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/obligations/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
-        </header>
-        <?php if (!$obligations): ?>
-            <p class="empty-inline">No obligations.</p>
-        <?php else: ?>
-            <div class="table-wrap">
-                <table class="table table--compact">
-                    <thead><tr><th scope="col">Obligation #</th><th scope="col">Due</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th><th scope="col">Status</th></tr></thead>
-                    <tbody>
-                    <?php foreach ($obligations as $o): ?>
-                        <tr>
-                            <td><a href="<?= e(url('pages/obligations/view.php', ['id' => $o['id']])) ?>"><?= e($o['obligation_number']) ?></a></td>
-                            <td><?= e(format_date($o['due_date'])) ?></td>
-                            <td class="num"><?= e(format_money($o['outstanding_amount'])) ?></td>
-                            <td class="num<?= (float) $o['penalties_unpaid'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($o['penalties_unpaid'])) ?></td>
-                            <td><?= badge($o['status']) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php endif; ?>
-    </section>
+<section class="panel subpanel">
+    <header class="panel__header">
+        <h3>Recent obligations</h3>
+        <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/obligations/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
+    </header>
+    <?php if (!$obligations): ?>
+        <p class="empty-inline">No obligations.</p>
+    <?php else: ?>
+        <div class="table-wrap">
+            <table class="table table--compact">
+                <thead><tr><th scope="col">Obligation #</th><th scope="col">Due</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th><th scope="col">Status</th></tr></thead>
+                <tbody>
+                <?php foreach ($obligations as $o): ?>
+                    <tr>
+                        <td><a href="<?= e(url('pages/obligations/view.php', ['id' => $o['id']])) ?>"><?= e($o['obligation_number']) ?></a></td>
+                        <td><?= e(format_date($o['due_date'])) ?></td>
+                        <td class="num"><?= e(format_money($o['outstanding_amount'])) ?></td>
+                        <td class="num<?= (float) $o['penalties_unpaid'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($o['penalties_unpaid'])) ?></td>
+                        <td><?= badge($o['status']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+</section>
 
-    <section class="panel subpanel">
-        <header class="panel__header">
-            <h3>Recent payments</h3>
-            <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/borrower_payments/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Record</span></a>
-        </header>
-        <?php if (!$payments): ?>
-            <p class="empty-inline">No payments.</p>
-        <?php else: ?>
-            <div class="table-wrap">
-                <table class="table table--compact">
-                    <thead><tr><th scope="col">Payment #</th><th scope="col">Date</th><th scope="col" class="num">Amount</th><th scope="col">Status</th></tr></thead>
-                    <tbody>
-                    <?php foreach ($payments as $p): ?>
-                        <tr>
-                            <td><a href="<?= e(url('pages/borrower_payments/view.php', ['id' => $p['id']])) ?>"><?= e($p['payment_number']) ?></a></td>
-                            <td><?= e(format_date($p['payment_date'])) ?></td>
-                            <td class="num"><?= e(format_money($p['amount'])) ?></td>
-                            <td><?= badge($p['status']) ?></td>
-                        </tr>
-                    <?php endforeach; ?>
-                    </tbody>
-                </table>
-            </div>
-        <?php endif; ?>
-    </section>
-</div>
+<section class="panel subpanel">
+    <header class="panel__header">
+        <h3>Recent payments</h3>
+        <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/borrower_payments/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Record</span></a>
+    </header>
+    <?php if (!$payments): ?>
+        <p class="empty-inline">No payments.</p>
+    <?php else: ?>
+        <div class="table-wrap">
+            <table class="table table--compact">
+                <thead><tr><th scope="col">Payment #</th><th scope="col">Date</th><th scope="col" class="num">Amount</th><th scope="col">Status</th></tr></thead>
+                <tbody>
+                <?php foreach ($payments as $p): ?>
+                    <tr>
+                        <td><a href="<?= e(url('pages/borrower_payments/view.php', ['id' => $p['id']])) ?>"><?= e($p['payment_number']) ?></a></td>
+                        <td><?= e(format_date($p['payment_date'])) ?></td>
+                        <td class="num"><?= e(format_money($p['amount'])) ?></td>
+                        <td><?= badge($p['status']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+</section>
 
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>
