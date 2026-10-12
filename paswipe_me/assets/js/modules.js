@@ -120,29 +120,56 @@
             if (document.activeElement !== input) formatAmount(input);
         });
 
+        // A saved value (data-keep) is kept until one of its sources changes; a value
+        // typed by hand in this form is never overwritten. A calculated value passes
+        // the change on, so totals that depend on it follow (total -> monthly payment).
         function bindCalc(target, attr, compute) {
-            var ids = target.getAttribute(attr).split(',');
-            var edited = target.value.trim() !== '' && target.hasAttribute('data-keep');
+            var ids = target.getAttribute(attr).split(/[,|]/);
+            var typed = false;
 
             target.addEventListener('input', function () {
-                edited = target.value.trim() !== '';
+                if (target._calculating) return;
+                typed = target.value.trim() !== '';
             });
 
             function update() {
-                if (edited) return;
+                if (typed) return;
                 var result = compute(ids.map(number));
+                var before = target.value;
                 if (isFinite(result) && result > 0) {
                     formatAmount(target, result.toFixed(2));
                 } else {
                     target.value = '';
                 }
+                if (target.value !== before) {
+                    target._calculating = true;
+                    target.dispatchEvent(new Event('input', { bubbles: true }));
+                    target._calculating = false;
+                }
             }
 
             ids.forEach(function (id) {
                 var source = document.getElementById(id);
-                if (source) source.addEventListener('input', update);
+                if (source) {
+                    source.addEventListener('input', update);
+                    if (source.tagName === 'SELECT') source.addEventListener('change', update);
+                }
             });
         }
+
+        /* Add-on interest: data-addon="f_a,f_b,f_c|f_rate|f_term" = principal (the first
+           of a, b, c above zero) + principal x rate % x term (months). */
+        scope.querySelectorAll('[data-addon]').forEach(function (target) {
+            if (!App.once(target, 'M11')) return;
+            var groups = target.getAttribute('data-addon').split('|');
+            var principals = groups[0].split(',').length;
+            bindCalc(target, 'data-addon', function (values) {
+                var principal = values.slice(0, principals).filter(function (v) { return v > 0; })[0] || 0;
+                var rate = values[principals];
+                var term = values[principals + 1];
+                return principal > 0 && term > 0 ? Math.round((principal + principal * rate / 100 * term) * 100) / 100 : 0;
+            });
+        });
 
         scope.querySelectorAll('[data-sum]').forEach(function (target) {
             if (!App.once(target, 'M3')) return;

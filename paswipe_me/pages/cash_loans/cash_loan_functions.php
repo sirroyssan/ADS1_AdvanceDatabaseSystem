@@ -36,7 +36,8 @@ function cash_loan_fields(bool $isNew, ?array $current = null): array
         'processing_fee'       => $money('Processing fee'),
         'other_fees'           => $money('Other fees'),
         'interest_rate'        => ['label' => 'Interest rate (%)', 'type' => 'decimal', 'scale' => 4, 'digits' => 8, 'min' => 0, 'placeholder' => '0.0000'],
-        'total_repayment'      => $money('Total repayment'),
+        'total_repayment'      => $money('Total repayment', ['attrs' => ['data-addon' => 'f_accepted_amount,f_approved_amount,f_offered_amount|f_interest_rate|f_term_months'],
+                                   'help' => 'Calculated as you type: principal (accepted, else approved, else offered amount) + principal × interest rate % × term in months. Fees are not added. Type the bank\'s figure here if it differs.']),
         'term_months'          => ['label' => 'Term (months)', 'type' => 'int', 'min' => 1, 'max' => 360, 'section' => 'Repayment terms'],
         'monthly_payment'      => ['label' => 'Monthly payment', 'type' => 'decimal', 'min' => 0, 'attrs' => ['data-divide' => 'f_total_repayment,f_term_months']],
         'payment_frequency'    => ['label' => 'Payment frequency', 'type' => 'select', 'options' => enum_options(ENUM_FREQUENCY), 'empty_label' => '— Not set —'],
@@ -52,6 +53,11 @@ function cash_loan_fields(bool $isNew, ?array $current = null): array
 function cash_loan_validate(array $fields, array $input, ?string $id = null): array
 {
     [$data, $errors] = validate_fields($fields, $input, $id);
+
+    // Total repayment left empty: principal + add-on interest (rate % per month x term), as the form shows it.
+    if (!$errors && (float) ($data['total_repayment'] ?? 0) <= 0 && (int) $data['term_months'] > 0 && ($principal = cash_loan_principal($data)) > 0) {
+        $data['total_repayment'] = number_format(round($principal + $principal * (float) $data['interest_rate'] / 100 * (int) $data['term_months'], 2), 2, '.', '');
+    }
 
     // The last installment follows from the first due date and the term.
     if (!isset($errors['term_months']) && !isset($errors['first_due_date']) && $data['term_months'] && $data['first_due_date']) {

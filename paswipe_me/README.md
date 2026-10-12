@@ -1125,6 +1125,12 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - Example: ₱130,000 over 24 months is ₱100,000 owed by ate (₱4,166.67 a month) and ₱30,000 own share
   (₱1,250.00 a month), ₱5,416.67 a month combined.
 - No one becomes a co-borrower automatically.
+- **Total repayment from the interest:** as you type, the cash loan form calculates *Total repayment* = principal + principal × interest rate % × term (months). This is add-on interest per month; for example, ₱150,000 at 0.69% for 24 months = ₱174,840.00.
+  - **Principal:** the accepted amount, else the approved amount, else the offered amount, the same as the card usage.
+  - **Fees:** the processing fee and other fees are not added.
+  - **Monthly payment:** follows the total.
+  - **Your own figure:** a total typed by hand (e.g. the bank's own figure) is kept.
+  - **Empty total:** a total left empty is calculated the same way on the server.
 - **End date from the term:** the loan's *End date (last installment)* is calculated from the first
   due date and the term, on the same day of the month (e.g. first due Jun 23, 2026 + 24 months →
   May 23, 2028). It is shown live in the form and calculated again on the server.
