@@ -259,6 +259,7 @@ function auth_apply(array $req, array $approver): string
         }
         card_usage_apply([$t['credit_card_id']], static fn () => db_update('transactions', $changes + ['updated_by' => $approver['id']], $t['id']));
         borrowed_sync_penalty_payments($t['id']);
+        borrowed_notify_update($t, $t['id']);
 
         return 'Transaction ' . $t['transaction_number'] . ' corrected: ' . auth_changes_text($t, $changes) . '.';
     }
@@ -343,6 +344,7 @@ function transaction_void(array $t, array $user): string
         db_exec("UPDATE installment_plans SET status = 'cancelled' WHERE transaction_id = :t", [':t' => $t['id']]);
         db_exec("UPDATE borrower_obligations SET status = 'cancelled' WHERE transaction_id = :t AND total_paid = 0 AND status <> 'cancelled'", [':t' => $t['id']]);
     });
+    borrowed_notify_update($t, $t['id'], 'It was voided by the card owner and no longer counts in your balance.');
 
     return 'Transaction ' . $t['transaction_number'] . ' (' . format_money($t['amount']) . ') was voided: status cancelled, removed from the card\'s used credit. The record is kept.';
 }

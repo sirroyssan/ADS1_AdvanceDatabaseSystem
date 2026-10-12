@@ -56,6 +56,12 @@ if (is_post()) {
                 notify_borrower($data['borrower_id'], 'obligation_created', 'New item: ' . $data['obligation_number'],
                     format_money($data['total_amount_due']) . ' was added to your balance' . ($data['due_date'] ? ', due ' . format_date($data['due_date']) : '') . '.', 'obligation', $obligation['id']);
                 flash('info', 'Moved to ' . borrower_name($to) . '.');
+                // The person picked by mistake no longer owes it.
+                notify_borrower($obligation['borrower_id'], 'item_removed', 'Removed: ' . $data['obligation_number'],
+                    $data['obligation_number'] . ' (' . format_money($obligation['total_amount_due']) . ') was recorded under your name by mistake and was removed from your balance.',
+                    null, null);
+            } elseif (notify_borrower_changes($obligation['borrower_id'], $data['obligation_number'], $obligation, $data, OBLIGATION_NOTICE_FIELDS, 'obligation', $obligation['id'])) {
+                flash('info', 'The borrower was notified of the change.');
             }
             flash('success', 'Obligation ' . $data['obligation_number'] . ' was updated.');
             redirect('pages/obligations/view.php', ['id' => $obligation['id']]);

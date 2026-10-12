@@ -51,6 +51,9 @@ if (is_post()) {
                 }
             });
             log_activity('update', 'transaction', $txn['id'], 'Updated transaction ' . $data['transaction_number'], array_intersect_key($txn, $data), $data);
+            $newPlan = $planId ? db_row('SELECT number_of_installments, installment_amount, first_due_date FROM installment_plans WHERE id = :id', [':id' => $planId]) : null;
+            borrowed_notify_update($txn, $txn['id'], $newPlan ? 'Installment terms: ' . $newPlan['number_of_installments'] . ' × ' . format_money($newPlan['installment_amount'])
+                . ', first due ' . format_date($newPlan['first_due_date']) . '.' : '');
             flash('success', 'Transaction ' . $data['transaction_number'] . ' was updated successfully.');
             if ($planId) {
                 $plan = db_row('SELECT * FROM installment_plans WHERE id = :id', [':id' => $planId]);

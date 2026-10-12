@@ -90,6 +90,7 @@ if (is_post()) {
                         "SELECT id FROM borrower_obligations WHERE transaction_id = :t AND status <> 'cancelled'", [':t' => $plan['transaction_id']]), 'id'), $moved[0], $moved[1]);
                 }
             });
+            borrowed_notify_plan($plan, $plan['id']);
             if ($moved) {
                 flash('info', 'The installment due dates moved with the new first due date (now ending ' . format_date($moved[1]) . '). Amounts and payments were kept.');
             }

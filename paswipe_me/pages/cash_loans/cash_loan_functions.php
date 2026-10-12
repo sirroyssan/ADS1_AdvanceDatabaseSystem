@@ -351,3 +351,27 @@ function cash_loan_terms_follow(array $loan, array &$data, string $userId): ?arr
 
     return $oldLast !== $newLast && $newLast !== null ? [$oldLast, $newLast] : null;
 }
+
+/** The loan's borrower obligations as they are now (id => row), to tell each borrower what a loan change did. */
+function cash_loan_obligation_snapshot(string $loanId): array
+{
+    $rows = [];
+    foreach (db_all(
+        "SELECT o.* FROM borrower_obligations o JOIN cash_loan_allocations a ON a.id = o.cash_loan_allocation_id
+          WHERE a.cash_loan_id = :l AND o.status <> 'cancelled'", [':l' => $loanId]) as $o) {
+        $rows[$o['id']] = $o;
+    }
+
+    return $rows;
+}
+
+/** Notify each borrower whose obligation changed with the loan (due date, months, amount). */
+function cash_loan_notify_followers(array $before, string $note = ''): void
+{
+    foreach ($before as $id => $old) {
+        $new = db_row('SELECT * FROM borrower_obligations WHERE id = :id', [':id' => $id]);
+        if ($new) {
+            notify_borrower_changes($old['borrower_id'], $old['obligation_number'], $old, $new, OBLIGATION_NOTICE_FIELDS, 'obligation', $id, $note);
+        }
+    }
+}

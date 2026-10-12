@@ -1160,6 +1160,16 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - **Card purchases** follow their statement due dates; one without installment terms counts nothing.
 - **Source:** `due_month` from `borrowed_obligation_due_now()` / `borrowed_ledger()`, summed by `portal_items_totals()`.
 
+**The borrower is told about every change to their items** (`notify_borrower_changes()` in `includes/portal.php`):
+- **Obligation edited** (amount, interest, fees, dates, description, e.g. a corrected cash loan share): an *Updated* notice listing each change, e.g. "Amount: ₱230,000.00 → ₱200,000.00; Total due: …". If the obligation moved to another borrower, the person picked by mistake is told it was removed from their balance, and the new one gets *New item*.
+- **Obligation status changed:** an *Updated* notice with the status.
+- **Late charges:** a charge added by hand is announced, and so is one waived or removed (with the reason).
+- **Cash loan terms changed** (term, total repayment, first due date, *Change due dates*): every borrower whose share follows the loan is told the new due date and months.
+- **Card purchase assigned to a borrower:** edited (amount, date, type, status), its status changed, corrected through an approved staff request, or voided. A borrower removed from the purchase is told so, and a newly assigned one gets *New item*.
+- **Installment plan of their purchase edited, or its due dates moved:** they are told the installments, monthly amount, and first and last due dates.
+- **Payment amount override or void:** these were already notified before.
+- **No-change saves:** nothing is sent when nothing the borrower can see changed.
+
 **Obligation form and status:**
 - **No Transaction field:** the obligation form has no *Transaction* field. Obligations are entered by hand or created from cash loans and cash advances. Card purchases and installments are tracked on the transaction itself, so the transaction page no longer has an *Add obligation* button. An existing link (a cash advance share) is kept when the obligation is edited.
 - **Change status:** this is now a button in the obligation page's header, next to *Record payment* and *Edit*. It opens a small modal (`pages/obligations/status.php`), which posts to the same `related.php` action, so the same rules are checked on the server.

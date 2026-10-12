@@ -25,9 +25,11 @@ if (is_post()) {
     if (!$errors) {
         try {
             $moved = null;
+            $followers = cash_loan_obligation_snapshot($loan['id']);
             card_usage_apply([$loan['credit_card_id'], $data['credit_card_id']], function () use ($loan, &$data, $currentUser, &$moved) {
                 $moved = cash_loan_terms_follow($loan, $data, $currentUser['id']);
             }, true);
+            cash_loan_notify_followers($followers);
             if ($moved) {
                 flash('info', 'The repayment schedule follows the new terms: the last installment is now due ' . format_date($moved[1]) . '. The borrowers\' obligations follow.');
             }

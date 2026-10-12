@@ -33,6 +33,7 @@ try {
                 flash('error', 'Due dates not changed: ' . reset($errors));
                 break;
             }
+            $followers = cash_loan_obligation_snapshot($loan['id']);
             $moved = db_transaction(static function () use ($loan, $data) {
                 $newEnd = schedule_shift_dates('cash_loan_schedules', 'cash_loan_id', $loan['id'], $data['first_due_date'], $data['frequency']);
                 if ($newEnd === null) {
@@ -51,6 +52,7 @@ try {
             }
             log_activity('shift_dates', 'cash_loan', $loan['id'], 'Due dates moved: first ' . $data['first_due_date'] . ', last ' . $moved,
                 ['first_due_date' => $loan['first_due_date'], 'end_date' => $loan['end_date']], ['first_due_date' => $data['first_due_date'], 'end_date' => $moved]);
+            cash_loan_notify_followers($followers, 'Monthly due dates now start ' . format_date($data['first_due_date']) . '.');
             flash('success', 'Due dates updated: first installment due ' . format_date($data['first_due_date']) . ', last ' . format_date($moved) . '. Amounts and payments were kept.');
             break;
 

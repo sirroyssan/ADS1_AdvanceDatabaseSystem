@@ -145,6 +145,65 @@ function notify_lender(string $borrowerId, string $type, string $title, string $
 }
 
 /**
+ * Tell a borrower what the card owner changed on one of their items, field by
+ * field ("Amount: ₱10,000.00 → ₱12,000.00; Due date: …"). Nothing is sent
+ * when nothing they can see changed. $fields: column => [label, type], type
+ * money | date | status | number | text. Returns whether a notice was sent.
+ */
+function notify_borrower_changes(?string $borrowerId, string $ref, array $before, array $after, array $fields, string $entityType, string $entityId, string $note = ''): bool
+{
+    if (!$borrowerId) {
+        return false;
+    }
+    $show = static fn ($v, string $type): string => $v === null || $v === '' ? '—' : match ($type) {
+        'money'  => format_money($v),
+        'date'   => format_date($v),
+        'status' => humanize((string) $v),
+        default  => (string) $v,
+    };
+    $lines = [];
+    foreach ($fields as $column => [$label, $type]) {
+        if (!array_key_exists($column, $after)) {
+            continue;
+        }
+        $old = $before[$column] ?? null;
+        $new = $after[$column];
+        $same = in_array($type, ['money', 'number'], true) ? abs((float) $old - (float) $new) < 0.005 : (string) $old === (string) $new;
+        if (!$same) {
+            // Long text (a description): only the new wording.
+            $lines[] = $type === 'text' ? $label . ' now reads "' . $show($new, $type) . '"' : $label . ': ' . $show($old, $type) . ' → ' . $show($new, $type);
+        }
+    }
+    if (!$lines && $note === '') {
+        return false;
+    }
+    notify_borrower($borrowerId, 'item_updated', 'Updated: ' . $ref,
+        'The card owner updated ' . $ref . '.' . ($lines ? ' ' . implode('; ', $lines) . '.' : '') . ($note !== '' ? ' ' . $note : ''), $entityType, $entityId);
+
+    return true;
+}
+
+/** What a borrower sees of an obligation, for notify_borrower_changes(). */
+const OBLIGATION_NOTICE_FIELDS = [
+    'original_amount'  => ['Amount', 'money'],
+    'agreed_interest'  => ['Interest', 'money'],
+    'agreed_fees'      => ['Fees', 'money'],
+    'total_amount_due' => ['Total due', 'money'],
+    'obligation_date'  => ['Date', 'date'],
+    'due_date'         => ['Due date', 'date'],
+    'description'      => ['Description', 'text'],
+    'status'           => ['Status', 'status'],
+];
+
+/** What a borrower sees of a card purchase assigned to them. */
+const PURCHASE_NOTICE_FIELDS = [
+    'amount'           => ['Amount', 'money'],
+    'transaction_date' => ['Date', 'date'],
+    'payment_type'     => ['Type', 'status'],
+    'status'           => ['Status', 'status'],
+];
+
+/**
  * Notify the sign-in account linked to a borrower (if any).
  */
 function notify_borrower(string $borrowerId, string $type, string $title, string $message, ?string $entityType = null, ?string $entityId = null): void

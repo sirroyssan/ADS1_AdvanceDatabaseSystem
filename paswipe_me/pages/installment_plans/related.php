@@ -50,6 +50,7 @@ try {
             }
             log_activity('shift_dates', 'installment_plan', $plan['id'], 'Due dates moved: first ' . $data['first_due_date'] . ', last ' . $moved,
                 ['first_due_date' => $plan['first_due_date'], 'end_date' => $plan['end_date']], ['first_due_date' => $data['first_due_date'], 'end_date' => $moved]);
+            borrowed_notify_plan($plan, $plan['id']);
             flash('success', 'Due dates updated: first installment due ' . format_date($data['first_due_date']) . ', last ' . format_date($moved) . '. Amounts and payments were kept.');
             break;
 

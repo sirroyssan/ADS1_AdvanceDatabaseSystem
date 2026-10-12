@@ -36,6 +36,7 @@ try {
             }
             db_update('borrower_obligations', $update, $obligation['id']);
             log_activity('status_change', 'obligation', $obligation['id'], $obligation['obligation_number'] . ' changed to ' . $status, ['status' => $obligation['status']], ['status' => $status]);
+            notify_borrower_changes($obligation['borrower_id'], $obligation['obligation_number'], $obligation, ['status' => $status], OBLIGATION_NOTICE_FIELDS, 'obligation', $obligation['id']);
             flash('success', 'Obligation status changed to ' . humanize($status) . '.');
             break;
 
@@ -57,6 +58,8 @@ try {
                 'remaining_amount' => $amount, 'notes' => $data['notes'],
             ]);
             log_activity('apply_penalty', 'obligation', $obligation['id'], 'Applied penalty "' . $rule['name'] . '" of ' . format_money($amount));
+            notify_borrower($obligation['borrower_id'], 'penalty_added', 'Late charge: ' . $obligation['obligation_number'],
+                'A late charge of ' . format_money($amount) . ' (' . $rule['name'] . ') was added to ' . $obligation['obligation_number'] . '.', 'obligation', $obligation['id']);
             flash('success', 'Penalty of ' . format_money($amount) . ' was applied.');
             break;
 
@@ -80,6 +83,8 @@ try {
                 $error === null ? $done++ : $skipped[$error] = ($skipped[$error] ?? 0) + 1;
             }
             if ($done) {
+                notify_borrower($obligation['borrower_id'], 'penalty_' . ($mode === 'waive' ? 'waived' : 'removed'), 'Late charges ' . ($mode === 'waive' ? 'waived' : 'removed') . ': ' . $obligation['obligation_number'],
+                    $done . ' late charge(s) on ' . $obligation['obligation_number'] . ' were ' . ($mode === 'waive' ? 'waived' : 'removed') . '. Reason: ' . trim($reason), 'obligation', $obligation['id']);
                 flash('success', $done . ' penalt' . ($done === 1 ? 'y was' : 'ies were') . ' ' . ($mode === 'waive' ? 'waived' : 'deleted') . '. The reason was recorded.');
             }
             foreach ($skipped as $why => $count) {
@@ -96,6 +101,8 @@ try {
                 flash('error', $error);
                 redirect('pages/obligations/view.php?id=' . $obligation['id'] . '&penalty=' . rawurlencode(input_string($_POST, 'item_id')) . '#terminate-penalty');
             }
+            notify_borrower($obligation['borrower_id'], 'penalty_' . ($mode === 'waive' ? 'waived' : 'removed'), 'Late charge ' . ($mode === 'waive' ? 'waived' : 'removed') . ': ' . $obligation['obligation_number'],
+                'A late charge on ' . $obligation['obligation_number'] . ' was ' . ($mode === 'waive' ? 'waived' : 'removed') . '. Reason: ' . trim(input_string($_POST, 'reason')), 'obligation', $obligation['id']);
             flash('success', $mode === 'waive' ? 'Penalty was waived. The reason was recorded.' : 'Penalty was deleted. The reason was recorded in the activity log.');
             break;
 

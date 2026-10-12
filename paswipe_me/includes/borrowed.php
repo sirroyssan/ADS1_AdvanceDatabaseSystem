@@ -1016,3 +1016,52 @@ function borrowed_send_reminders(?string $today = null): int
 
     return $sent;
 }
+
+/**
+ * Tell the borrowers of a card purchase what the card owner changed: the
+ * person it was assigned to by mistake that it is no longer theirs, a newly
+ * assigned person that it is now theirs to repay, otherwise field by field
+ * (amount, date, type, status) plus $note (e.g. new installment terms).
+ */
+function borrowed_notify_update(array $before, string $transactionId, string $note = ''): void
+{
+    $after = db_row('SELECT * FROM transactions WHERE id = :id', [':id' => $transactionId]);
+    if (!$after) {
+        return;
+    }
+    $ref = $after['transaction_number'];
+    $old = $before['borrower_id'] ?? null;
+    $new = $after['borrower_id'];
+    if ($old && $old !== $new) {
+        notify_borrower($old, 'item_removed', 'Removed: ' . $ref,
+            'Card purchase ' . $ref . ' (' . format_money($before['amount']) . ') is no longer recorded as yours to repay.', null, null);
+    }
+    if ($new && $old !== $new) {
+        notify_borrower($new, 'purchase_assigned', 'New item: ' . $ref,
+            'Card purchase ' . $ref . ' of ' . format_money($after['amount']) . ' (' . format_date($after['transaction_date']) . ') was recorded as yours to repay.'
+            . ($note !== '' ? ' ' . $note : ''), 'borrowed_purchase', $transactionId);
+    } elseif ($new) {
+        notify_borrower_changes($new, $ref, $before, $after, PURCHASE_NOTICE_FIELDS, 'borrowed_purchase', $transactionId, $note);
+    }
+}
+
+/** What a borrower sees of the installment plan of their purchase. */
+const PLAN_NOTICE_FIELDS = [
+    'number_of_installments' => ['Installments', 'number'],
+    'installment_amount'     => ['Monthly amount', 'money'],
+    'first_due_date'         => ['First due date', 'date'],
+    'end_date'               => ['Last due date', 'date'],
+    'frequency'              => ['Frequency', 'status'],
+];
+
+/** Tell the borrower of a purchase what changed in its installment plan. */
+function borrowed_notify_plan(array $before, string $planId, string $note = ''): void
+{
+    $after = db_row(
+        'SELECT p.*, t.borrower_id, t.transaction_number, t.id AS txn_id FROM installment_plans p JOIN transactions t ON t.id = p.transaction_id WHERE p.id = :p',
+        [':p' => $planId]
+    );
+    if ($after && $after['borrower_id']) {
+        notify_borrower_changes($after['borrower_id'], $after['transaction_number'] . ' installments', $before, $after, PLAN_NOTICE_FIELDS, 'borrowed_purchase', $after['txn_id'], $note);
+    }
+}
