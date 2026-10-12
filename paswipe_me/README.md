@@ -1189,6 +1189,10 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - **Obligation page:** shows e.g. "₱108,000.00 (1.5% per month × 36 months)".
 - **Schema change (additive):** `borrower_obligations.agreed_rate DECIMAL(8,4) NULL`, applied automatically once by `obligation_rate_upgrade()`, or by hand with `db/upgrade_obligation_rate.sql`. Existing rows stay NULL, so their interest is unchanged.
 
+**Add transaction defaults and the merchant's category:**
+- **Defaults:** a new transaction starts as *Personal* · *Straight* · *Active*. You can change any of them.
+- **Merchant → category:** choosing a merchant fills in the category recorded for it under Merchants. You can still pick another category. If the category is left empty, the merchant's category is also used when saving.
+
 **Obligation form and status:**
 - **No Transaction field:** the obligation form has no *Transaction* field. Obligations are entered by hand or created from cash loans and cash advances. Card purchases and installments are tracked on the transaction itself, so the transaction page no longer has an *Add obligation* button. An existing link (a cash advance share) is kept when the obligation is edited.
 - **Change status:** this is now a button in the obligation page's header, next to *Record payment* and *Edit*. It opens a small modal (`pages/obligations/status.php`), which posts to the same `related.php` action, so the same rules are checked on the server.

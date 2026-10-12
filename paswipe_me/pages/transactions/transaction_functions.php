@@ -35,14 +35,16 @@ function transaction_fields(?array $current = null, bool $withInstallment = true
         'posting_date'       => ['label' => 'Posting date', 'type' => 'date'],
         'amount'             => ['label' => 'Amount', 'type' => 'decimal', 'required' => true, 'min' => 0],
         'currency'           => ['label' => 'Currency', 'type' => 'text', 'max' => 3, 'required' => true, 'initial' => 'PHP', 'pattern' => '/^[A-Z]{3}$/', 'pattern_message' => 'Use a 3-letter currency code, e.g. PHP.'],
-        'transaction_type'   => ['label' => 'Transaction type', 'type' => 'select', 'options' => enum_options(ENUM_TXN_TYPE), 'required' => true, 'empty_label' => 'Select type', 'section' => 'Classification'],
-        'payment_type'       => ['label' => 'Payment type', 'type' => 'select', 'options' => enum_options(ENUM_TXN_PAYMENT_TYPE), 'required' => true, 'empty_label' => 'Select payment type'],
-        'status'             => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_TXN_STATUS), 'required' => true, 'initial' => 'draft'],
+        'transaction_type'   => ['label' => 'Transaction type', 'type' => 'select', 'options' => enum_options(ENUM_TXN_TYPE), 'required' => true, 'empty_label' => 'Select type', 'initial' => 'personal', 'section' => 'Classification'],
+        'payment_type'       => ['label' => 'Payment type', 'type' => 'select', 'options' => enum_options(ENUM_TXN_PAYMENT_TYPE), 'required' => true, 'empty_label' => 'Select payment type', 'initial' => 'straight'],
+        'status'             => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_TXN_STATUS), 'required' => true, 'initial' => 'active'],
         'borrower_id'        => ['label' => 'Borrower (card user)', 'type' => 'select', 'options' => $borrowers, 'empty_label' => '— Owner\'s own purchase —',
                                  'help' => 'The borrower repays this transaction by your card\'s payment due date. It shows on their borrower page and in their account.'],
         'borrower_email'     => ['label' => 'Or: registered user\'s email', 'type' => 'email', 'max' => 255,
                                  'help' => 'When a registered user who is not in your list used your card. They are added to your borrowers.'],
-        'merchant_id'        => ['label' => 'Merchant', 'type' => 'select', 'options' => merchant_options(), 'empty_label' => '— Not specified —'],
+        'merchant_id'        => ['label' => 'Merchant', 'type' => 'select', 'options' => merchant_options(), 'empty_label' => '— Not specified —',
+                                 'option_data' => merchant_category_data(), 'attrs' => ['data-fills' => 'f_category_id:category'],
+                                 'help' => 'Choosing a merchant fills in its category (from Merchants).'],
         'category_id'        => ['label' => 'Category', 'type' => 'select', 'options' => category_options($current['category_id'] ?? null), 'empty_label' => '— No category —'],
         'reference_number'   => ['label' => 'Reference number', 'type' => 'text', 'max' => 150, 'section' => 'References'],
         'receipt_number'     => ['label' => 'Receipt number', 'type' => 'text', 'max' => 150],
@@ -134,6 +136,11 @@ function transaction_validate(array $fields, array $input, ?string $id = null): 
 {
     $input['currency'] = strtoupper(trim((string) ($input['currency'] ?? '')));
     [$data, $errors] = validate_fields($fields, $input, $id);
+
+    // No category chosen: the merchant's own category (Merchants master data).
+    if (!isset($errors['merchant_id']) && empty($data['category_id']) && !empty($data['merchant_id'])) {
+        $data['category_id'] = merchant_category_data()[$data['merchant_id']]['category'] ?? null;
+    }
 
     if ($data['posting_date'] && $data['transaction_date'] && $data['posting_date'] < $data['transaction_date']) {
         $errors['posting_date'] = 'Posting date cannot be before the transaction date.';

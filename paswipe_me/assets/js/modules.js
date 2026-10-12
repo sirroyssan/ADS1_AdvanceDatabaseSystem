@@ -157,6 +157,26 @@
             });
         }
 
+        /* A choice that fills another field: <select data-fills="f_target:key"> sets f_target
+           to the chosen option's data-key (e.g. a merchant fills in its category). Only when
+           the user changes the choice; an empty value leaves the target as it is. */
+        scope.querySelectorAll('select[data-fills]').forEach(function (select) {
+            if (!App.once(select, 'M13')) return;
+            select.addEventListener('change', function () {
+                select.getAttribute('data-fills').split(',').forEach(function (pair) {
+                    var parts = pair.split(':');
+                    var target = document.getElementById(parts[0]);
+                    var option = select.options[select.selectedIndex];
+                    var value = option ? option.getAttribute('data-' + parts[1]) : null;
+                    if (!target || !value) return;
+                    if (Array.prototype.some.call(target.options || [], function (o) { return o.value === value; })) {
+                        target.value = value;
+                        target.dispatchEvent(new Event('change', { bubbles: true }));
+                    }
+                });
+            });
+        });
+
         /* Obligation interest from a monthly rate: data-rate-interest="f_amount|f_rate|f_from|f_to"
            = amount x rate % x months; months = data-months-fixed (a cash loan's installments)
            or one a month from the obligation date to the due date (at least 1). An empty rate

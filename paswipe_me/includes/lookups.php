@@ -89,6 +89,17 @@ function merchant_options(?string $includeId = null): array
     );
 }
 
+/** Each merchant's category, as option data for the merchant dropdown: [merchant id => ['category' => id]]. */
+function merchant_category_data(): array
+{
+    $data = [];
+    foreach (db_all('SELECT id, category_id FROM merchants WHERE category_id IS NOT NULL') as $m) {
+        $data[$m['id']] = ['category' => $m['category_id']];
+    }
+
+    return $data;
+}
+
 function borrower_options(?string $includeId = null, bool $activeOnly = true): array
 {
     $options = db_options(
