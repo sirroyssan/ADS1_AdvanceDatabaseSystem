@@ -159,6 +159,7 @@ function notify_borrower_changes(?string $borrowerId, string $ref, array $before
         'money'  => format_money($v),
         'date'   => format_date($v),
         'status' => humanize((string) $v),
+        'number' => is_numeric($v) ? rtrim(rtrim(number_format((float) $v, 4, '.', ','), '0'), '.') : (string) $v,
         default  => (string) $v,
     };
     $lines = [];
@@ -186,6 +187,7 @@ function notify_borrower_changes(?string $borrowerId, string $ref, array $before
 /** What a borrower sees of an obligation, for notify_borrower_changes(). */
 const OBLIGATION_NOTICE_FIELDS = [
     'original_amount'  => ['Amount', 'money'],
+    'agreed_rate'      => ['Agreed rate (% per month)', 'number'],
     'agreed_interest'  => ['Interest', 'money'],
     'agreed_fees'      => ['Fees', 'money'],
     'total_amount_due' => ['Total due', 'money'],

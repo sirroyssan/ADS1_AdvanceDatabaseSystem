@@ -1176,6 +1176,19 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - **Payment amount override or void:** these were already notified before.
 - **No-change saves:** nothing is sent when nothing the borrower can see changed.
 
+**Agreed rate on an obligation** (*Agreed rate (% per month)* on the obligation form):
+- **Formula:** Agreed interest = original amount × rate % × months. It is calculated as you type, and the interest box is read-only while a rate is entered.
+- **Months:**
+  - for a cash loan share, the loan's installments (e.g. 36);
+  - otherwise, one a month from the obligation date to the due date (e.g. Jan 14, 2026 → Dec 14, 2027 = 23).
+
+  The help text under the interest box says which applies.
+- **On save:** the server calculates it again.
+- **Cash loan term changes:** when the term changes, the interest, total due and outstanding follow (never below what was paid), and the borrower is notified.
+- **No rate:** leave the rate empty to type the interest amount yourself, as before.
+- **Obligation page:** shows e.g. "₱108,000.00 (1.5% per month × 36 months)".
+- **Schema change (additive):** `borrower_obligations.agreed_rate DECIMAL(8,4) NULL`, applied automatically once by `obligation_rate_upgrade()`, or by hand with `db/upgrade_obligation_rate.sql`. Existing rows stay NULL, so their interest is unchanged.
+
 **Obligation form and status:**
 - **No Transaction field:** the obligation form has no *Transaction* field. Obligations are entered by hand or created from cash loans and cash advances. Card purchases and installments are tracked on the transaction itself, so the transaction page no longer has an *Add obligation* button. An existing link (a cash advance share) is kept when the obligation is edited.
 - **Change status:** this is now a button in the obligation page's header, next to *Record payment* and *Edit*. It opens a small modal (`pages/obligations/status.php`), which posts to the same `related.php` action, so the same rules are checked on the server.

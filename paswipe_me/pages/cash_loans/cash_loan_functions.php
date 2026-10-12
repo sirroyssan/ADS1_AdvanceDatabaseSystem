@@ -354,6 +354,10 @@ function cash_loan_terms_follow(array $loan, array &$data, string $userId): ?arr
     }
     $newLast = cash_loan_last_due($fresh);
     schedule_move_obligations($ids, $oldLast, $newLast);
+    foreach ($ids as $oid) {
+        obligation_rate_refresh($oid);   // an agreed % per month follows the new number of months
+        schedule_sync_obligation($oid);
+    }
 
     return $oldLast !== $newLast && $newLast !== null ? [$oldLast, $newLast] : null;
 }

@@ -26,7 +26,12 @@ function obligation_fields(bool $isNew, ?array $current = null): array
         'obligation_date'   => ['label' => 'Obligation date', 'type' => 'date', 'required' => true, 'initial' => date('Y-m-d')],
         'due_date'          => ['label' => 'Due date', 'type' => 'date'],
         'original_amount'   => ['label' => 'Original amount', 'type' => 'decimal', 'required' => true, 'min' => 0, 'section' => 'Amounts'],
-        'agreed_interest'   => ['label' => 'Agreed interest', 'type' => 'decimal', 'min' => 0, 'default' => '0.00'],
+        'agreed_rate'       => ['label' => 'Agreed rate (% per month)', 'type' => 'decimal', 'scale' => 4, 'digits' => 8, 'min' => 0, 'placeholder' => 'e.g. 1.5',
+                                'help' => 'Optional. Fills Agreed interest = original amount × rate × months. Leave empty to type the interest amount yourself.'],
+        'agreed_interest'   => ['label' => 'Agreed interest', 'type' => 'decimal', 'min' => 0, 'default' => '0.00',
+                                'attrs' => ['data-rate-interest' => 'f_original_amount|f_agreed_rate|f_obligation_date|f_due_date']
+                                    + (($fixed = obligation_fixed_months($current)) ? ['data-months-fixed' => (string) $fixed] : []),
+                                'help' => obligation_fixed_months($current) ? 'Months: ' . obligation_fixed_months($current) . ' (the cash loan\'s installments).' : 'Months: one a month from the obligation date to the due date.'],
         'agreed_fees'       => ['label' => 'Agreed fees', 'type' => 'decimal', 'min' => 0, 'default' => '0.00'],
         'overdue_amount'    => ['label' => 'Overdue amount', 'type' => 'decimal', 'min' => 0, 'default' => '0.00', 'readonly' => true,
                                 'help' => 'Calculated automatically: what was due by today minus what the borrower has paid.'],
@@ -75,6 +80,19 @@ function obligation_borrower_lock(array $o): ?string
     return null;
 }
 
+/** Months fixed by a cash loan's schedule for this obligation, or null (then the dates decide). */
+function obligation_fixed_months(?array $o): ?int
+{
+    if (empty($o['cash_loan_allocation_id'])) {
+        return null;
+    }
+    $count = (int) db_value(
+        "SELECT COUNT(*) FROM cash_loan_allocations a JOIN cash_loan_schedules s ON s.cash_loan_id = a.cash_loan_id
+          WHERE a.id = :a AND s.status NOT IN ('waived', 'cancelled')", [':a' => $o['cash_loan_allocation_id']]);
+
+    return $count > 0 ? $count : null;
+}
+
 /** Statuses the obligation can be changed to by hand (none once paid). */
 function obligation_status_choices(array $o): array
 {
@@ -92,13 +110,19 @@ function obligation_status_choices(array $o): array
 /**
  * Validate and compute totals. $totalPaid is 0 for new obligations.
  */
-function obligation_validate(array $fields, array $input, ?string $id, float $totalPaid, ?string $borrowerId = null): array
+function obligation_validate(array $fields, array $input, ?string $id, float $totalPaid, ?string $borrowerId = null, ?array $current = null): array
 {
     [$data, $errors] = validate_fields($fields, $input, $id);
     $borrowerId = $data['borrower_id'] ?? $borrowerId;
 
     if ($data['due_date'] && $data['obligation_date'] && $data['due_date'] < $data['obligation_date']) {
         $errors['due_date'] = 'Due date cannot be before the obligation date.';
+    }
+
+    // An agreed rate decides the interest: original amount x rate % per month x months.
+    if (!isset($errors['agreed_rate']) && !isset($errors['original_amount']) && ($data['agreed_rate'] ?? null) !== null) {
+        $months = obligation_rate_months(['cash_loan_allocation_id' => $current['cash_loan_allocation_id'] ?? null] + $data);
+        $data['agreed_interest'] = number_format(obligation_rate_interest((float) $data['original_amount'], (float) $data['agreed_rate'], $months), 2, '.', '');
     }
 
     if (!array_intersect_key($errors, array_flip(['original_amount', 'agreed_interest', 'agreed_fees', 'overdue_amount']))) {

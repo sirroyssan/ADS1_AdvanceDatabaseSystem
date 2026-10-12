@@ -345,3 +345,57 @@ function installment_rule_problem(array $rule, string $cardId, float $amount, in
 
     return null;
 }
+
+const OBLIGATION_RATE_UPGRADE_MARKER = 'storage/upgrade_obligation_rate.done';
+
+/**
+ * Additive upgrade: borrower_obligations.agreed_rate, the interest agreed
+ * with the borrower in % per month (NULL = interest entered as an amount).
+ * See db/upgrade_obligation_rate.sql.
+ */
+function obligation_rate_upgrade(): void
+{
+    if (marker_exists(OBLIGATION_RATE_UPGRADE_MARKER)) {
+        return;
+    }
+    db()->exec('ALTER TABLE borrower_obligations ADD COLUMN IF NOT EXISTS agreed_rate DECIMAL(8,4) NULL AFTER agreed_interest');
+    marker_write(OBLIGATION_RATE_UPGRADE_MARKER);
+}
+
+/**
+ * Months the agreed rate is charged for: the obligation's monthly
+ * installments (a cash loan share: the loan's installments; otherwise one a
+ * month from the obligation date to the due date), at least 1.
+ */
+function obligation_rate_months(array $o): int
+{
+    return max(1, count(obligation_monthly_dates($o + ['cash_loan_allocation_id' => null, 'obligation_date' => null, 'due_date' => null])));
+}
+
+/** Agreed interest from a rate: original amount x rate % per month x months. */
+function obligation_rate_interest(float $original, float $rate, int $months): float
+{
+    return round($original * $rate / 100 * $months, 2);
+}
+
+/**
+ * An obligation with an agreed rate whose months changed (its cash loan's
+ * term): recalculate the interest, total due and outstanding. Never below
+ * what was already paid. Call inside a transaction.
+ */
+function obligation_rate_refresh(string $obligationId): void
+{
+    $o = db_row('SELECT * FROM borrower_obligations WHERE id = :id FOR UPDATE', [':id' => $obligationId]);
+    if (!$o || ($o['agreed_rate'] ?? null) === null) {
+        return;
+    }
+    $interest = obligation_rate_interest((float) $o['original_amount'], (float) $o['agreed_rate'], obligation_rate_months($o));
+    $total = round((float) $o['original_amount'] + $interest + (float) $o['agreed_fees'], 2);
+    if (abs($interest - (float) $o['agreed_interest']) < 0.005 || $total + 0.004 < (float) $o['total_paid']) {
+        return;
+    }
+    db_update('borrower_obligations', [
+        'agreed_interest' => number_format($interest, 2, '.', ''), 'total_amount_due' => number_format($total, 2, '.', ''),
+        'outstanding_amount' => number_format(max(0, $total - (float) $o['total_paid']), 2, '.', ''),
+    ], $o['id']);
+}

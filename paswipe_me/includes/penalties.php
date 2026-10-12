@@ -308,6 +308,7 @@ function penalty_run_if_due(): void
         borrowed_schema_upgrade();
         installments_schema_upgrade();
         staff_schema_upgrade();
+        obligation_rate_upgrade();
         schedule_sync_upgrade();
         obligation_refresh_overdue();
         schedule_refresh_statuses();

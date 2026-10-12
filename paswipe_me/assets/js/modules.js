@@ -157,6 +157,42 @@
             });
         }
 
+        /* Obligation interest from a monthly rate: data-rate-interest="f_amount|f_rate|f_from|f_to"
+           = amount x rate % x months; months = data-months-fixed (a cash loan's installments)
+           or one a month from the obligation date to the due date (at least 1). An empty rate
+           leaves the interest to be typed by hand. */
+        scope.querySelectorAll('[data-rate-interest]').forEach(function (target) {
+            if (!App.once(target, 'M12')) return;
+            var ids = target.getAttribute('data-rate-interest').split('|');
+            var el = ids.map(function (id) { return document.getElementById(id); });
+            if (!el[0] || !el[1]) return;
+            var fixed = parseInt(target.getAttribute('data-months-fixed') || '0', 10);
+            var help = document.getElementById(target.id + '-help');
+            function months() {
+                if (fixed > 0) return fixed;
+                var a = /^(\d{4})-(\d{2})-(\d{2})$/.exec(el[2] ? el[2].value : '');
+                var b = /^(\d{4})-(\d{2})-(\d{2})$/.exec(el[3] ? el[3].value : '');
+                if (!a || !b) return 1;
+                var n = (+b[1] - +a[1]) * 12 + (+b[2] - +a[2]) - (+b[3] < +a[3] ? 1 : 0);
+                return Math.max(1, Math.min(120, n));
+            }
+            function update() {
+                var rateText = el[1].value.replace(/[,\s%]/g, '');
+                target.readOnly = rateText !== '';
+                if (rateText === '') return;
+                var m = months();
+                var interest = Math.round(number(el[0].id) * parseFloat(rateText || '0') / 100 * m * 100) / 100;
+                formatAmount(target, isFinite(interest) ? interest.toFixed(2) : '0.00');
+                if (help) help.textContent = 'Months: ' + m + (fixed > 0 ? ' (the cash loan\'s installments)' : ' (one a month from the obligation date to the due date)') + '. Calculated from the agreed rate.';
+            }
+            el.forEach(function (e) {
+                if (!e) return;
+                e.addEventListener('input', update);
+                e.addEventListener('change', update);
+            });
+            update();
+        });
+
         /* Add-on interest: data-addon="f_a,f_b,f_c|f_rate|f_term" = principal (the first
            of a, b, c above zero) + principal x rate % x term (months). */
         scope.querySelectorAll('[data-addon]').forEach(function (target) {

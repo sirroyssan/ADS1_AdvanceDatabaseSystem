@@ -21,7 +21,7 @@ $errors = [];
 
 if (is_post()) {
     require_csrf('pages/obligations/edit.php?id=' . $obligation['id']);
-    [$data, $errors] = obligation_validate($fields, $_POST, $obligation['id'], (float) $obligation['total_paid'], $obligation['borrower_id']);
+    [$data, $errors] = obligation_validate($fields, $_POST, $obligation['id'], (float) $obligation['total_paid'], $obligation['borrower_id'], $obligation);
 
     if (!$errors) {
         try {

@@ -94,7 +94,8 @@ require APP_ROOT . '/includes/header.php';
             'Obligation date'   => e(format_date($obligation['obligation_date'])),
             'Due date'          => e(format_date($obligation['due_date'])),
             'Original amount'   => e(format_money($obligation['original_amount'])),
-            'Agreed interest'   => e(format_money($obligation['agreed_interest'])),
+            'Agreed interest'   => e(format_money($obligation['agreed_interest'])) . (($obligation['agreed_rate'] ?? null) !== null
+                ? ' <span class="text-muted">(' . e(rtrim(rtrim(number_format((float) $obligation['agreed_rate'], 4), '0'), '.')) . '% per month × ' . e(obligation_rate_months($obligation)) . ' months)</span>' : ''),
             'Agreed fees'       => e(format_money($obligation['agreed_fees'])),
             'Total amount due'  => '<strong>' . e(format_money($obligation['total_amount_due'])) . '</strong>',
             'Total paid'        => e(format_money($obligation['total_paid'])),
