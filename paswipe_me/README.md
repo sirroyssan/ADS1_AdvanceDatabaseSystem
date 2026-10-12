@@ -1152,6 +1152,14 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - **Double clicks:** the check runs again at save time under a lock, so two saves at once (a double click) still add only one card.
 - **Deleting:** a card with no transactions, statements, cash loans, cash advances, card payments or bank charges (its opening balance does not count) shows **Delete**, both in the list (trash icon) and in the card page's header. Deleting removes it with its billing cycles. A card with records shows **Mark as inactive** instead, and the server refuses a forced delete. Staff never see these buttons.
 
+**Due this month** (dashboard *Who owes me* and the *Borrower Balances* report):
+- **What it adds:** next to the total to collect, each borrower shows what to collect **this calendar month**. The report also has a figure for all matching borrowers.
+- **What it counts:** everything unpaid that falls due by the end of this month, including overdue months, plus unpaid penalties. It is never more than the borrower's total.
+- **Installment items** (cash loans, cash advances, installment purchases) count only the months due so far.
+- **One-time items** count in full when their due date is this month or earlier.
+- **Card purchases** follow their statement due dates; one without installment terms counts nothing.
+- **Source:** `due_month` from `borrowed_obligation_due_now()` / `borrowed_ledger()`, summed by `portal_items_totals()`.
+
 **Obligation form and status:**
 - **No Transaction field:** the obligation form has no *Transaction* field. Obligations are entered by hand or created from cash loans and cash advances. Card purchases and installments are tracked on the transaction itself, so the transaction page no longer has an *Add obligation* button. An existing link (a cash advance share) is kept when the obligation is edited.
 - **Change status:** this is now a button in the obligation page's header, next to *Record payment* and *Edit*. It opens a small modal (`pages/obligations/status.php`), which posts to the same `related.php` action, so the same rules are checked on the server.

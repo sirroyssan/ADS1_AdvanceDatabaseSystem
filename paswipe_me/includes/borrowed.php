@@ -314,15 +314,23 @@ function borrowed_obligation_due_now(array $o, string $today, float $outstanding
 {
     [$rows] = obligation_schedule_view($o);
     $rows = array_values(array_filter($rows, static fn ($r) => !in_array($r['status'], ['cancelled', 'waived'], true)));
+    $monthEnd = date('Y-m-t', strtotime($today));
     if (count($rows) < 2) {
-        return ['due_now' => $outstanding, 'current' => null, 'installments' => 0, 'monthly' => null];
+        // One amount: due this month when its due date is this month or earlier (no date: due now).
+        $dueMonth = !$o['due_date'] || $o['due_date'] <= $monthEnd ? $outstanding : min($penalties, $outstanding);
+
+        return ['due_now' => $outstanding, 'due_month' => round($dueMonth, 2), 'current' => null, 'installments' => 0, 'monthly' => null];
     }
     $due = 0.0;
+    $month = 0.0;
     $current = null;
     foreach ($rows as $i => $r) {
         $left = (float) $r['remaining_amount'];
         if ($left <= 0.004) {
             continue;
+        }
+        if ($r['due_date'] <= $monthEnd) {
+            $month += $left;
         }
         if ($r['due_date'] < $today) {
             $due += $left;
@@ -334,7 +342,8 @@ function borrowed_obligation_due_now(array $o, string $today, float $outstanding
     $current ??= array_key_first(array_filter($rows, static fn ($r) => (float) $r['remaining_amount'] > 0.004));
 
     return [
-        'due_now' => round(min($due + $penalties, $outstanding), 2), 'installments' => count($rows), 'monthly' => (float) $rows[0]['amount_due'],
+        'due_now' => round(min($due + $penalties, $outstanding), 2), 'due_month' => round(min($month + $penalties, $outstanding), 2),
+        'installments' => count($rows), 'monthly' => (float) $rows[0]['amount_due'],
         'current' => $current === null ? null : ['n' => $current + 1, 'amount' => (float) $rows[$current]['amount_due'], 'remaining' => (float) $rows[$current]['remaining_amount'],
                                                  'due' => ['date' => $rows[$current]['due_date'], 'source' => 'obligation', 'statement' => null]],
     ];
@@ -444,6 +453,14 @@ function borrowed_ledger(array $t, ?string $today = null): array
             }
         }
     }
+    // Due this month: everything unpaid that falls due by the end of this month (overdue included).
+    $monthEnd = date('Y-m-t', strtotime($today));
+    $dueMonth = 0.0;
+    foreach ($rows as $r) {
+        if ($r['remaining'] > 0.004 && $r['due']['date'] !== null && $r['due']['date'] <= $monthEnd) {
+            $dueMonth += $r['remaining'];
+        }
+    }
     $principalPaid = $termsMissing ? $money($repaid - $penaltyPaid) : $money($repaid - $penaltyPaid - max(0, $left));
     $remaining = $money($responsible - $principalPaid);
     $penaltyUnpaid = $money($penalties - $penaltyPaid);
@@ -467,7 +484,8 @@ function borrowed_ledger(array $t, ?string $today = null): array
         'repaid' => $money($repaid), 'reported' => $money((float) $pay['reported']), 'remaining' => $remaining,
         'penalties' => $money($penalties), 'penalty_paid' => $money($penaltyPaid), 'penalty_unpaid' => $penaltyUnpaid, 'outstanding' => $outstanding,
         'rows' => $rows, 'next_due' => $nextDue, 'status' => $status, 'overdue_amount' => $money($overdue), 'review' => $review, 'unknown_due' => $unknown || $termsMissing,
-        'due_now' => $termsMissing ? 0.0 : $money(min($dueNow + $penaltyUnpaid, $outstanding)), 'current' => $current === null ? null : $rows[$current] + ['n' => $current + 1],
+        'due_now' => $termsMissing ? 0.0 : $money(min($dueNow + $penaltyUnpaid, $outstanding)),
+        'due_month' => $termsMissing ? 0.0 : $money(min($dueMonth + $penaltyUnpaid, $outstanding)), 'current' => $current === null ? null : $rows[$current] + ['n' => $current + 1],
         'installments' => $plan ? count($rows) : 0, 'monthly' => $plan ? (float) $plan['installment_amount'] : null, 'terms_missing' => $termsMissing,
     ];
 }

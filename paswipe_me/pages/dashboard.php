@@ -127,6 +127,8 @@ foreach ($borrowerBalances as $i => &$row) {
         $overdue => 'overdue',
         default => 'pending',
     };
+    // To collect this month: overdue plus every installment due by the end of the month (and unpaid penalties).
+    $row['due_month'] = $row['total_due'] > 0.004 ? portal_items_totals(portal_all_items($row['id']))['due_month'] : 0.0;
     // Listed while something is owed, or when everything was repaid recently.
     $recent = (int) $row['recently_paid'] > 0 || (bool) array_filter($mine, static fn ($p) => $p['transaction_date'] >= date('Y-m-d', strtotime('-60 days')));
     if ($row['total_due'] <= 0.004 && !$recent) {
@@ -136,6 +138,7 @@ foreach ($borrowerBalances as $i => &$row) {
 unset($row);
 usort($borrowerBalances, static fn ($a, $b) => [$a['total_due'] <= 0.004, $a['next_due'] === null, $a['next_due'], -$a['total_due']]
     <=> [$b['total_due'] <= 0.004, $b['next_due'] === null, $b['next_due'], -$b['total_due']]);
+$dueThisMonth = array_sum(array_column($borrowerBalances, 'due_month'));
 $borrowerBalances = array_slice($borrowerBalances, 0, 10);
 $purchaseTotals = borrowed_totals(array_merge([], ...array_values($purchaseByBorrower)));
 
@@ -506,7 +509,7 @@ require APP_ROOT . '/includes/header.php';
 
 <section class="panel balance-panel" aria-labelledby="balances-title">
     <header class="panel__header">
-        <h3 id="balances-title"><?= icon('users') ?> Who owes me (outstanding + penalties)</h3>
+        <h3 id="balances-title"><?= icon('users') ?> Who owes me (outstanding + penalties · due this <?= e(date('F')) ?>)</h3>
         <a class="btn btn--sm btn--outline" href="<?= e(url('pages/reports/borrower_balances.php')) ?>">View all</a>
     </header>
     <?php if (!$borrowerBalances): ?>
@@ -515,7 +518,7 @@ require APP_ROOT . '/includes/header.php';
         <div class="table-wrap">
             <table class="table table--cards table--compact">
                 <thead><tr><th scope="col">Borrower</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th><th scope="col" class="num">Total to collect</th>
-                    <th scope="col">Next due</th><th scope="col">Repayment status</th></tr></thead>
+                    <th scope="col" class="num">Due this month</th><th scope="col">Next due</th><th scope="col">Repayment status</th></tr></thead>
                 <tbody>
                 <?php foreach ($borrowerBalances as $row): ?>
                     <tr>
@@ -524,6 +527,7 @@ require APP_ROOT . '/includes/header.php';
                         <td data-label="Outstanding" class="num"><?= e(format_money($row['outstanding'])) ?></td>
                         <td data-label="Penalties" class="num<?= (float) $row['penalties'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($row['penalties'])) ?></td>
                         <td data-label="Total to collect" class="num"><strong><?= e(format_money($row['total_due'])) ?></strong></td>
+                        <td data-label="Due this month" class="num"><strong<?= $row['due_month'] > 0.004 ? '' : ' class="text-muted"' ?>><?= e(format_money($row['due_month'])) ?></strong></td>
                         <td data-label="Next due"><?= $row['next_due'] ? e(format_date($row['next_due'])) : '<span class="text-muted">—</span>' ?></td>
                         <td data-label="Repayment status">
                             <?= borrowed_status_badge($row['repay_status']) ?>
@@ -533,7 +537,7 @@ require APP_ROOT . '/includes/header.php';
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
-                <tfoot><tr><td>All my borrowers</td><td class="num"><?= e(format_money((float) $collect['outstanding'] + $purchaseTotals['remaining'])) ?></td><td class="num"><?= e(format_money((float) $collect['penalties'] + $purchaseTotals['penalties'])) ?></td><td class="num"><strong><?= e(format_money((float) $collect['total_due'] + $purchaseTotals['outstanding'])) ?></strong></td><td colspan="2"></td></tr></tfoot>
+                <tfoot><tr><td>All my borrowers</td><td class="num"><?= e(format_money((float) $collect['outstanding'] + $purchaseTotals['remaining'])) ?></td><td class="num"><?= e(format_money((float) $collect['penalties'] + $purchaseTotals['penalties'])) ?></td><td class="num"><strong><?= e(format_money((float) $collect['total_due'] + $purchaseTotals['outstanding'])) ?></strong></td><td class="num"><strong><?= e(format_money($dueThisMonth)) ?></strong></td><td colspan="2"></td></tr></tfoot>
             </table>
         </div>
     <?php endif; ?>

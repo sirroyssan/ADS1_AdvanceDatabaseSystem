@@ -218,6 +218,7 @@ function portal_all_items(string $borrowerId, bool $openOnly = true): array
             'date' => $o['obligation_date'], 'link' => url('portal/obligation.php', ['id' => $o['id']]),
             'amount' => (float) $o['total_amount_due'], 'paid' => (float) $o['total_paid'], 'outstanding' => $outstanding, 'penalties' => $penalties,
             'total' => round($outstanding + $penalties, 2), 'due_now' => $outstanding + $penalties > 0.004 ? $due['due_now'] : 0.0,
+            'due_month' => $outstanding + $penalties > 0.004 ? $due['due_month'] : 0.0,
             'due_date' => $due['current']['due']['date'] ?? $o['due_date'],
             'installment' => $due['current'] !== null ? 'Installment ' . $due['current']['n'] . ' of ' . $due['installments'] : null,
             'overdue' => (float) $o['overdue_amount'] > 0.004 || ($o['due_date'] && $o['due_date'] < $today && $outstanding > 0.004),
@@ -247,6 +248,7 @@ function portal_all_items(string $borrowerId, bool $openOnly = true): array
             'date' => $p['transaction_date'], 'link' => url('pages/borrowed/view.php', ['id' => $p['id']]),
             'amount' => $l['responsible'], 'paid' => $l['repaid'], 'outstanding' => $l['remaining'], 'penalties' => $l['penalty_unpaid'],
             'total' => $l['outstanding'], 'due_now' => $l['status'] === 'repaid' ? 0.0 : $l['due_now'],
+            'due_month' => $l['status'] === 'repaid' ? 0.0 : ($l['due_month'] ?? 0.0),
             'due_date' => $l['next_due']['date'] ?? null, 'installment' => borrowed_installment_text($l),
             'overdue' => $l['status'] === 'overdue', 'status' => $l['status'],
         ];
@@ -261,9 +263,9 @@ function portal_all_items(string $borrowerId, bool $openOnly = true): array
 /** Totals over portal_all_items(). */
 function portal_items_totals(array $items): array
 {
-    $sum = ['amount' => 0.0, 'paid' => 0.0, 'outstanding' => 0.0, 'penalties' => 0.0, 'total' => 0.0, 'due_now' => 0.0, 'overdue' => 0.0, 'next' => null];
+    $sum = ['amount' => 0.0, 'paid' => 0.0, 'outstanding' => 0.0, 'penalties' => 0.0, 'total' => 0.0, 'due_now' => 0.0, 'due_month' => 0.0, 'overdue' => 0.0, 'next' => null];
     foreach ($items as $i) {
-        foreach (['amount', 'paid', 'outstanding', 'penalties', 'total', 'due_now'] as $k) {
+        foreach (['amount', 'paid', 'outstanding', 'penalties', 'total', 'due_now', 'due_month'] as $k) {
             $sum[$k] += $i[$k];
         }
         if ($i['overdue']) {
