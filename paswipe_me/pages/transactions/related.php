@@ -1,10 +1,13 @@
 <?php
 /**
- * Transactions - actions (POST): status change, remove item, attach/detach document.
+ * Transactions - actions (POST): status change, remove item, attach/detach document,
+ * and the penalties of a purchase assigned to a borrower (check now, apply, waive/delete).
  */
 
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/transaction_functions.php';
+require_once APP_ROOT . '/pages/obligations/obligation_functions.php';   // penalty form fields
+require_once APP_ROOT . '/pages/penalty_rules/penalty_rule_functions.php';
 
 $currentUser = require_admin();
 
@@ -70,6 +73,75 @@ try {
                 log_activity('detach_document', 'transaction', $txn['id'], 'Removed an attachment from ' . $txn['transaction_number']);
             }
             flash($count ? 'success' : 'error', $count ? 'Attachment was removed.' : 'Attachment not found.');
+            break;
+
+        case 'run_penalties':
+        case 'add_penalty':
+        case 'terminate_penalties':
+            // Penalties of a purchase the borrower repays to you (tracked on the transaction itself).
+            $purchase = $txn['borrower_id'] ? (borrowed_owner_purchases(null, $txn['id'])[0] ?? null) : null;
+            if (!$purchase || $purchase['ledger']['mode'] !== 'transaction') {
+                flash('error', 'Penalties apply to a card purchase assigned to a borrower.');
+                break;
+            }
+            $action = input_string($_POST, 'action');
+            if ($action === 'run_penalties') {
+                $created = borrowed_penalty_run(db_row('SELECT * FROM transactions WHERE id = :id', [':id' => $txn['id']]));
+                flash('success', $created ? $created . ' new penalt' . ($created === 1 ? 'y was' : 'ies were') . ' charged.' : 'No new penalty is due. Penalties are already up to date.');
+                break;
+            }
+            if ($action === 'add_penalty') {
+                [$data, $errors] = validate_fields(penalty_fields(), $_POST);
+                $rule = $data['penalty_rule_id'] ? penalty_rule_find($data['penalty_rule_id']) : null;
+                if (!$errors && !$rule) {
+                    $errors['penalty_rule_id'] = 'Choose an active penalty rule.';
+                }
+                if ($errors) {
+                    flash('error', 'Penalty not applied: ' . reset($errors));
+                    break;
+                }
+                $amount = $data['amount'] ?? number_format(penalty_rule_amount($rule, (float) $data['calculation_base']), 2, '.', '');
+                db_transaction(static function () use ($txn, $rule, $data, $amount) {
+                    db_insert('applied_penalties', [
+                        'id' => new_uuid(), 'obligation_id' => null, 'transaction_id' => $txn['id'], 'penalty_rule_id' => $rule['id'],
+                        'applied_date' => $data['applied_date'], 'overdue_days' => $data['overdue_days'] ?? 0,
+                        'calculation_base' => $data['calculation_base'], 'amount' => $amount, 'paid_amount' => '0.00',
+                        'remaining_amount' => $amount, 'notes' => $data['notes'],
+                    ]);
+                    borrowed_sync_penalty_payments($txn['id']);   // confirmed repayments pay penalties first
+                });
+                log_activity('apply_penalty', 'transaction', $txn['id'], 'Applied penalty "' . $rule['name'] . '" of ' . format_money($amount) . ' on ' . $txn['transaction_number']);
+                notify_borrower($txn['borrower_id'], 'penalty_added', 'Late charge: ' . $txn['transaction_number'],
+                    'A late charge of ' . format_money($amount) . ' (' . $rule['name'] . ') was added to ' . $txn['transaction_number'] . '.', 'borrowed_purchase', $txn['id']);
+                flash('success', 'Penalty of ' . format_money($amount) . ' was applied.');
+                break;
+            }
+            // Waive or delete several at once (owners/administrators, reason required).
+            $ids = array_values(array_unique(array_filter((array) ($_POST['item_ids'] ?? []), static fn ($v) => is_string($v) && is_valid_uuid($v))));
+            $mode = input_string($_POST, 'mode');
+            $reason = input_string($_POST, 'reason');
+            if (!$ids) {
+                flash('error', 'Tick at least one penalty first.');
+                break;
+            }
+            if (mb_strlen(trim($reason)) < PENALTY_REASON_MIN) {
+                flash('error', 'Enter a reason of at least ' . PENALTY_REASON_MIN . ' characters (e.g. "Cash payment received offline but not yet recorded").');
+                break;
+            }
+            $done = 0;
+            $skipped = [];
+            foreach ($ids as $penaltyId) {
+                $error = penalty_terminate($penaltyId, $txn['id'], $mode, $reason, $currentUser, 'transaction');
+                $error === null ? $done++ : $skipped[$error] = ($skipped[$error] ?? 0) + 1;
+            }
+            if ($done) {
+                notify_borrower($txn['borrower_id'], 'penalty_' . ($mode === 'waive' ? 'waived' : 'removed'), 'Late charges ' . ($mode === 'waive' ? 'waived' : 'removed') . ': ' . $txn['transaction_number'],
+                    $done . ' late charge(s) on ' . $txn['transaction_number'] . ' were ' . ($mode === 'waive' ? 'waived' : 'removed') . '. Reason: ' . trim($reason), 'borrowed_purchase', $txn['id']);
+                flash('success', $done . ' penalt' . ($done === 1 ? 'y was' : 'ies were') . ' ' . ($mode === 'waive' ? 'waived' : 'deleted') . '. The reason was recorded.');
+            }
+            foreach ($skipped as $why => $count) {
+                flash(str_contains($why, 'nothing left to waive') ? 'info' : 'error', $count . ' skipped: ' . $why);
+            }
             break;
 
         default:

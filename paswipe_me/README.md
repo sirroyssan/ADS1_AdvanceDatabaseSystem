@@ -1153,6 +1153,12 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - **Server side:** it removes the commas before checking and saving, so nothing changes in the database.
 - **Too many decimals:** a value with more decimals than allowed is left as typed, so the form's error shows instead of a silent rounding.
 
+**Penalties on card purchases assigned to a borrower** (installment or straight; transaction page, *Penalties* panel):
+- **Same panel as an obligation:** the penalty rules of the card's bank, **Check penalties now** (charges what is due under the rules), **Apply penalty** (by hand, from a rule; the amount is computed from the rule or typed), and waive/delete with a required reason. Owners and admins only; staff see the list.
+- **Repayments:** confirmed repayments pay penalties first (oldest first), then the installments.
+- **Borrower notices:** the borrower is notified of a penalty added, waived or removed.
+- **Waived parts stay waived:** a penalty's charge is what is paid plus what is still due (`PENALTY_CHARGED_SQL`), so a waived part is never brought back when repayments are recalculated.
+
 **Shared credit limits** (`includes/credit_lines.php`): some banks give several cards one limit. For example, BDO Visa, BDO Shopmore and BDO AMEX share ₱1,120,000.
 - **On the card form:** *Limit shared with other cards?* has three choices:
   - **Own limit**, the default;

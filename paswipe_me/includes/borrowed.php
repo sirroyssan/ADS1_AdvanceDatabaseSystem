@@ -406,7 +406,8 @@ function borrowed_ledger(array $t, ?string $today = null): array
         [':t' => $t['id']]
     );
     $repaid = (float) $pay['confirmed'];
-    $penalties = (float) db_value('SELECT COALESCE(SUM(amount), 0) FROM applied_penalties WHERE transaction_id = :t', [':t' => $t['id']]);
+    // A waived part is no longer owed: each penalty counts what is paid plus what is still due.
+    $penalties = (float) db_value('SELECT COALESCE(SUM(' . PENALTY_CHARGED_SQL . '), 0) FROM applied_penalties WHERE transaction_id = :t', [':t' => $t['id']]);
 
     // Confirmed repayments cover penalties first, then the charges oldest first (same order as obligations).
     $penaltyPaid = min($repaid, $penalties);
@@ -576,16 +577,24 @@ function borrowed_penalty_run_all(?string $today = null): int
     return $created;
 }
 
-/** Keep paid / remaining of a purchase's penalties in line with its confirmed repayments (penalties first). */
+/**
+ * What a penalty row still charges: paid + remaining. Equal to the amount
+ * unless part of it was waived (the waived part stays waived).
+ */
+const PENALTY_CHARGED_SQL = 'amount - GREATEST(amount - paid_amount - remaining_amount, 0)';
+
+/** Keep paid / remaining of a purchase's penalties in line with its confirmed repayments (penalties first, waived parts excluded). */
 function borrowed_sync_penalty_payments(string $transactionId): void
 {
     $repaid = (float) db_value("SELECT COALESCE(SUM(amount), 0) FROM borrower_payments WHERE transaction_id = :t AND status = 'approved'", [':t' => $transactionId]);
-    foreach (db_all('SELECT id, amount, paid_amount FROM applied_penalties WHERE transaction_id = :t ORDER BY applied_date, created_at', [':t' => $transactionId]) as $p) {
-        $paid = round(min($repaid, (float) $p['amount']), 2);
+    foreach (db_all('SELECT id, amount, paid_amount, remaining_amount, ' . PENALTY_CHARGED_SQL . ' AS charged FROM applied_penalties WHERE transaction_id = :t ORDER BY applied_date, created_at', [':t' => $transactionId]) as $p) {
+        $charged = (float) $p['charged'];
+        $paid = round(min($repaid, $charged), 2);
         $repaid -= $paid;
-        if (abs($paid - (float) $p['paid_amount']) >= 0.005) {
+        $remaining = round($charged - $paid, 2);
+        if (abs($paid - (float) $p['paid_amount']) >= 0.005 || abs($remaining - (float) $p['remaining_amount']) >= 0.005) {
             db_update('applied_penalties', ['paid_amount' => number_format($paid, 2, '.', ''),
-                'remaining_amount' => number_format((float) $p['amount'] - $paid, 2, '.', '')], $p['id']);
+                'remaining_amount' => number_format($remaining, 2, '.', '')], $p['id']);
         }
     }
 }

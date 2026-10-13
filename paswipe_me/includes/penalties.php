@@ -405,8 +405,10 @@ function allocation_split(array $o, float $amount): array
  * Waive (keep the row, remaining → 0) or delete (remove an unpaid penalty).
  * Owners/administrators only; the caller checks the role. Returns an error or null.
  */
-function penalty_terminate(string $penaltyId, string $obligationId, string $mode, string $reason, array $user): ?string
+function penalty_terminate(string $penaltyId, string $obligationId, string $mode, string $reason, array $user, string $parent = 'obligation'): ?string
 {
+    // $parent 'transaction': a penalty of a card purchase assigned to a borrower ($obligationId is then the transaction id).
+    $column = $parent === 'transaction' ? 'transaction_id' : 'obligation_id';
     $reason = trim($reason);
     if (mb_strlen($reason) < PENALTY_REASON_MIN) {
         return 'Enter a reason of at least ' . PENALTY_REASON_MIN . ' characters (e.g. "Cash payment received offline but not yet recorded").';
@@ -415,9 +417,9 @@ function penalty_terminate(string $penaltyId, string $obligationId, string $mode
         return 'Only owners and administrators can waive or delete penalties.';
     }
 
-    return db_transaction(function () use ($penaltyId, $obligationId, $mode, $reason, $user) {
-        $p = db_row('SELECT ap.*, r.name AS rule_name FROM applied_penalties ap JOIN penalty_rules r ON r.id = ap.penalty_rule_id
-                      WHERE ap.id = :id AND ap.obligation_id = :o FOR UPDATE', [':id' => $penaltyId, ':o' => $obligationId]);
+    return db_transaction(function () use ($penaltyId, $obligationId, $mode, $reason, $user, $parent, $column) {
+        $p = db_row("SELECT ap.*, r.name AS rule_name FROM applied_penalties ap JOIN penalty_rules r ON r.id = ap.penalty_rule_id
+                      WHERE ap.id = :id AND ap.$column = :o FOR UPDATE", [':id' => $penaltyId, ':o' => $obligationId]);
         if (!$p) {
             return 'Penalty not found.';
         }
@@ -432,19 +434,23 @@ function penalty_terminate(string $penaltyId, string $obligationId, string $mode
                 'remaining_amount' => '0.00',
                 'notes'            => trim(($p['notes'] ? $p['notes'] . "\n" : '') . 'WAIVED ' . format_money($p['remaining_amount']) . ' by ' . $who . ' on ' . $stamp . ': ' . $reason),
             ], $p['id']);
-            log_activity('waive_penalty', 'obligation', $obligationId, 'Waived ' . format_money($p['remaining_amount']) . ' of "' . $p['rule_name'] . '" (' . format_date($p['applied_date']) . '): ' . $reason,
+            log_activity('waive_penalty', $parent, $obligationId, 'Waived ' . format_money($p['remaining_amount']) . ' of "' . $p['rule_name'] . '" (' . format_date($p['applied_date']) . '): ' . $reason,
                 ['remaining_amount' => $p['remaining_amount']], ['remaining_amount' => '0.00', 'reason' => $reason]);
         } elseif ($mode === 'delete') {
             if ((float) $p['paid_amount'] > 0.004) {
                 return 'Part of this penalty was already paid, so it cannot be deleted. Waive the rest instead.';
             }
             db_exec('DELETE FROM applied_penalties WHERE id = :id', [':id' => $p['id']]);
-            log_activity('delete_penalty', 'obligation', $obligationId, 'Deleted penalty "' . $p['rule_name'] . '" of ' . format_money($p['amount']) . ' (' . format_date($p['applied_date']) . '): ' . $reason,
+            log_activity('delete_penalty', $parent, $obligationId, 'Deleted penalty "' . $p['rule_name'] . '" of ' . format_money($p['amount']) . ' (' . format_date($p['applied_date']) . '): ' . $reason,
                 $p + ['penalty_key' => penalty_key($obligationId, $p['penalty_rule_id'], $p['installment_schedule_id'], $p['applied_date'])], ['reason' => $reason]);
         } else {
             return 'Unknown action.';
         }
 
+        if ($parent === 'transaction') {
+            borrowed_sync_penalty_payments($obligationId);   // repayments flow over what is still charged
+            return null;
+        }
         // An obligation with nothing left (balance and penalties) is paid.
         $o = db_row('SELECT * FROM borrower_obligations WHERE id = :id FOR UPDATE', [':id' => $obligationId]);
         if ($o && (float) $o['outstanding_amount'] <= 0.004 && penalty_unpaid_total($obligationId) <= 0.004 && !in_array($o['status'], ['cancelled', 'written_off', 'paid'], true)) {
