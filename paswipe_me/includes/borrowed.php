@@ -1136,6 +1136,18 @@ function borrowed_parts_upgrade(): void
     marker_write(PURCHASE_PARTS_MARKER);
 }
 
+/** One-time: approved purchase repayments are applied to their purchase (an amount override used to mark them unallocated). */
+function borrowed_allocation_status_fix(): void
+{
+    $marker = 'storage/upgrade_purchase_status.done';
+    if (marker_exists($marker)) {
+        return;
+    }
+    db_exec("UPDATE borrower_payments SET allocation_status = 'fully_allocated'
+              WHERE transaction_id IS NOT NULL AND status = 'approved' AND allocation_status <> 'fully_allocated'");
+    marker_write($marker);
+}
+
 /**
  * Whether the parts table is there. Until it is (the upgrade failed - see the
  * PHP error log), repayments are read as having no choice, so pages still open.
@@ -1245,8 +1257,10 @@ function borrowed_allocate(string $transactionId, array $rows, float $penalties,
     }
     foreach ($payments as $p) {
         $pool += max(0, (float) $p['amount'] - (float) $p['chosen']);
+        $budget = (float) $p['amount'];   // the split never applies more than the payment (e.g. after an amount override)
         foreach ($parts[$p['id']] ?? [] as $pp) {
-            $amount = (float) $pp['amount'];
+            $amount = min((float) $pp['amount'], $budget);
+            $budget -= $amount;
             $i = match ($pp['part']) {
                 'installment' => $rowIndex[$pp['installment_schedule_id']] ?? null,
                 'purchase' => $rows ? 0 : null,

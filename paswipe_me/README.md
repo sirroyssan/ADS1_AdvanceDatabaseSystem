@@ -1385,7 +1385,7 @@ When paying a card purchase, the borrower ticks rows (Late charges, Installment 
 - **An installment:** the amount goes to that installment, up to what it still owes.
 - **Money without a choice** fills the installments oldest first, then late charges. That is older repayments, repayments recorded without picking rows, or more than a row could take. Late charges are never paid before the installments automatically any more.
 
-The repayment history, the "Repayment to confirm" modal and the borrower's payment page (You chose to pay / Applied to) show what each repayment is for ("For: Late charges ₱0.50 · Installment 1 ₱6,514.50").
+On Borrower Payments, a purchase repayment shows **Repayment of card purchase** (the borrower's split, with What it paid), not the obligation Allocate panel: there is nothing to allocate by hand. An amount override keeps it fully allocated and never applies more than the new amount; a one-time fix (`storage/upgrade_purchase_status.done`) marks approved purchase repayments that an override had left "Unallocated" as fully allocated. The repayment history, the "Repayment to confirm" modal and the borrower's payment page (You chose to pay / Applied to) show what each repayment is for ("For: Late charges ₱0.50 · Installment 1 ₱6,514.50").
 
 On upgrade, the paid/remaining amounts of every purchase penalty are re-split once by this rule. Repayments confirmed before this change had no saved choice, so they now count toward the installments first. Penalties they used to cover become unpaid again; the owner can waive them in the purchase's Penalties panel.
 

@@ -350,8 +350,14 @@ function payment_override_amount(array $payment, string $rawAmount, string $reas
 
             db_update('borrower_payments', [
                 'amount'            => number_format($new, 2, '.', ''),
-                'allocation_status' => allocation_status_for($new, $allocated - $reversed),
+                // A purchase repayment is applied to its purchase by the borrower's split, never allocated by hand.
+                'allocation_status' => $fresh['transaction_id']
+                    ? ($fresh['status'] === 'approved' ? 'fully_allocated' : $fresh['allocation_status'])
+                    : allocation_status_for($new, $allocated - $reversed),
             ], $fresh['id']);
+            if ($fresh['transaction_id']) {
+                borrowed_sync_penalty_payments($fresh['transaction_id']);   // late charges follow the new amount
+            }
 
             $note = 'Amount overridden by the owner from ' . format_money($old) . ' to ' . format_money($new)
                 . ($reversed > 0 ? ' (' . format_money($reversed) . ' taken back from allocations)' : '') . '. Reason: ' . $reason;
