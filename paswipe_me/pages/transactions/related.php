@@ -18,8 +18,14 @@ if (!is_post()) {
 $txn = find_or_redirect(transaction_find(request_id()), 'pages/transactions/index.php', 'Transaction');
 $back = 'pages/transactions/view.php?id=' . $txn['id'];
 require_csrf($back);
-if ($advanceOf = cash_share_advance($txn)) {
-    $back = 'pages/cash_advances/view.php?id=' . $advanceOf['id'];   // a cash advance's penalties are handled on the cash advance
+// Back to the page the action came from: this transaction, or - for a cash advance - its cash advance page.
+$advanceOf = cash_share_advance($txn);
+$allowedBack = [$back];
+if ($advanceOf) {
+    $allowedBack[] = 'pages/cash_advances/view.php?id=' . $advanceOf['id'];
+}
+if (in_array(input_string($_POST, 'back'), $allowedBack, true)) {
+    $back = input_string($_POST, 'back');
 }
 
 $itemId = input_string($_POST, 'item_id');
@@ -88,6 +94,10 @@ try {
                 break;
             }
             $action = input_string($_POST, 'action');
+            if (in_array($action, ['run_penalties', 'add_penalty'], true) && $purchase['ledger']['outstanding'] <= 0.004) {
+                flash('error', ($advanceOf ? 'This cash advance' : 'This purchase') . ' is already paid, so no penalty can be added. Existing penalties can still be waived or deleted.');
+                break;
+            }
             if ($action === 'run_penalties') {
                 $created = borrowed_penalty_run(db_row('SELECT * FROM transactions WHERE id = :id', [':id' => $txn['id']]));
                 if ($created) {

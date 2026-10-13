@@ -104,12 +104,11 @@ require APP_ROOT . '/includes/header.php';
 <section class="panel subpanel">
     <header class="panel__header">
         <h3><?= icon('users') ?> <?= e(borrower_name($direct)) ?> repays this cash advance</h3>
-        <div class="action-bar no-print">
-            <?php if ($direct['plan_id']): ?>
+        <?php if ($direct['plan_id']): ?>
+            <div class="action-bar no-print">
                 <a class="btn btn--sm btn--outline" href="<?= e(url('pages/installment_plans/view.php', ['id' => $direct['plan_id']])) ?>"><?= icon('repeat') ?> <span>Installment plan</span></a>
-            <?php endif; ?>
-            <a class="btn btn--sm btn--outline" href="<?= e(url('pages/transactions/view.php', ['id' => $direct['id']])) ?>"><?= icon('eye') ?> <span>Repayments</span></a>
-        </div>
+            </div>
+        <?php endif; ?>
     </header>
     <?= render_details([
         'Owes'          => '<strong>' . e(format_money($direct['plan_id'] ? $direct['total_repayment'] : $direct['amount'])) . '</strong>'
@@ -131,6 +130,7 @@ require APP_ROOT . '/includes/header.php';
 // Late charges by the card bank's penalty rules (same panel as a card purchase).
 $txn = $direct;
 $canManage = true;
+$penaltyBack = 'pages/cash_advances/view.php?id=' . $advance['id'];
 $isLocked = in_array($direct['status'], TXN_LOCKED_STATUSES, true) || $advance['status'] === 'cancelled';
 require APP_ROOT . '/pages/transactions/penalties_panel.php';
 ?>

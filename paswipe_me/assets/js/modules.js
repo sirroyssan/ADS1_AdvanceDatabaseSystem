@@ -419,7 +419,14 @@
                 }).then(function (ok) {
                     if (!ok) return;
                     form.dataset.confirmed = '1';
-                    form.submit();
+                    // requestSubmit: inside a modal the modal saves it and the record stays open
+                    // (form.submit() would skip that and leave the page).
+                    if (typeof form.requestSubmit === 'function') {
+                        form.requestSubmit();
+                        form.dataset.confirmed = '';
+                    } else {
+                        form.submit();
+                    }
                 });
             });
             refresh();

@@ -431,9 +431,10 @@
                             return;
                         }
                         layer.dirty = false;
-                        // An action inside a record shown in the modal (a button, an in-place panel)
-                        // keeps that record open and reloads it; a record form closes its modal.
-                        var keepOpen = !layer.panel && layer.url && (form.classList.contains('inline-form') || !!form.closest('.inline-panel'));
+                        // An action inside a record shown in the modal (a button, an in-place panel, waive /
+                        // delete selected ...) keeps that record open and reloads it; only a record form
+                        // (Add / Edit, .form-card) closes its modal.
+                        var keepOpen = !layer.panel && layer.url && !form.classList.contains('form-card');
                         if (!keepOpen && layer === top()) layer.close(true);
                         refreshAll();
                     });

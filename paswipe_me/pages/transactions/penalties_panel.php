@@ -15,6 +15,8 @@ defined('APP_ROOT') or exit('No direct access.');
 require_once APP_ROOT . '/pages/obligations/obligation_functions.php';   // penalty form fields
 $penaltyTxnId = $txn['id'];
 $penaltyAction = url('pages/transactions/related.php');
+$penaltyBack = $penaltyBack ?? ('pages/transactions/view.php?id=' . $penaltyTxnId);   // where the actions return
+$penaltyPaid = $purchase && $purchase['ledger']['outstanding'] <= 0.004;   // no new penalties once paid
 $txnPenalties = [];
 if ($purchase && $purchase['ledger']['mode'] === 'transaction') {
     $txnPenalties = db_all(
@@ -43,9 +45,9 @@ if ($purchase && $purchase['ledger']['mode'] === 'transaction') {
 <section class="panel subpanel" id="penalties">
     <header class="panel__header">
         <h3><?= icon('scale') ?> Penalties</h3>
-        <?php if ($canManage && !$isLocked): ?>
+        <?php if ($canManage && !$isLocked && !$penaltyPaid): ?>
             <div class="action-bar no-print">
-                <?= post_button($penaltyAction, ['id' => $penaltyTxnId, 'action' => 'run_penalties'], 'Check penalties now', 'repeat', 'btn btn--sm btn--outline') ?>
+                <?= post_button($penaltyAction, ['id' => $penaltyTxnId, 'action' => 'run_penalties', 'back' => $penaltyBack], 'Check penalties now', 'repeat', 'btn btn--sm btn--outline') ?>
                 <button type="button" class="btn btn--sm btn--outline" data-modal-panel="add-txn-penalty"><?= icon('plus') ?> <span>Apply penalty</span></button>
             </div>
         <?php endif; ?>
@@ -62,11 +64,15 @@ if ($purchase && $purchase['ledger']['mode'] === 'transaction') {
             </ul>
         <?php endif; ?>
     </div>
-    <?php if ($canManage && !$isLocked): ?>
+    <?php if ($penaltyPaid): ?>
+        <p class="field-help no-print">Paid in full: no new penalty can be added. Existing penalties can still be waived or deleted.</p>
+    <?php endif; ?>
+    <?php if ($canManage && !$isLocked && !$penaltyPaid): ?>
         <form method="post" action="<?= e($penaltyAction) ?>" class="inline-panel no-print" id="add-txn-penalty" hidden novalidate data-validate>
             <?= csrf_field() ?>
             <input type="hidden" name="id" value="<?= e($penaltyTxnId) ?>">
             <input type="hidden" name="action" value="add_penalty">
+            <input type="hidden" name="back" value="<?= e($penaltyBack) ?>">
             <?php if (!penalty_rule_options()): ?>
                 <p class="field-help">No active penalty rules. <a data-modal-form href="<?= e(url('pages/penalty_rules/create.php')) ?>">Create a rule</a> first.</p>
             <?php else: ?>
@@ -85,6 +91,7 @@ if ($purchase && $purchase['ledger']['mode'] === 'transaction') {
             <?= csrf_field() ?>
             <input type="hidden" name="id" value="<?= e($penaltyTxnId) ?>">
             <input type="hidden" name="action" value="terminate_penalties">
+            <input type="hidden" name="back" value="<?= e($penaltyBack) ?>">
             <div class="table-wrap">
                 <table class="table table--cards table--compact">
                     <thead><tr>
