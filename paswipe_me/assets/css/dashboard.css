@@ -2853,9 +2853,16 @@ html.has-modal-form {
 .notice-kind--authorization_request { background: #fff4e0; color: #9a5b00; }
 .notice-kind--demand_letter { background: #fdecec; color: #b42318; }
 
-.notice-decision .status-form .form-group,
-.notice-decision .status-form .btn--block {
+.notice-decision .status-form .form-group {
     flex: 1 1 100%;
+}
+
+/* Decision buttons keep their natural size, on the right - not full width. */
+.notice-decision .status-form .btn--block {
+    flex: 0 0 auto;
+    width: auto;
+    min-width: 150px;
+    margin-left: auto;
 }
 
 .notice-decision .status-form + .status-form {

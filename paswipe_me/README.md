@@ -588,7 +588,7 @@ No schema change.
 
 **My Notifications** (`pages/notifications/inbox.php`, for the owner, admins and staff; the bell opens it):
 - **What you see:** only notifications addressed to you. Each one shows its kind (Payment, Card repayment, Authorization request, Notice, ...), taken from `entity_type`. New ones stand out with a dot; read ones fade and leave the bell count. You can filter by Unread or by kind, and use *Mark all as read*.
-- **Opening one** (`pages/notifications/open.php`) shows it in a modal and marks it read. The modal holds the record and, when it is yours to decide, the decision:
+- **Opening one** (`pages/notifications/open.php`) shows it in a modal and marks it read. The modal holds the record and, when it is yours to decide, the decision (its buttons keep their normal size, on the right):
   - **Payment:** approve, or reject / ask for a correction / cancel with a reason. This posts to `borrower_payments/review.php`.
   - **Card repayment:** confirm received, or reject with a reason. This posts to `transactions/repayment.php`. The repayment the notification names comes first.
   - **Authorization request:** approve and apply, or reject with a reason. This posts to `authorizations/decide.php`.
