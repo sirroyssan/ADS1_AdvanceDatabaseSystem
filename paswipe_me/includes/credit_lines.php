@@ -162,7 +162,7 @@ function credit_line_assign(string $cardId, string $choice, float $typedLimit, ?
         $bank = (string) bank_canonical($card['issuer']);
         db_insert('credit_lines', ['id' => $lineId, 'owner_user_id' => $card['owner_user_id'], 'name' => $bank . ' credit line',
                                    'issuer' => $bank, 'credit_limit' => number_format($typedLimit, 2, '.', '')]);
-        db_update('credit_cards', ['credit_line_id' => $lineId, 'sub_limit' => null, 'credit_limit' => number_format($typedLimit, 2, '.', '')], $partner['id']);
+        db_update('credit_cards', ['credit_line_id' => $lineId, 'sub_limit' => null] + card_limit_values($partner['id'], $typedLimit), $partner['id']);
         log_activity('create', 'credit_line', $lineId, 'Shared credit line ' . $bank . ' credit line (' . format_money($typedLimit) . '): '
             . $card['card_nickname'] . ' and ' . $partner['card_nickname']);
         $notes[] = $card['card_nickname'] . ' and ' . $partner['card_nickname'] . ' now share one limit of ' . format_money($typedLimit) . ' (' . $bank . ' credit line).';
@@ -185,8 +185,8 @@ function credit_line_assign(string $cardId, string $choice, float $typedLimit, ?
     if ($subLimit !== null && $subLimit > $lineLimit + 0.004) {
         throw new DomainException('The card\'s sub-limit (' . format_money($subLimit) . ') cannot be more than the shared limit (' . format_money($lineLimit) . ').');
     }
-    db_update('credit_cards', ['credit_line_id' => $line['id'], 'sub_limit' => $subLimit === null ? null : number_format($subLimit, 2, '.', ''),
-                               'credit_limit' => number_format($subLimit ?? $lineLimit, 2, '.', '')], $cardId);
+    db_update('credit_cards', ['credit_line_id' => $line['id'], 'sub_limit' => $subLimit === null ? null : number_format($subLimit, 2, '.', '')]
+        + card_limit_values($cardId, $subLimit ?? $lineLimit), $cardId);
     if ($oldLine && $oldLine !== $line['id']) {
         credit_line_cleanup($oldLine, $notes);
     }
@@ -199,14 +199,26 @@ function credit_line_assign(string $cardId, string $choice, float $typedLimit, ?
     return $notes;
 }
 
+/**
+ * Values for a new credit limit of a card: the limit, and the stored
+ * available credit lowered to it when it was higher (schema CHECK
+ * available_credit <= credit_limit; the usage sync then stores the real
+ * figure). Without it, lowering a limit (e.g. 90,000 to 75,000) was refused.
+ */
+function card_limit_values(string $cardId, float $limit): array
+{
+    $available = (float) db_value('SELECT available_credit FROM credit_cards WHERE id = :id', [':id' => $cardId]);
+
+    return ['credit_limit' => number_format($limit, 2, '.', ''), 'available_credit' => number_format(max(0, min($available, $limit)), 2, '.', '')];
+}
+
 /** A new shared limit: the line and the cap of every card in it (a sub-limit above it is lowered to it). */
 function credit_line_set_limit(array $line, float $limit): void
 {
     db_update('credit_lines', ['credit_limit' => number_format($limit, 2, '.', '')], $line['id']);
     foreach (credit_line_cards($line['id']) as $c) {
         $sub = $c['sub_limit'] !== null ? min((float) $c['sub_limit'], $limit) : null;
-        db_update('credit_cards', ['sub_limit' => $sub === null ? null : number_format($sub, 2, '.', ''),
-                                   'credit_limit' => number_format($sub ?? $limit, 2, '.', '')], $c['id']);
+        db_update('credit_cards', ['sub_limit' => $sub === null ? null : number_format($sub, 2, '.', '')] + card_limit_values($c['id'], $sub ?? $limit), $c['id']);
     }
     log_activity('update', 'credit_line', $line['id'], 'Shared limit of ' . $line['name'] . ': ' . format_money($line['credit_limit']) . ' → ' . format_money($limit),
         ['credit_limit' => $line['credit_limit']], ['credit_limit' => $limit]);
@@ -221,7 +233,7 @@ function credit_line_cleanup(string $lineId, array &$notes): void
     }
     $line = db_row('SELECT * FROM credit_lines WHERE id = :id', [':id' => $lineId]);
     foreach ($cards as $c) {
-        db_update('credit_cards', ['credit_line_id' => null, 'sub_limit' => null, 'credit_limit' => $line['credit_limit']], $c['id']);
+        db_update('credit_cards', ['credit_line_id' => null, 'sub_limit' => null] + card_limit_values($c['id'], (float) $line['credit_limit']), $c['id']);
         $notes[] = $c['card_nickname'] . ' no longer shares a limit: it keeps ' . format_money($line['credit_limit']) . ' as its own limit.';
     }
     db_exec('DELETE FROM credit_lines WHERE id = :id', [':id' => $lineId]);

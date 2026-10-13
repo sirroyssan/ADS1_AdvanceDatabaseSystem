@@ -1403,6 +1403,13 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/paswipe_me/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Fix: lowering a card's credit limit (e.g. ₱90,000 → ₱75,000)
+
+- **Error:** "The submitted values are not allowed by the database rules."
+- **Cause:** the schema rule `CHECK (available_credit <= credit_limit)` on `credit_cards`. Editing a card saved the new, lower limit but kept the old stored available credit (e.g. ₱90,000 available against a ₱75,000 limit), so MariaDB refused the save. Raising a limit was never affected.
+- **Fix:** every limit change now lowers the stored available credit to the new limit in the same update (`card_limit_values()` in `includes/credit_lines.php`). Right after, the usual usage sync stores the real available credit from the card's records. The schema is unchanged.
+- **Where:** the card edit form, and the shared-limit changes (sharing a limit with a card, a new shared limit, a sub-limit, a line split back into own limits).
+
 ## Penalty basis "SOA total amount due" (bank finance charge on the statement)
 
 A penalty rule can now use **Basis → SOA total amount due (recorded statement)**, for example Chinabank Finance Charge, 3.75%. No schema change: the value is stored in the existing `penalty_rules.basis` column.

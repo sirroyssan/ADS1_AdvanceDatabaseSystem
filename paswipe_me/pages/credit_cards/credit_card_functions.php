@@ -113,7 +113,7 @@ function credit_card_save(?string $id, array $data, ?string $existingId = null):
             // A card always belongs to the signed-in user; no form can set or change its owner.
             db_insert('credit_cards', ['id' => $id, 'owner_user_id' => owner_id()] + $data + ['available_credit' => $data['credit_limit']]);
         } else {
-            db_update('credit_cards', $data, $existingId);
+            db_update('credit_cards', card_limit_values($existingId, (float) $data['credit_limit']) + $data, $existingId);   // a lower limit lowers the stored available credit too
         }
         card_set_opening_balance($cardId, $opening, $data['opening_date'] ?? null);
 
