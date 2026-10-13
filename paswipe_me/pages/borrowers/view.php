@@ -129,6 +129,58 @@ require APP_ROOT . '/includes/header.php';
     <?php endif; ?>
 </section>
 
+<section class="panel subpanel">
+    <header class="panel__header">
+        <h3>Recent obligations</h3>
+    </header>
+    <?php if (!$obligations): ?>
+        <p class="empty-inline">No obligations. They are created automatically from cash loan allocations and cash advances.</p>
+    <?php else: ?>
+        <div class="table-wrap">
+            <table class="table table--compact">
+                <thead><tr><th scope="col">Obligation #</th><th scope="col">Due</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th><th scope="col">Status</th></tr></thead>
+                <tbody>
+                <?php foreach ($obligations as $o): ?>
+                    <tr>
+                        <td><a href="<?= e(url('pages/obligations/view.php', ['id' => $o['id']])) ?>"><?= e($o['obligation_number']) ?></a></td>
+                        <td><?= e(format_date($o['due_date'])) ?></td>
+                        <td class="num"><?= e(format_money($o['outstanding_amount'])) ?></td>
+                        <td class="num<?= (float) $o['penalties_unpaid'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($o['penalties_unpaid'])) ?></td>
+                        <td><?= badge($o['status']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+</section>
+
+<section class="panel subpanel">
+    <header class="panel__header">
+        <h3>Recent payments</h3>
+        <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/borrower_payments/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Record</span></a>
+    </header>
+    <?php if (!$payments): ?>
+        <p class="empty-inline">No payments.</p>
+    <?php else: ?>
+        <div class="table-wrap">
+            <table class="table table--compact">
+                <thead><tr><th scope="col">Payment #</th><th scope="col">Date</th><th scope="col" class="num">Amount</th><th scope="col">Status</th></tr></thead>
+                <tbody>
+                <?php foreach ($payments as $p): ?>
+                    <tr>
+                        <td><a href="<?= e(url('pages/borrower_payments/view.php', ['id' => $p['id']])) ?>"><?= e($p['payment_number']) ?></a></td>
+                        <td><?= e(format_date($p['payment_date'])) ?></td>
+                        <td class="num"><?= e(format_money($p['amount'])) ?></td>
+                        <td><?= badge($p['status']) ?></td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    <?php endif; ?>
+</section>
+
 <div class="detail-layout">
     <section class="panel">
         <header class="panel__header"><h3>Record details</h3></header>
@@ -284,58 +336,6 @@ require APP_ROOT . '/includes/header.php';
                             <?= post_button($related, ['id' => $id, 'action' => 'delete_contact', 'item_id' => $c['id']], 'Delete contact', 'trash', 'icon-button icon-button--danger',
                                 'Delete this contact?', true) ?>
                         </div></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    <?php endif; ?>
-</section>
-
-<section class="panel subpanel">
-    <header class="panel__header">
-        <h3>Recent obligations</h3>
-    </header>
-    <?php if (!$obligations): ?>
-        <p class="empty-inline">No obligations. They are created automatically from cash loan allocations and cash advances.</p>
-    <?php else: ?>
-        <div class="table-wrap">
-            <table class="table table--compact">
-                <thead><tr><th scope="col">Obligation #</th><th scope="col">Due</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th><th scope="col">Status</th></tr></thead>
-                <tbody>
-                <?php foreach ($obligations as $o): ?>
-                    <tr>
-                        <td><a href="<?= e(url('pages/obligations/view.php', ['id' => $o['id']])) ?>"><?= e($o['obligation_number']) ?></a></td>
-                        <td><?= e(format_date($o['due_date'])) ?></td>
-                        <td class="num"><?= e(format_money($o['outstanding_amount'])) ?></td>
-                        <td class="num<?= (float) $o['penalties_unpaid'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($o['penalties_unpaid'])) ?></td>
-                        <td><?= badge($o['status']) ?></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    <?php endif; ?>
-</section>
-
-<section class="panel subpanel">
-    <header class="panel__header">
-        <h3>Recent payments</h3>
-        <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/borrower_payments/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Record</span></a>
-    </header>
-    <?php if (!$payments): ?>
-        <p class="empty-inline">No payments.</p>
-    <?php else: ?>
-        <div class="table-wrap">
-            <table class="table table--compact">
-                <thead><tr><th scope="col">Payment #</th><th scope="col">Date</th><th scope="col" class="num">Amount</th><th scope="col">Status</th></tr></thead>
-                <tbody>
-                <?php foreach ($payments as $p): ?>
-                    <tr>
-                        <td><a href="<?= e(url('pages/borrower_payments/view.php', ['id' => $p['id']])) ?>"><?= e($p['payment_number']) ?></a></td>
-                        <td><?= e(format_date($p['payment_date'])) ?></td>
-                        <td class="num"><?= e(format_money($p['amount'])) ?></td>
-                        <td><?= badge($p['status']) ?></td>
                     </tr>
                 <?php endforeach; ?>
                 </tbody>
