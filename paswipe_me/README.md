@@ -1416,6 +1416,7 @@ Balance figures → Card purchases → **Recent obligations** → **Recent payme
 - **Not a transaction:** the borrower's side is an internal record (`cash_share_sql()` in `includes/borrowed.php`).
   - It is left out of the Transactions list, the Transactions report, the dashboard counts and recent list, the card page, staff activity, and the Installment Plans transaction picker.
   - Wherever it shows (borrower page, portal, payment form, late charges, agreement picker) it reads **"Cash advance CA-…"**.
+  - The cash advance page lists the borrower's **repayment history** itself: date, number, notes, amount, status, and who confirmed it. *Repaid* counts only these confirmed repayments; marking the advance Completed adds no payment.
   - Opening it shows the cash advance's **Repayments** (breadcrumb Cash Advances → CA-… → Repayments) with *Open cash advance*. Edit / delete / void of it redirect to the cash advance.
 - **"Give to a borrower"** (an obligation for part of the cash) still works for advances without a Borrower. The two can't be mixed on one advance.
 - **List:** the Cash Advances list shows "For <borrower>" under the card.

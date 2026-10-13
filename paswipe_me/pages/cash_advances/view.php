@@ -137,6 +137,9 @@ require APP_ROOT . '/includes/header.php';
         'Repay by'      => $directLedger && $directLedger['next_due'] ? e(format_date($directLedger['next_due']['date'])) : '—',
         'Status'        => $directLedger ? badge($directLedger['status']) : '—',
     ]) ?>
+    <h4 class="form-section">Repayment history</h4>
+    <?= borrowed_render_repayments(borrowed_repayments($direct['id'])) ?>
+    <p class="field-help">Repaid counts only the repayments confirmed here (recorded by you, confirmed from the borrower's portal payment, or received by staff). Marking the cash advance Completed does not add a payment.</p>
     <p class="field-help">Tracked like a card purchase the borrower repays to you (no obligation): they see it under Card Purchases and pay it from the portal.
         <?= $canConvert ? 'If they cannot pay it at once, convert it to monthly installments with interest.' : '' ?></p>
     <?php if (!$canConvert && !$direct['plan_id'] && $convertBlock): ?><p class="field-help no-print"><?= icon('info') ?> <?= e($convertBlock) ?></p><?php endif; ?>

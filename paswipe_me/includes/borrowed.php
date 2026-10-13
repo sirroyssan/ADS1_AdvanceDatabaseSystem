@@ -995,7 +995,8 @@ function borrowed_render_repayments(array $repayments, ?callable $actions = null
             . ($r['status'] === 'rejected' && $r['rejection_reason'] ? '<br><span class="text-danger">' . e($r['rejection_reason']) . '</span>' : '') . '</td>'
             . '<td data-label="Amount" class="num">' . e(format_money($r['amount'])) . '</td>'
             . '<td data-label="Status">' . status_badge($label($r['status']), ['confirmed' => 'success', 'reported' => 'warning', 'rejected' => 'danger', 'cancelled' => 'muted'])
-            . ($r['status'] === 'approved' && $r['approved_at'] ? '<br><span class="text-muted">' . e(format_date($r['approved_at'])) . '</span>' : '') . '</td>'
+            . ($r['status'] === 'approved' && $r['approved_at'] ? '<br><span class="text-muted">' . e(format_date($r['approved_at']))
+                . (!empty($r['reviewer']) ? ' · by ' . e($r['reviewer']) : '') . '</span>' : '') . '</td>'
             . ($actions ? '<td class="actions no-print">' . $actions($r) . '</td>' : '') . '</tr>';
     }
 
