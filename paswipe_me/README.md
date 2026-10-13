@@ -1403,6 +1403,17 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/paswipe_me/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Installment plan of a lent card purchase follows its confirmed repayments
+
+- **Problem:** a card purchase on installments lent to a borrower (e.g. TXN-20261012-0004, 12 × ₱6,332.50) showed the borrower's confirmed repayment as paid in the portal, but its schedule in Installment Plans still showed ₱0.00 paid. The schedule was only updated from obligation payments, while a lent purchase is repaid through the purchase ledger (`borrowed_ledger`).
+- **Fix:** `borrowed_sync_schedule()` in `includes/borrowed.php` copies onto each schedule row what the ledger put on that installment: amount paid, remaining, status (paid, partially paid, overdue, upcoming) and paid date. The ledger uses the installment the borrower chose, and puts the rest on the oldest installment first. The plan becomes Completed when every row is paid. The rows are derived only; no payment or other record is written.
+- **When it runs:**
+  - when a repayment is confirmed, rejected or recorded by the owner;
+  - after a plan with payments is corrected;
+  - once for existing data (marker `storage/upgrade_borrowed_schedule.done`), so repayments confirmed before this fix show up.
+- **Left as recorded:** a purchase still tracked by its old obligation keeps being synced from that obligation. A purchase with payments applied through an old, retired obligation also keeps its rows unchanged, since the ledger does not count those payments and recorded payments are never wiped.
+- Paying the bank for a lent purchase is still recorded separately in Card Payments; the plan page says so.
+
 ## Fix: "Field 'DB_ROW_HASH_1' doesn't have a default value" when saving a file
 
 - **Cause:** `documents.storage_key` was `TEXT NOT NULL UNIQUE`. MariaDB keeps a unique key on a `TEXT` column with a hidden hash column (`DB_ROW_HASH_1`). Older MariaDB versions, like the 10.4 that ships with XAMPP, break inserts on that column after the table has been altered (the owner column was added to `documents` earlier). Every upload then failed, so the payment was not saved.

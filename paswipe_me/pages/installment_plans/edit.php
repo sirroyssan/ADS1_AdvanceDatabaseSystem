@@ -85,6 +85,9 @@ if (is_post()) {
                         schedule_sync_obligation($o['id']);
                     }
                 }
+                if ($locked) {
+                    borrowed_sync_penalty_payments($plan['transaction_id']);   // a lent purchase: repayments flow into the rows again
+                }
                 if ($moved) {
                     schedule_move_obligations(array_column(db_all(
                         "SELECT id FROM borrower_obligations WHERE transaction_id = :t AND status <> 'cancelled'", [':t' => $plan['transaction_id']]), 'id'), $moved[0], $moved[1]);

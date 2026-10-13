@@ -33,6 +33,7 @@ const BORROWED_UPGRADE_MARKER = 'storage/upgrade_borrowed.done';
 const BORROWED_UPGRADE_V2_MARKER = 'storage/upgrade_borrowed_v2.done';
 /** Repayments the owner has not confirmed yet ("reported"). */
 const BORROWED_REPORTED_STATUSES = ['submitted', 'under_review', 'correction_required'];
+const BORROWED_SCHEDULE_MARKER = 'storage/upgrade_borrowed_schedule.done';
 const BORROWED_AUTO_NOTE = 'Created automatically: the borrower used your card';
 
 /* ------------------------------------------------------------------
@@ -56,6 +57,17 @@ function borrowed_schema_upgrade(): void
         borrowed_schema_v2();
         borrowed_retire_auto_obligations();
         marker_write(BORROWED_UPGRADE_V2_MARKER);
+    }
+    if (!marker_exists(BORROWED_SCHEDULE_MARKER)) {
+        // Repayments confirmed before the installment schedule followed them: fill it in once.
+        @set_time_limit(300);
+        foreach (db_all(
+            "SELECT DISTINCT t.id FROM transactions t JOIN installment_plans p ON p.transaction_id = t.id AND p.status <> 'cancelled'
+              WHERE t.borrower_id IS NOT NULL"
+        ) as $row) {
+            db_transaction(static fn () => borrowed_sync_penalty_payments($row['id']));
+        }
+        marker_write(BORROWED_SCHEDULE_MARKER);
     }
 }
 
@@ -587,7 +599,11 @@ function borrowed_sync_penalty_payments(string $transactionId): void
 {
     // What the confirmed repayments put on late charges (by the borrower's choices).
     $t = db_row('SELECT * FROM transactions WHERE id = :t', [':t' => $transactionId]);
-    $repaid = $t ? borrowed_ledger($t)['penalty_paid'] : 0.0;
+    $ledger = $t ? borrowed_ledger($t) : null;
+    $repaid = $ledger ? $ledger['penalty_paid'] : 0.0;
+    if ($ledger) {
+        borrowed_sync_schedule($transactionId, $ledger);   // and on each installment of the plan
+    }
     foreach (db_all('SELECT id, amount, paid_amount, remaining_amount, ' . PENALTY_CHARGED_SQL . ' AS charged FROM applied_penalties WHERE transaction_id = :t ORDER BY applied_date, created_at', [':t' => $transactionId]) as $p) {
         $charged = (float) $p['charged'];
         $paid = round(min($repaid, $charged), 2);
@@ -597,6 +613,58 @@ function borrowed_sync_penalty_payments(string $transactionId): void
             db_update('applied_penalties', ['paid_amount' => number_format($paid, 2, '.', ''),
                 'remaining_amount' => number_format($remaining, 2, '.', '')], $p['id']);
         }
+    }
+}
+
+/**
+ * The installment plan's schedule follows the purchase's confirmed repayments:
+ * each row's Paid / Remaining / status is what the ledger put on that
+ * installment (the borrower's choices, the rest oldest first), so the
+ * Installment Plans page shows the same as the borrower's account. Derived
+ * only - nothing else is written. A purchase still tracked by its old
+ * obligation is synced by schedule_sync_obligation instead, and one with
+ * payments applied through an old (retired) obligation keeps its rows as
+ * recorded - the ledger does not count those payments, and recorded
+ * payments are never wiped.
+ */
+function borrowed_sync_schedule(string $transactionId, array $ledger): void
+{
+    if ($ledger['mode'] !== 'transaction' || (int) db_value(
+        'SELECT COUNT(*) FROM borrower_payment_allocations a JOIN borrower_obligations o ON o.id = a.obligation_id WHERE o.transaction_id = :t',
+        [':t' => $transactionId]
+    ) > 0) {
+        return;
+    }
+    $paidBy = [];
+    $planId = null;
+    foreach ($ledger['rows'] as $r) {
+        if ($r['schedule_id']) {
+            $paidBy[$r['schedule_id']] = (float) $r['paid'];
+        }
+    }
+    if (!$paidBy) {
+        return;
+    }
+    foreach (db_all(
+        "SELECT * FROM installment_schedules WHERE id IN ('" . implode("', '", array_filter(array_keys($paidBy), 'is_valid_uuid')) . "') FOR UPDATE"
+    ) as $row) {
+        $planId = $row['installment_plan_id'];
+        $paid = round(min($paidBy[$row['id']], (float) $row['amount_due']), 2);
+        $status = schedule_status_after_payment((float) $row['amount_due'], $paid, $row['due_date']);
+        if (abs($paid - (float) $row['amount_paid']) < 0.005 && $status === $row['status']) {
+            continue;
+        }
+        db_update('installment_schedules', [
+            'amount_paid'      => number_format($paid, 2, '.', ''),
+            'remaining_amount' => number_format(max(0, (float) $row['amount_due'] - $paid), 2, '.', ''),
+            'status'           => $status,
+            'paid_at'          => $status === 'paid' ? ($row['paid_at'] ?: date('Y-m-d H:i:s')) : null,
+        ], $row['id']);
+    }
+    if ($planId !== null) {
+        $open = (int) db_value("SELECT COUNT(*) FROM installment_schedules WHERE installment_plan_id = :p AND status NOT IN ('paid', 'waived', 'cancelled')", [':p' => $planId]);
+        db_exec("UPDATE installment_plans SET status = :s WHERE id = :id AND status IN ('active', 'completed')",
+            [':s' => $open === 0 ? 'completed' : 'active', ':id' => $planId]);
     }
 }
 

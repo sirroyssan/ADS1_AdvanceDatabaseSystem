@@ -101,7 +101,11 @@ require APP_ROOT . '/includes/header.php';
     <?php if ($schedule && $plan['status'] === 'active' && $canManage): ?>
         <?= render_schedule_shift_form(url('pages/installment_plans/related.php'), $plan['id'], $schedule[0]['due_date'], $plan['frequency'], count($schedule)) ?>
     <?php endif; ?>
-    <p class="field-help no-print">Updated automatically from the borrower's approved payments (oldest installment first); statuses follow today's date. The amount paid toward the bank installments is recorded as a card payment automatically.</p>
+    <?php if ($plan['borrower_id'] && borrowed_legacy_obligation($plan['transaction_id']) === null): ?>
+        <p class="field-help no-print">Updated automatically from the borrower's confirmed repayments of this purchase: each goes to the installment the borrower chose, the rest to the oldest installment first (the same as in the borrower's account). Statuses follow today's date. Paying the bank is recorded separately in Card Payments.</p>
+    <?php else: ?>
+        <p class="field-help no-print">Updated automatically from the borrower's approved payments (oldest installment first); statuses follow today's date. The amount paid toward the bank installments is recorded as a card payment automatically.</p>
+    <?php endif; ?>
     <?= render_schedule_table($schedule, '', [], false) ?>
 </section>
 
