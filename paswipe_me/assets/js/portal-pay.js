@@ -1,6 +1,7 @@
 /**
  * Submit Payment (borrower portal): tick an item -> its amount box opens and
  * is filled with what is left to assign (never more than the item owes);
+ * untick it -> its amount box is emptied;
  * the summary shows assigned / not assigned against the amount paid.
  */
 (function () {
@@ -44,8 +45,10 @@
     }
 
     rows.forEach(function (r) {
+        if (!r.check.checked) r.amount.value = '';
         r.check.addEventListener('change', function () {
             r.amount.disabled = !r.check.checked;
+            if (!r.check.checked) r.amount.value = '';   // unticked: nothing is paid on it
             if (r.check.checked && !num(r.amount.value)) {
                 var left = Math.max(0, num(paidInput.value) - assigned(r));
                 var owed = num(r.amount.getAttribute('data-owed'));

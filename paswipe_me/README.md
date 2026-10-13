@@ -1377,6 +1377,10 @@ also has the same **What is this payment for?** table.
 
 **When saving fails.** The payment, its items and the proof are saved in one database transaction, so a failure saves nothing. The form now says which part failed: "The payment was not saved: the proof file could not be recorded", or the usual message for the payment itself. It also gives the database error number. The database's own message is added when the browser runs on the server itself (XAMPP on localhost) or when `APP_DEBUG` is on (`db_error_detail()` in `includes/db_helpers.php`). From another device (a phone on the Wi-Fi) only the number is shown. The full text is always in the PHP error log (XAMPP for macOS: `/Applications/XAMPP/xamppfiles/logs/php_error_log`), on the lines starting with `[PA-KASKAS] Database write failed:` and `[PA-KASKAS] Saving the payment proof failed:`.
 
+## Payment form: unticking a row empties its amount (`assets/js/portal-pay.js`)
+
+In Submit payment (portal), Receive payment (staff) and Repay, unticking a row clears its amount box. Rows that are not ticked never show an amount, so what is on screen is what is paid.
+
 ## "Check penalties now" says why nothing was charged (`penalty_nothing_reason()`)
 
 It charges each **active** rule whose **Bank** is the card's bank, once per overdue month after the grace period, never before the rule took effect or was last saved, and never twice. When it charges nothing it now says why: no active rule for that bank, the item isn't linked to a card, nothing is past due, or every month was already charged. It no longer always says "already up to date". The same applies to card purchases.
