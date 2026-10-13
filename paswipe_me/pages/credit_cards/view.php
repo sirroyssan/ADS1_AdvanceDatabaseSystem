@@ -79,6 +79,22 @@ require APP_ROOT . '/includes/header.php';
     <?= render_card_usage_figures($cardUsage) ?>
 </section>
 
+<?php if ($cardUsage['line']): $line = $cardUsage['line']; ?>
+    <section class="panel shared-line">
+        <header class="panel__header"><h3><?= icon('layers') ?> Shared limit: <?= e($line['name']) ?></h3></header>
+        <p>This card shares one limit of <strong><?= e(format_money($line['credit_limit'])) ?></strong> with <?= e($line['cards'] - 1) ?> other card(s).
+            All of them together have used <strong><?= e(format_money($line['used'])) ?></strong>, so <strong class="<?= $line['available'] < 0 ? 'text-danger' : '' ?>"><?= e(format_money($line['available'])) ?></strong> is left for the whole line.
+            <?php if ($line['sub_limit'] !== null): ?>This card may use at most <strong><?= e(format_money($line['sub_limit'])) ?></strong> by itself (sub-limit).<?php endif; ?>
+            Its available credit is the smaller of the two.</p>
+        <ul class="child-list">
+            <?php foreach (credit_line_cards($line['id']) as $c): ?>
+                <li><a data-modal-form href="<?= e(url('pages/credit_cards/view.php', ['id' => $c['id']])) ?>"><?= e($c['card_nickname']) ?> •••• <?= e($c['last_four']) ?></a>
+                    <span><?= e(format_money(card_usage($c['id'])['used'])) ?> used<?= $c['sub_limit'] !== null ? ' · sub-limit ' . e(format_money($c['sub_limit'])) : '' ?></span></li>
+            <?php endforeach; ?>
+        </ul>
+    </section>
+<?php endif; ?>
+
 <div class="detail-layout">
     <section class="panel">
         <header class="panel__header"><h3>Card details</h3></header>
@@ -109,7 +125,7 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel">
             <header class="panel__header"><h3>Credit card summary</h3></header>
             <dl class="usage-breakdown">
-                <div><dt>Credit limit</dt><dd><?= e(format_money($cardUsage['credit_limit'])) ?></dd></div>
+                <div><dt><?= $cardUsage['line'] ? ($cardUsage['line']['sub_limit'] !== null ? 'Card sub-limit' : 'Shared credit limit') : 'Credit limit' ?></dt><dd><?= e(format_money($cardUsage['credit_limit'])) ?></dd></div>
                 <?php foreach (CARD_USAGE_PARTS as $part => $label): ?>
                     <?php if ($part === 'opening_balance' && $cardUsage[$part] == 0) { continue; } ?>
                     <?php $minus = in_array($part, ['payments', 'credits'], true); ?>

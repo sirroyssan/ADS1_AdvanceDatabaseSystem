@@ -302,6 +302,7 @@ function penalty_run_if_due(): void
 {
     penalty_schema_upgrade();
     try {
+        credit_line_schema_upgrade();   // card figures read the shared lines
         payment_selections_upgrade();
         statement_schema_upgrade();
         multiuser_upgrade();

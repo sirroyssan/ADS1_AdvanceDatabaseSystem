@@ -80,6 +80,7 @@ function owned_borrowers_sql(): string
 /** Tables and how they reach their owner. */
 const OWNERSHIP = [
     'credit_cards'            => 'owner',
+    'credit_lines'            => 'owner',
     'borrowers'               => 'owner',
     'penalty_rules'           => 'owner',
     'agreement_templates'     => 'owner',

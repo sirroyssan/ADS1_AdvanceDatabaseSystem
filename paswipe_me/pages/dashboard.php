@@ -56,7 +56,7 @@ $stats = [
     'borrowers_good'     => dashboard_value("SELECT COUNT(*) FROM borrowers WHERE id IN $myBorrowers AND status = 'good_standing'"),
     'borrowers_late'     => dashboard_value("SELECT COUNT(*) FROM borrowers WHERE id IN $myBorrowers AND status IN ('late', 'delinquent')"),
     'cards_used'         => dashboard_value("SELECT COALESCE(SUM(outstanding), 0) FROM (" . card_utilization_sql() . ") v WHERE v.id IN $myCards"),
-    'cards_limit'        => dashboard_value("SELECT COALESCE(SUM(credit_limit), 0) FROM credit_cards WHERE status = 'active' AND id IN $myCards"),
+    'cards_limit'        => cards_total_limit($myCards),   // a shared limit counts once
     'transactions'       => dashboard_value("SELECT COUNT(*) FROM transactions t WHERE $myTxn"),
     'transactions_month' => dashboard_value(
         "SELECT COUNT(*) FROM transactions t
@@ -180,8 +180,9 @@ $dueSoon = db_all(
 // My credit cards: limit, used and available credit, and the next payment due on a recorded SOA.
 $cards = dashboard_rows(
     "SELECT cc.id, cc.card_nickname, cc.issuer, cc.network, cc.last_four, cc.status, cc.credit_limit,
-            COALESCE(cu.used, 0) AS used, cc.credit_limit - COALESCE(cu.used, 0) AS available,
-            IF(cc.credit_limit > 0, ROUND(COALESCE(cu.used, 0) / cc.credit_limit * 100, 2), 0) AS utilization,
+            COALESCE(cu.used, 0) AS used, " . card_usage_available_sql() . " AS available,
+            IF(cc.credit_limit > 0, ROUND((cc.credit_limit - " . card_usage_available_sql() . ") / cc.credit_limit * 100, 2), 0) AS utilization,
+            cu_cl.name AS shared_line,
             (SELECT MIN(s.due_date) FROM credit_card_statements s " . statement_paid_join() . "
               WHERE s.credit_card_id = cc.id AND " . statement_remaining_sql() . " > 0.004) AS next_due
        FROM credit_cards cc " . card_usage_join() . "
@@ -360,7 +361,7 @@ require APP_ROOT . '/includes/header.php';
                         <td data-label="Card"><a data-modal-form class="table-link" href="<?= e(url('pages/credit_cards/view.php', ['id' => $card['id']])) ?>"><?= e($card['card_nickname']) ?></a>
                             <span class="text-muted"><?= e($card['issuer']) ?></span></td>
                         <td data-label="Card number"><span class="mono"><?= e(masked_card($card['last_four'])) ?></span></td>
-                        <td data-label="Credit limit" class="num"><?= e(format_money($card['credit_limit'])) ?></td>
+                        <td data-label="Credit limit" class="num"><?= e(format_money($card['credit_limit'])) ?><?= $card['shared_line'] ? '<br><span class="chip">shared · ' . e($card['shared_line']) . '</span>' : '' ?></td>
                         <td data-label="Used" class="num"><?= e(format_money($card['used'])) ?></td>
                         <td data-label="Available" class="num"><?= e(format_money($card['available'])) ?></td>
                         <td data-label="Utilization"><progress class="meter" max="100" value="<?= e($pct) ?>"><?= e($pct) ?>%</progress> <span class="text-muted"><?= e(number_format((float) $card['utilization'], 2)) ?>%</span></td>

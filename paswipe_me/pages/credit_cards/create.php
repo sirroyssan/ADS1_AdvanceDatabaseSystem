@@ -19,12 +19,19 @@ if (is_post()) {
     if (!$errors) {
         try {
             $id = new_uuid();
-            credit_card_save($id, $data);
+            $lineNotes = credit_card_save($id, $data);
             log_activity('create', 'credit_card', $id, 'Added card ' . $data['card_nickname'] . ' •••• ' . $data['last_four'], null, $data);
+            foreach ($lineNotes as $note) {
+                flash('info', $note);
+            }
             flash('success', 'Card "' . $data['card_nickname'] . '" was added successfully.');
             redirect('pages/credit_cards/view.php', ['id' => $id]);
         } catch (DomainException $e) {
-            $errors[str_starts_with($e->getMessage(), 'You already have this card') ? 'last_four' : '_form'] = $e->getMessage();
+            $errors[match (true) {
+                str_starts_with($e->getMessage(), 'You already have this card') => 'last_four',
+                str_contains($e->getMessage(), 'sub-limit') => 'sub_limit',
+                default => '_form',
+            }] = $e->getMessage();
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
         }

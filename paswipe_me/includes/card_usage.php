@@ -163,30 +163,48 @@ function card_usage_sql(): string
 }
 
 /**
- * SELECT columns for a list joined with card_usage_sql() as $u on cards $c:
- * used_credit, remaining_credit, utilization (2 decimals).
+ * SELECT columns for a list joined with card_usage_join($c, $u): used_credit
+ * (the card's own), remaining_credit (available: for a card on a shared line,
+ * the smaller of its own room and the line's room), utilization (2 decimals,
+ * of the card's cap) and shared_line (the line's name, or NULL).
  */
 function card_usage_columns(string $c = 'cc', string $u = 'cu'): string
 {
+    $available = card_usage_available_sql($c, $u);
+
     return "COALESCE($u.used, 0) AS used_credit,
-            $c.credit_limit - COALESCE($u.used, 0) AS remaining_credit,
-            IF($c.credit_limit > 0, ROUND(COALESCE($u.used, 0) / $c.credit_limit * 100, 2), 0) AS utilization";
+            $available AS remaining_credit,
+            IF($c.credit_limit > 0, ROUND(($c.credit_limit - ($available)) / $c.credit_limit * 100, 2), 0) AS utilization,
+            {$u}_cl.name AS shared_line";
+}
+
+/** SQL expression: a card's available credit (own room, and the shared line's room when it has one). */
+function card_usage_available_sql(string $c = 'cc', string $u = 'cu'): string
+{
+    return "IF({$u}_cl.id IS NULL, $c.credit_limit - COALESCE($u.used, 0),
+               LEAST($c.credit_limit - COALESCE($u.used, 0), {$u}_cl.credit_limit - COALESCE({$u}_lu.used, 0)))";
 }
 
 function card_usage_join(string $c = 'cc', string $u = 'cu'): string
 {
-    return 'LEFT JOIN (' . card_usage_sql() . ") $u ON $u.credit_card_id = $c.id";
+    $usage = card_usage_sql();
+
+    return "LEFT JOIN ($usage) $u ON $u.credit_card_id = $c.id
+            LEFT JOIN credit_lines {$u}_cl ON {$u}_cl.id = $c.credit_line_id
+            LEFT JOIN (SELECT lc.credit_line_id, SUM(lu.used) AS used FROM credit_cards lc JOIN ($usage) lu ON lu.credit_card_id = lc.id
+                        WHERE lc.credit_line_id IS NOT NULL GROUP BY lc.credit_line_id) {$u}_lu ON {$u}_lu.credit_line_id = $c.credit_line_id";
 }
 
 /**
  * Full usage of one card.
  *
- * @return array<string, float|bool> parts of CARD_USAGE_PARTS + credit_limit, used, available, utilization, over_limit
+ * @return array<string, mixed> parts of CARD_USAGE_PARTS + credit_limit, used, available, utilization, over_limit,
+ *                              and line (null, or name / credit_limit / used / available / cards of its shared line)
  */
 function card_usage(string $cardId): array
 {
     $row = db_row(
-        'SELECT cc.credit_limit, cu.* FROM credit_cards cc ' . card_usage_join() . ' WHERE cc.id = :id',
+        'SELECT cc.credit_limit, cc.credit_line_id, cc.sub_limit, cu.* FROM credit_cards cc LEFT JOIN (' . card_usage_sql() . ') cu ON cu.credit_card_id = cc.id WHERE cc.id = :id',
         [':id' => $cardId]
     ) ?: ['credit_limit' => 0];
 
@@ -194,9 +212,22 @@ function card_usage(string $cardId): array
     foreach (array_keys(CARD_USAGE_PARTS) as $part) {
         $usage[$part] = round((float) ($row[$part] ?? 0), 2);
     }
-    $usage['used']        = round((float) ($row['used'] ?? 0), 2);
-    $usage['available']   = round($usage['credit_limit'] - $usage['used'], 2);
-    $usage['utilization'] = $usage['credit_limit'] > 0 ? round($usage['used'] / $usage['credit_limit'] * 100, 2) : 0.0;
+    $usage['used']      = round((float) ($row['used'] ?? 0), 2);
+    $usage['available'] = round($usage['credit_limit'] - $usage['used'], 2);
+    $usage['line']      = null;
+    if (!empty($row['credit_line_id'])) {
+        $line = db_row('SELECT * FROM credit_lines WHERE id = :id', [':id' => $row['credit_line_id']]);
+        if ($line) {
+            $lineUsed = credit_line_used($line['id']);
+            $usage['line'] = [
+                'id' => $line['id'], 'name' => $line['name'], 'credit_limit' => (float) $line['credit_limit'], 'used' => $lineUsed,
+                'available' => round((float) $line['credit_limit'] - $lineUsed, 2), 'sub_limit' => $row['sub_limit'] !== null ? (float) $row['sub_limit'] : null,
+                'cards' => (int) db_value('SELECT COUNT(*) FROM credit_cards WHERE credit_line_id = :l', [':l' => $line['id']]),
+            ];
+            $usage['available'] = min($usage['available'], $usage['line']['available']);
+        }
+    }
+    $usage['utilization'] = $usage['credit_limit'] > 0 ? round(($usage['credit_limit'] - $usage['available']) / $usage['credit_limit'] * 100, 2) : 0.0;
     $usage['over_limit']  = $usage['available'] < -0.004;
 
     return $usage;
@@ -236,27 +267,32 @@ function card_usage_apply(array $cardIds, callable $change, bool $guard = false)
     sort($cardIds);
 
     return db_transaction(function () use ($cardIds, $change, $guard) {
+        // Cards sharing a limit with these cards are locked and recalculated with them.
+        $locked = array_values(array_unique(array_merge($cardIds, credit_line_siblings($cardIds))));
+        sort($locked);
         $before = [];
-        foreach ($cardIds as $cardId) {
+        foreach ($locked as $cardId) {
             db_value('SELECT id FROM credit_cards WHERE id = :id FOR UPDATE', [':id' => $cardId]);
-            $before[$cardId] = card_usage($cardId)['used'];
+            $usage = card_usage($cardId);
+            $before[$cardId] = ['used' => $usage['used'], 'available' => $usage['available']];
         }
 
         $result = $change();
 
         foreach ($cardIds as $cardId) {
             $after = card_usage($cardId);
-            $added = $after['used'] - $before[$cardId];
+            $added = $after['used'] - ($before[$cardId]['used'] ?? 0);
             if ($guard && $added > 0.004 && $after['over_limit']) {
                 $card = db_row('SELECT card_nickname, last_four FROM credit_cards WHERE id = :id', [':id' => $cardId]);
                 throw new DomainException(
-                    'Not enough available credit on ' . $card['card_nickname'] . ' •••• ' . $card['last_four'] . ': this needs '
-                    . format_money($added) . ' but only ' . format_money(max(0, $after['credit_limit'] - $before[$cardId])) . ' is available.'
+                    'Not enough available credit on ' . $card['card_nickname'] . ' •••• ' . $card['last_four']
+                    . ($after['line'] ? ' (shared limit of ' . $after['line']['name'] . ')' : '') . ': this needs '
+                    . format_money($added) . ' but only ' . format_money(max(0, $before[$cardId]['available'] ?? 0)) . ' is available.'
                 );
             }
         }
 
-        card_usage_sync($cardIds);
+        card_usage_sync(array_values(array_unique(array_merge($locked, credit_line_siblings($cardIds)))));
 
         return $result;
     });
@@ -355,10 +391,24 @@ function render_card_usage_figures(array $usage): string
  */
 function card_utilization_sql(): string
 {
-    return "SELECT cc.id, cc.card_nickname, cc.issuer, cc.last_four, cc.credit_limit,
+    $available = card_usage_available_sql();
+
+    return "SELECT cc.id, cc.card_nickname, cc.issuer, cc.last_four, cc.credit_limit, cc.credit_line_id,
                    COALESCE(cu.used, 0) AS outstanding,
-                   cc.credit_limit - COALESCE(cu.used, 0) AS available_credit,
-                   IF(cc.credit_limit > 0, ROUND(COALESCE(cu.used, 0) / cc.credit_limit * 100, 2), 0) AS utilization_percentage
+                   $available AS available_credit,
+                   IF(cc.credit_limit > 0, ROUND((cc.credit_limit - ($available)) / cc.credit_limit * 100, 2), 0) AS utilization_percentage,
+                   cu_cl.name AS shared_line
               FROM credit_cards cc " . card_usage_join() . "
              WHERE cc.status = 'active'";
+}
+
+/**
+ * Total credit limit of a set of cards, a shared limit counted once:
+ * cards with their own limit + each shared line's limit.
+ */
+function cards_total_limit(string $cardIdsSql, string $statusSql = "c.status = 'active'"): float
+{
+    return (float) db_value("SELECT
+        (SELECT COALESCE(SUM(c.credit_limit), 0) FROM credit_cards c WHERE c.credit_line_id IS NULL AND $statusSql AND c.id IN $cardIdsSql)
+      + (SELECT COALESCE(SUM(l.credit_limit), 0) FROM credit_lines l WHERE l.id IN (SELECT c.credit_line_id FROM credit_cards c WHERE $statusSql AND c.id IN $cardIdsSql))");
 }

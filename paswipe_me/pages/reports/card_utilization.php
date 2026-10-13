@@ -30,9 +30,15 @@ if ($state['filters']['level'] !== '') {
 }
 
 $from = '(' . card_utilization_sql() . ') v';
-$result = run_list($state, 'v.id, v.card_nickname, v.issuer, v.last_four, v.credit_limit, v.outstanding, v.available_credit, v.utilization_percentage', $from, $where, $params);
+$result = run_list($state, 'v.id, v.card_nickname, v.issuer, v.last_four, v.credit_limit, v.outstanding, v.available_credit, v.utilization_percentage, v.shared_line', $from, $where, $params);
 $totals = db_row('SELECT COALESCE(SUM(v.credit_limit), 0) AS limit_total, COALESCE(SUM(v.outstanding), 0) AS used, COALESCE(SUM(v.available_credit), 0) AS available FROM '
     . $from . ($where ? ' WHERE ' . implode(' AND ', $where) : ''), $params);
+// A limit shared by several cards counts once in the totals.
+$ids = array_column(db_all('SELECT v.id FROM ' . $from . ($where ? ' WHERE ' . implode(' AND ', $where) : ''), $params), 'id');
+if ($ids) {
+    $totals['limit_total'] = cards_total_limit('(' . implode(',', array_map(static fn ($id) => db()->quote($id), $ids)) . ')');
+    $totals['available'] = (float) $totals['limit_total'] - (float) $totals['used'];
+}
 $overall = (float) $totals['limit_total'] > 0 ? (float) $totals['used'] / (float) $totals['limit_total'] * 100 : 0;
 
 $pageTitle = 'Card Utilization';
@@ -67,7 +73,7 @@ require APP_ROOT . '/includes/header.php';
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
                         <td data-label="Card"><a data-modal-form class="table-link" href="<?= e(url('pages/credit_cards/view.php', ['id' => $row['id']])) ?>"><?= e($row['card_nickname']) ?></a> •••• <?= e($row['last_four']) ?></td>
                         <td data-label="Issuer"><?= e($row['issuer']) ?></td>
-                        <td data-label="Limit" class="num"><?= e(format_money($row['credit_limit'])) ?></td>
+                        <td data-label="Limit" class="num"><?= e(format_money($row['credit_limit'])) ?><?= $row['shared_line'] ? '<br><span class="chip">shared · ' . e($row['shared_line']) . '</span>' : '' ?></td>
                         <td data-label="Used" class="num"><?= e(format_money($row['outstanding'])) ?></td>
                         <td data-label="Available" class="num<?= (float) $row['available_credit'] < 0 ? ' text-danger' : '' ?>"><?= e(format_money($row['available_credit'])) ?></td>
                         <td data-label="Utilization"><?= e(number_format((float) $row['utilization_percentage'], 2)) ?>% <progress class="meter" max="100" value="<?= e($pct) ?>"><?= e($pct) ?>%</progress></td>

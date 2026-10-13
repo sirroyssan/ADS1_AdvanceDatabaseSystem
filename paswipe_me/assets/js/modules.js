@@ -169,12 +169,61 @@
                     var option = select.options[select.selectedIndex];
                     var value = option ? option.getAttribute('data-' + parts[1]) : null;
                     if (!target || !value) return;
-                    if (Array.prototype.some.call(target.options || [], function (o) { return o.value === value; })) {
+                    if (target.tagName !== 'SELECT') {
+                        // An amount box: e.g. the shared line's limit.
+                        if (target.classList.contains('input-num')) formatAmount(target, value); else target.value = value;
+                        target.dispatchEvent(new Event('input', { bubbles: true }));
+                    } else if (Array.prototype.some.call(target.options || [], function (o) { return o.value === value; })) {
                         target.value = value;
                         target.dispatchEvent(new Event('change', { bubbles: true }));
                     }
                 });
             });
+        });
+
+        /* Shared credit limit suggestion (card form): when the bank and the limit typed match
+           another card or shared line, offer to share it: <select data-suggest='[{bank, limit, value, label}]'>.
+           Only while "Own limit" is chosen; one click picks the matching choice. */
+        scope.querySelectorAll('select[data-suggest]').forEach(function (select) {
+            if (!App.once(select, 'M14')) return;
+            var list;
+            try { list = JSON.parse(select.getAttribute('data-suggest') || '[]'); } catch (e) { list = []; }
+            var bank = document.getElementById('f_issuer');
+            var limit = document.getElementById('f_credit_limit');
+            var group = select.closest('.form-group');
+            if (!list.length || !bank || !limit || !group) return;
+            var hint = document.createElement('div');
+            hint.className = 'alert alert--info line-suggest';
+            hint.hidden = true;
+            group.appendChild(hint);
+            function update() {
+                var amount = number(limit.id);
+                var match = select.value === '' && amount > 0 && list.filter(function (s) {
+                    return s.bank.toLowerCase() === String(bank.value).toLowerCase() && Math.abs(parseFloat(s.limit) - amount) < 0.005;
+                })[0];
+                hint.hidden = !match;
+                if (!match) return;
+                hint.textContent = '';
+                var text = document.createElement('span');
+                text.textContent = match.label + ' (' + match.bank + ') has the same limit. Does the bank share it between these cards? ';
+                var button = document.createElement('button');
+                button.type = 'button';
+                button.className = 'btn btn--sm btn--primary';
+                button.textContent = 'Share the limit with ' + match.label;
+                button.addEventListener('click', function () {
+                    select.value = match.value;
+                    select.dispatchEvent(new Event('change', { bubbles: true }));
+                    hint.hidden = true;
+                });
+                hint.appendChild(text);
+                hint.appendChild(button);
+            }
+            [bank, limit, select].forEach(function (el) {
+                el.addEventListener('input', update);
+                el.addEventListener('change', update);
+            });
+            limit.addEventListener('blur', update);
+            update();
         });
 
         /* Obligation interest from a monthly rate: data-rate-interest="f_amount|f_rate|f_from|f_to"

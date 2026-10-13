@@ -2867,3 +2867,12 @@ html.has-modal-form {
 @media (max-width: 640px) {
     .notice__open span { display: none; }
 }
+
+/* Card form: "share the limit?" suggestion */
+.line-suggest {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+    margin-top: 8px;
+}

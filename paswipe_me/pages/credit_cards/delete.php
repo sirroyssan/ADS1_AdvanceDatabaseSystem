@@ -31,7 +31,12 @@ try {
         }
         db_exec('DELETE FROM card_billing_cycles WHERE credit_card_id = :id', [':id' => $card['id']]);
         db_exec('DELETE FROM bank_charges WHERE credit_card_id = :id AND charge_type = :t', [':id' => $card['id'], ':t' => OPENING_BALANCE_TYPE]);
+        $lineId = db_value('SELECT credit_line_id FROM credit_cards WHERE id = :id', [':id' => $card['id']]);
         db_exec('DELETE FROM credit_cards WHERE id = :id', [':id' => $card['id']]);
+        if ($lineId) {
+            $notes = [];
+            credit_line_cleanup($lineId, $notes);   // a line needs two cards
+        }
     });
 
     log_activity('delete', 'credit_card', $card['id'], 'Deleted card ' . credit_card_label($card), $card);

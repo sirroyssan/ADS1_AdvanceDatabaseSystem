@@ -15,6 +15,7 @@ const CARD_BILLING_SETTINGS = ['billing_cycle_day', 'due_date_rule', 'payment_du
 
 function credit_card_fields(?array $current = null): array
 {
+    [$lineOptions, $lineData, $lineSuggest] = credit_line_choices($current);
     $fields = [
         'card_nickname'     => ['label' => 'Card nickname', 'type' => 'text', 'max' => 100, 'required' => true],
     ] + bank_fields('issuer', ['label' => 'Issuer (bank)', 'required' => true, 'empty_label' => 'Select bank',
@@ -24,7 +25,13 @@ function credit_card_fields(?array $current = null): array
         'network'           => ['label' => 'Network', 'type' => 'select', 'options' => array_combine(ENUM_CARD_NETWORK, ['Visa', 'Mastercard', 'American Express', 'JCB', 'UnionPay', 'Other']), 'empty_label' => '— Not set —'],
         'last_four'         => ['label' => 'Last four digits', 'type' => 'text', 'max' => 4, 'required' => true, 'pattern' => '/^[0-9]{4}$/', 'pattern_message' => 'Enter exactly 4 digits.', 'help' => 'Never enter the full card number.'],
         'status'            => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_CARD_STATUS), 'required' => true, 'initial' => 'active'],
-        'credit_limit'      => ['label' => 'Credit limit', 'type' => 'decimal', 'min' => 0, 'required' => true, 'section' => 'Limits and billing'],
+        'credit_limit'      => ['label' => 'Credit limit', 'type' => 'decimal', 'min' => 0, 'required' => true, 'section' => 'Limits and billing',
+                                'help' => 'For a card that shares its limit: the shared limit of the whole line (changing it changes it for every card in the line).'],
+        'credit_line'       => ['label' => 'Limit shared with other cards?', 'type' => 'select', 'options' => $lineOptions, 'option_data' => $lineData,
+                                'attrs' => ['data-fills' => 'f_credit_limit:limit', 'data-suggest' => json_encode($lineSuggest, JSON_UNESCAPED_UNICODE)],
+                                'help' => 'Some banks give several cards one limit (e.g. BDO Visa, Shopmore and AMEX). Each card keeps its own statements and due dates; only the room left is shared.'],
+        'sub_limit'         => ['label' => 'Card sub-limit (optional)', 'type' => 'decimal', 'min' => 0,
+                                'help' => 'Only for a shared limit: the most this card may use by itself (e.g. a cash or AMEX cap). Leave empty to use the whole shared limit.'],
         'opening_balance'   => ['label' => 'Opening balance', 'type' => 'decimal', 'min' => 0, 'default' => '0.00',
                                 'help' => 'Amount already used on the card before you started recording it here. Used credit, available credit and utilization are then calculated automatically from your transactions, cash loans, cash advances, bank charges and payments.'],
         'interest_rate'     => ['label' => 'Interest rate (% per month)', 'type' => 'decimal', 'scale' => 4, 'digits' => 8, 'min' => 0, 'placeholder' => '0.0000'],
@@ -51,6 +58,9 @@ function credit_card_validate(array $fields, array $input, ?string $id = null): 
     [$data, $errors] = validate_fields($fields, $input, $id);
     [$data, $errors] = bank_resolve($data, $errors, 'issuer');
 
+    if (($data['sub_limit'] ?? null) !== null && ($data['credit_line'] ?? '') === '') {
+        $errors['sub_limit'] = 'A sub-limit is only for a card that shares its limit. Leave it empty, or choose the shared limit above.';
+    }
     if (!isset($errors['issuer']) && !isset($errors['last_four']) && ($message = credit_card_duplicate_message($data, $id)) !== null) {
         $errors['last_four'] = $message;
     }
@@ -77,16 +87,22 @@ function credit_card_validate(array $fields, array $input, ?string $id = null): 
 }
 
 /**
- * Save a card and its opening balance; available_credit is then calculated
- * (card_usage.php), never typed. Returns nothing; throws PDOException.
+ * Save a card, its opening balance and its shared credit line; available_credit
+ * is then calculated (card_usage.php), never typed. Returns notes about the
+ * shared limit; throws DomainException / PDOException.
  */
-function credit_card_save(?string $id, array $data, ?string $existingId = null): void
+function credit_card_save(?string $id, array $data, ?string $existingId = null): array
 {
     $opening = $data['opening_balance'] ?? '0.00';
-    unset($data['opening_balance']);
+    $choice = (string) ($data['credit_line'] ?? '');
+    $subLimit = isset($data['sub_limit']) && $data['sub_limit'] !== null ? (float) $data['sub_limit'] : null;
+    unset($data['opening_balance'], $data['credit_line'], $data['sub_limit']);
     $cardId = $existingId ?? $id;
+    // The cards whose room changes with this one: the line it joins, or the card it now shares with.
+    $others = str_starts_with($choice, '__with:') ? [substr($choice, 7)]
+        : ($choice !== '' ? array_column(db_all('SELECT id FROM credit_cards WHERE credit_line_id = :l', [':l' => $choice]), 'id') : []);
 
-    card_usage_apply([$cardId], function () use ($id, $existingId, $cardId, $data, $opening) {
+    return card_usage_apply(array_merge([$cardId], $others), function () use ($id, $existingId, $cardId, $data, $opening, $choice, $subLimit) {
         // Checked again under a lock: two saves at once (a double click) cannot both add the card.
         db_value('SELECT id FROM users WHERE id = :o FOR UPDATE', [':o' => owner_id()]);
         if (($message = credit_card_duplicate_message($data, $existingId)) !== null) {
@@ -100,12 +116,16 @@ function credit_card_save(?string $id, array $data, ?string $existingId = null):
             db_update('credit_cards', $data, $existingId);
         }
         card_set_opening_balance($cardId, $opening, $data['opening_date'] ?? null);
+
+        return credit_line_assign($cardId, $choice, (float) $data['credit_limit'], $subLimit);
     });
 }
 
 /**
  * The same card is never recorded twice: one of your cards (not closed) of
- * the same bank with the same last four digits. Returns why, or null.
+ * the same bank, network (Visa, Mastercard ...) and last four digits. Cards of
+ * one bank on different networks may end in the same digits (e.g. BDO Visa
+ * •••• 4106 and BDO Shopmore Mastercard •••• 4106). Returns why, or null.
  */
 function credit_card_duplicate_message(array $data, ?string $exceptId = null): ?string
 {
@@ -113,14 +133,15 @@ function credit_card_duplicate_message(array $data, ?string $exceptId = null): ?
         return null;
     }
     $same = db_all(
-        "SELECT cc.id, cc.card_nickname, cc.issuer, cc.last_four FROM credit_cards cc
+        "SELECT cc.id, cc.card_nickname, cc.issuer, cc.network, cc.last_four FROM credit_cards cc
           WHERE cc.last_four = :l AND cc.status <> 'closed' AND cc.id <> :x AND " . owner_scope('credit_cards', 'cc'),
         [':l' => $data['last_four'], ':x' => $exceptId ?? '']
     );
     foreach ($same as $card) {
-        if (same_bank($card['issuer'], $data['issuer'])) {
-            return 'You already have this card: "' . $card['card_nickname'] . '" (' . bank_canonical($card['issuer']) . ' •••• ' . $card['last_four']
-                . '). Open that card instead of adding it again.';
+        if (same_bank($card['issuer'], $data['issuer']) && (string) $card['network'] === (string) ($data['network'] ?? '')) {
+            return 'You already have this card: "' . $card['card_nickname'] . '" (' . bank_canonical($card['issuer'])
+                . ($card['network'] ? ' ' . strtoupper($card['network']) : '') . ' •••• ' . $card['last_four']
+                . '). Open that card instead of adding it again. A card of another network (Visa, Mastercard ...) may end in the same digits.';
         }
     }
 

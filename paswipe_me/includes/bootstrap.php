@@ -38,6 +38,7 @@ require_once APP_ROOT . '/includes/list_helpers.php';
 require_once APP_ROOT . '/includes/lookups.php';
 require_once APP_ROOT . '/includes/schedules.php';
 require_once APP_ROOT . '/includes/card_usage.php';
+require_once APP_ROOT . '/includes/credit_lines.php';
 require_once APP_ROOT . '/includes/portal.php';
 require_once APP_ROOT . '/includes/penalties.php';
 require_once APP_ROOT . '/includes/schedule_sync.php';

@@ -61,6 +61,31 @@ require APP_ROOT . '/includes/header.php';
 <?= render_list_header($state, 'The owner\'s credit cards, limits and available credit.', ($canManage ? url('pages/credit_cards/create.php') : null)) ?>
 <?= render_list_toolbar($state) ?>
 
+<?php $sharedLines = credit_lines_mine(); ?>
+<?php if ($sharedLines): ?>
+    <section class="panel" aria-label="Shared credit limits">
+        <header class="panel__header"><h3><?= icon('layers') ?> Shared credit limits</h3></header>
+        <div class="table-wrap">
+            <table class="table table--cards table--compact">
+                <thead><tr><th scope="col">Shared line</th><th scope="col">Cards</th><th scope="col" class="num">Shared limit</th><th scope="col" class="num">Used (all cards)</th>
+                    <th scope="col" class="num">Available</th><th scope="col" class="num">Utilization</th></tr></thead>
+                <tbody>
+                <?php foreach ($sharedLines as $ln): ?>
+                    <tr>
+                        <td data-label="Shared line"><strong><?= e($ln['name']) ?></strong></td>
+                        <td data-label="Cards"><?= e(implode(', ', array_map(static fn ($c) => $c['card_nickname'] . ' •••• ' . $c['last_four'] . ($c['sub_limit'] !== null ? ' (sub-limit ' . format_money($c['sub_limit']) . ')' : ''), $ln['cards']))) ?></td>
+                        <td data-label="Shared limit" class="num"><?= e(format_money($ln['credit_limit'])) ?></td>
+                        <td data-label="Used (all cards)" class="num"><?= e(format_money($ln['used'])) ?></td>
+                        <td data-label="Available" class="num<?= $ln['available'] < 0 ? ' text-danger' : '' ?>"><strong><?= e(format_money($ln['available'])) ?></strong></td>
+                        <td data-label="Utilization" class="num"><?= e(number_format($ln['utilization'], 2)) ?>%</td>
+                    </tr>
+                <?php endforeach; ?>
+                </tbody>
+            </table>
+        </div>
+    </section>
+<?php endif; ?>
+
 <section class="panel panel--flush" aria-label="Credit card list">
     <?php if ($result['total'] === 0): ?>
         <?= render_empty_state($state, $canManage ? url('pages/credit_cards/create.php') : null, 'Add the owner\'s credit cards (last four digits only).', 'credit-card') ?>
@@ -89,7 +114,7 @@ require APP_ROOT . '/includes/header.php';
                         <td data-label="Card"><a data-modal-form class="table-link" href="<?= e(url('pages/credit_cards/view.php', ['id' => $row['id']])) ?>"><?= e($row['card_nickname']) ?></a><br><span class="text-muted">•••• <?= e($row['last_four']) ?></span></td>
                         <td data-label="Issuer / Network"><?= e($row['issuer']) ?><?= $row['network'] ? ' · ' . e(strtoupper($row['network'])) : '' ?></td>
                         <td data-label="Owner"><?= show($row['owner_name']) ?></td>
-                        <td data-label="Limit" class="num"><?= e(format_money($row['credit_limit'])) ?></td>
+                        <td data-label="Limit" class="num"><?= e(format_money($row['credit_limit'])) ?><?= $row['shared_line'] ? '<br><span class="chip">shared · ' . e($row['shared_line']) . '</span>' : '' ?></td>
                         <td data-label="Used" class="num"><?= e(format_money($row['used_credit'])) ?></td>
                         <td data-label="Available" class="num<?= (float) $row['remaining_credit'] < 0 ? ' text-danger' : '' ?>"><?= e(format_money($row['remaining_credit'])) ?></td>
                         <td data-label="Utilization" class="num"><?= e(number_format((float) $row['utilization'], 2)) ?>%</td>

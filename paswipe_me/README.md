@@ -1153,8 +1153,31 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - **Server side:** it removes the commas before checking and saving, so nothing changes in the database.
 - **Too many decimals:** a value with more decimals than allowed is left as typed, so the form's error shows instead of a silent rounding.
 
+**Shared credit limits** (`includes/credit_lines.php`): some banks give several cards one limit. For example, BDO Visa, BDO Shopmore and BDO AMEX share ₱1,120,000.
+- **On the card form:** *Limit shared with other cards?* has three choices:
+  - **Own limit**, the default;
+  - **Shared: <line>**, to join an existing line (the credit limit is filled in with the line's limit);
+  - **Share the limit with <card>**, which creates a new line with that card at the typed limit.
+- **Suggestion:** when the bank and the limit you type match another card or line, the form suggests sharing, with one-click **Share the limit with …**.
+- **Changing the shared limit:** change the credit limit on any card of the line and it changes for every card in it.
+- **Card sub-limit (optional):** the most one card may use by itself (e.g. a cash or AMEX cap).
+- **Figures:**
+  - each card keeps its own used credit, statements and due dates;
+  - available = the smaller of (card cap − card used) and (shared limit − used by all the line's cards);
+  - utilization is of the card's cap.
+
+  Cash loans and cash advances are refused when the line is full.
+- **Where it shows:** the Credit Cards list has a *Shared credit limits* panel (line, cards, shared limit, used by all, available, utilization), and each card shows a *shared · <line>* tag. The card page explains the line and lists its cards.
+- **Totals:** the dashboard total limit and the Card Utilization report count a shared limit once.
+- **Leaving a line:** choose *Own limit*. A line needs two cards: when only one card is left, it keeps the shared limit as its own and the line ends. Deleting a card does the same.
+- **Schema change (additive):**
+  - new table `credit_lines` (owner, name, bank, credit_limit);
+  - `credit_cards.credit_line_id` (NULL = own limit) and `credit_cards.sub_limit`, both NULL.
+
+  It is applied once by `credit_line_schema_upgrade()`, or by hand with `db/upgrade_credit_lines.sql`. Existing cards are not changed until you put them on a line. A card's `credit_limit` holds its cap (sub-limit or shared limit), so existing figures and checks keep working.
+
 **Credit cards: no duplicates; delete while unused** (`pages/credit_cards/`):
-- **No duplicates:** a card is never added twice. The same bank (matched by `same_bank()`, so "Bank of the Philippine Islands" = BPI) with the same last four digits as one of your cards that is not *closed* is refused on the form, and on Edit too, with the name of the existing card.
+- **No duplicates:** a card is never added twice. The same bank (matched by `same_bank()`, so "Bank of the Philippine Islands" = BPI), the same **network** (Visa, Mastercard …) and the same last four digits as one of your cards that is not *closed* is refused on the form, and on Edit too, with the name of the existing card. Cards of one bank on different networks may end in the same digits (BDO Visa •••• 4106 and BDO Shopmore Mastercard •••• 4106 are both allowed).
 - **Double clicks:** the check runs again at save time under a lock, so two saves at once (a double click) still add only one card.
 - **Deleting:** a card with no transactions, statements, cash loans, cash advances, card payments or bank charges (its opening balance does not count) shows **Delete**, both in the list (trash icon) and in the card page's header. Deleting removes it with its billing cycles. A card with records shows **Mark as inactive** instead, and the server refuses a forced delete. Staff never see these buttons.
 

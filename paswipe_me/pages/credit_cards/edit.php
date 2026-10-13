@@ -10,7 +10,10 @@ $currentUser = require_admin();
 
 $card = find_or_redirect(credit_card_find(request_id()), 'pages/credit_cards/index.php', 'Credit card');
 $fields = credit_card_fields($card);
-$data = form_data_from_row($fields, ['issuer' => bank_canonical($card['issuer'])] + $card + ['opening_balance' => card_opening_balance($card['id'])['amount'] ?? '0.00']);
+$line = $card['credit_line_id'] ? db_row('SELECT * FROM credit_lines WHERE id = :id', [':id' => $card['credit_line_id']]) : null;
+// A card on a shared line shows the line's limit (its own cap is the sub-limit, if any).
+$data = form_data_from_row($fields, ['issuer' => bank_canonical($card['issuer']), 'credit_line' => $card['credit_line_id'] ?? '']
+    + ($line ? ['credit_limit' => $line['credit_limit']] : []) + $card + ['opening_balance' => card_opening_balance($card['id'])['amount'] ?? '0.00']);
 $errors = [];
 
 if (is_post()) {
@@ -22,17 +25,24 @@ if (is_post()) {
 
     if (!$errors) {
         try {
-            credit_card_save(null, $data, $card['id']);
+            $lineNotes = credit_card_save(null, $data, $card['id']);
             if ($billingChanged) {
                 log_activity('billing_change', 'credit_card', $card['id'], 'Billing settings changed: ' . implode(', ', $billingChanged),
                     array_intersect_key($card, array_flip($billingChanged)), array_intersect_key($data, array_flip($billingChanged)));
                 flash('info', 'Billing settings changed. Recorded SOAs keep their own periods; other periods now follow the new settings.');
             }
             log_activity('update', 'credit_card', $card['id'], 'Updated card ' . $data['card_nickname'], array_intersect_key($card, $data), $data);
+            foreach ($lineNotes as $note) {
+                flash('info', $note);
+            }
             flash('success', 'Card "' . $data['card_nickname'] . '" was updated successfully.');
             redirect('pages/credit_cards/view.php', ['id' => $card['id']]);
         } catch (DomainException $e) {
-            $errors[str_starts_with($e->getMessage(), 'You already have this card') ? 'last_four' : '_form'] = $e->getMessage();
+            $errors[match (true) {
+                str_starts_with($e->getMessage(), 'You already have this card') => 'last_four',
+                str_contains($e->getMessage(), 'sub-limit') => 'sub_limit',
+                default => '_form',
+            }] = $e->getMessage();
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
         }
