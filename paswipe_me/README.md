@@ -1403,6 +1403,12 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/paswipe_me/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Sidebar keeps its scroll position
+
+- Choosing a module lower in the sidebar no longer sends the menu back to the top on the new page. A small script in `includes/sidebar.php` saves the menu's scroll position (per browser tab, `sessionStorage`) and puts it back before the page is drawn, so nothing jumps. It applies it again once the page has fully loaded.
+- If the current module would be out of view (e.g. opened from a link on a page or a bookmark), the menu scrolls so it is visible.
+- The same applies to the admin, owner, staff and borrower portal sidebars.
+
 ## Installment plan of a lent card purchase follows its confirmed repayments
 
 - **Problem:** a card purchase on installments lent to a borrower (e.g. TXN-20261012-0004, 12 × ₱6,332.50) showed the borrower's confirmed repayment as paid in the portal, but its schedule in Installment Plans still showed ₱0.00 paid. The schedule was only updated from obligation payments, while a lent purchase is repaid through the purchase ledger (`borrowed_ledger`).

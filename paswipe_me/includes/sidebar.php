@@ -213,6 +213,31 @@ if (!borrowed_has_items()) {
             </div>
         <?php endforeach; ?>
     </nav>
+    <script>
+        // Keep the menu where it was when moving to another module (restored before paint, so it does not jump to the top),
+        // and make sure the current module is in view (e.g. opened from a link on a page).
+        (function () {
+            var nav = document.currentScript.previousElementSibling, key = 'sidebar-scroll', saved = null;
+            try { saved = sessionStorage.getItem(key); } catch (e) {}
+            var place = function () {
+                if (saved !== null) {
+                    nav.scrollTop = parseInt(saved, 10) || 0;
+                }
+                var active = nav.querySelector('.nav-link.is-active');
+                if (active) {
+                    var box = nav.getBoundingClientRect(), item = active.getBoundingClientRect();
+                    if (item.top < box.top || item.bottom > box.bottom) {
+                        nav.scrollTop += item.top - box.top - box.height / 3;
+                    }
+                }
+            };
+            place();
+            window.addEventListener('load', place);   // again once icons and fonts have their final size
+            var save = function () { try { sessionStorage.setItem(key, String(nav.scrollTop)); } catch (e) {} };
+            nav.addEventListener('click', save);
+            window.addEventListener('pagehide', save);
+        })();
+    </script>
 
     <div class="sidebar__footer">
         <form method="post" action="<?= e(url('auth/logout.php')) ?>">
