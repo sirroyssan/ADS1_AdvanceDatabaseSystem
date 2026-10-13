@@ -48,6 +48,7 @@ require_once APP_ROOT . '/includes/ownership.php';
 require_once APP_ROOT . '/includes/multiuser.php';
 require_once APP_ROOT . '/includes/borrowed.php';
 require_once APP_ROOT . '/includes/late_charges.php';
+require_once APP_ROOT . '/includes/google_drive.php';
 require_once APP_ROOT . '/includes/installments.php';
 require_once APP_ROOT . '/includes/staff.php';
 

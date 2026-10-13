@@ -64,6 +64,7 @@ require APP_ROOT . '/includes/header.php';
                 'Size'        => e(format_bytes($doc['file_size'] !== null ? (int) $doc['file_size'] : null)),
                 'SHA-256'     => $doc['checksum'] ? '<code>' . e($doc['checksum']) . '</code>' : '',
                 'Uploaded'    => e(format_datetime($doc['uploaded_at'])) . ($doc['uploaded_by_name'] ? ' by ' . e($doc['uploaded_by_name']) : ''),
+                'Google Drive' => $doc['document_type'] === 'payment_proof' ? (ltrim(drive_link_html($doc)) ?: '<span class="text-muted">Not saved there (connect it in Google Drive)</span>') : '',
                 'Used by'     => $usage['total'] ? e(usage_text($usage)) : 'Not attached to any record',
             ]) ?>
         </section>

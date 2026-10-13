@@ -18,7 +18,7 @@ if (!$doc || (int) $doc['is_deleted'] === 1 || !portal_can_see_document($doc['id
     redirect('portal/index.php');
 }
 
-$path = document_path($doc['storage_key']);
+$path = document_path($doc['storage_key']) ?? drive_restore_document($doc);   // missing here: get it back from Google Drive
 if ($path === null) {
     flash('error', 'The stored file could not be found. Please tell the owner.');
     redirect('portal/index.php');

@@ -356,6 +356,9 @@ function payment_form_handle(array $ctx): array
         return compact('fields', 'data', 'errors', 'groups', 'chosen', 'hasProof', 'proofRequired', 'payment');
     }
 
+    if ($stored) {
+        drive_backup_document($documentId);   // also to the owner's Google Drive when connected (never blocks the payment)
+    }
     log_activity($payment ? 'update' : 'create', 'borrower_payment', $saved[0] ?? null,
         ($payment ? 'Borrower updated payment of ' : 'Borrower submitted payment of ') . format_money($data['amount']), null, $data);
     $message = $payment

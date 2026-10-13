@@ -10,7 +10,7 @@ require_once __DIR__ . '/document_functions.php';
 $currentUser = require_admin();
 
 $doc = find_or_redirect(document_find(request_id()), 'pages/documents/index.php', 'Document');
-$path = document_path($doc['storage_key']);
+$path = document_path($doc['storage_key']) ?? drive_restore_document($doc);   // missing here: get it back from Google Drive
 
 if ($path === null) {
     flash('error', 'The stored file could not be found.');

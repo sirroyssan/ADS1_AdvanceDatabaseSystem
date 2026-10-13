@@ -29,7 +29,7 @@ $allocations = db_all(
     [':id' => $id]
 );
 $attachments = db_all(
-    'SELECT pa.id AS link_id, pa.attachment_type AS type_label, d.id AS document_id, d.original_filename, d.document_type
+    'SELECT pa.id AS link_id, pa.attachment_type AS type_label, d.id AS document_id, d.original_filename, d.document_type, d.metadata
        FROM payment_attachments pa JOIN documents d ON d.id = pa.document_id
       WHERE pa.borrower_payment_id = :id ORDER BY pa.created_at',
     [':id' => $id]

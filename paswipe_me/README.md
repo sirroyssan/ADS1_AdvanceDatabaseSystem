@@ -1377,6 +1377,25 @@ also has the same **What is this payment for?** table.
 
 **When saving fails.** The payment, its items and the proof are saved in one database transaction, so a failure saves nothing. The form now says which part failed: "The payment was not saved: the proof file could not be recorded", or the usual message for the payment itself. It also gives the database error number. The database's own message is added when the browser runs on the server itself (XAMPP on localhost) or when `APP_DEBUG` is on (`db_error_detail()` in `includes/db_helpers.php`). From another device (a phone on the Wi-Fi) only the number is shown. The full text is always in the PHP error log (XAMPP for macOS: `/Applications/XAMPP/xamppfiles/logs/php_error_log`), on the lines starting with `[PA-KASKAS] Database write failed:` and `[PA-KASKAS] Saving the payment proof failed:`.
 
+## Proofs of payment in Google Drive (`includes/google_drive.php`, System → Google Drive)
+
+Each proof of payment is saved on this computer **and** in the owner's Google Drive (personal Gmail), in a folder "PA-KASKAS Proofs". There is no schema change.
+
+- **When:** a borrower submits a payment with a proof, you record one, a proof is uploaded in Document Files, or one is attached to a payment.
+- **Drive never blocks a payment.** When Google can't be reached, the payment is saved, the proof stays on the computer, and the page shows "Not yet in Drive" with the reason. *Send pending proofs now* uploads them later, including proofs from before Drive was connected (25 per click).
+- **Where it's recorded:** the document's metadata JSON (`metadata.drive.file_id`, `link`). The payment page and Document Files show an *In Google Drive* link to the owner. If the file is missing on the computer, opening it downloads it back from Drive.
+- **Privacy:**
+  - The app asks only for Google's `drive.file` permission, so it sees just the files it created itself, never the rest of the Drive. Files stay private to the Gmail account.
+  - The Client secret and tokens are kept in `storage/google_drive/`, which is closed to the web, never shown again, not committed and not zipped.
+  - The Connect callback checks a one-time `state` value.
+
+**One-time setup** (the steps are also on the Google Drive page):
+1. On console.cloud.google.com, with your Gmail, create a project (e.g. PA-KASKAS).
+2. *APIs & Services → Library*: enable **Google Drive API**.
+3. *OAuth consent screen*: choose External, enter the app name and your Gmail, then **Publish app** (In production). Otherwise Google signs you out every 7 days. "Unverified app" can be passed for your own account.
+4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/paswipe_me/pages/drive/callback.php`.
+5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
+
 ## Paid and overdue: one definition everywhere
 
 - **Total paid** = the borrower's **approved payments**, the same total as *My Payments* and *Borrower Payments* (`borrower_total_received()` in `includes/portal.php`). It is used on the portal home, the owner's borrower page and the Borrower Balances report. Payments that went to late charges count too. Before, money put on an obligation's late charges was left out, so ₱76,030.75 received showed as ₱63,845.83.

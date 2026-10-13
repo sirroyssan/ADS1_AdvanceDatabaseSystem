@@ -532,7 +532,8 @@ function render_attachments_panel(array $rows, string $actionUrl, array $hidden,
     $html .= '<ul class="child-list">';
     foreach ($rows as $row) {
         $html .= '<li><span><a href="' . e(url('pages/documents/view.php', ['id' => $row['document_id']])) . '">' . e($row['original_filename']) . '</a>'
-            . ' <span class="text-muted">· ' . e(humanize($row['type_label'] ?? $row['document_type'])) . '</span></span>';
+            . ' <span class="text-muted">· ' . e(humanize($row['type_label'] ?? $row['document_type'])) . '</span>'
+            . (isset($row['metadata']) && function_exists('drive_link_html') ? drive_link_html($row) : '') . '</span>';
         if ($canEdit) {
             $html .= post_button($actionUrl, $hidden + ['action' => 'detach_document', 'item_id' => $row['link_id']], 'Remove attachment', 'x',
                 'icon-button icon-button--danger', 'Remove this attachment? The file itself stays in Document Files.', true, 'Remove attachment?');

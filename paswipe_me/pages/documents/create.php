@@ -31,6 +31,7 @@ if (is_post()) {
                 'metadata'    => json_encode($data['description'] ? ['description' => $data['description']] : new stdClass(), JSON_UNESCAPED_UNICODE),
             ]);
             log_activity('upload', 'document', $id, 'Uploaded ' . $stored['original_filename']);
+            drive_backup_document($id);   // a proof of payment also goes to Google Drive when connected
             flash('success', 'File "' . $stored['original_filename'] . '" was uploaded.');
             redirect('pages/documents/view.php', ['id' => $id]);
         } catch (PDOException $e) {

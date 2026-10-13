@@ -53,6 +53,7 @@ try {
             }
             db_insert('payment_attachments', ['id' => new_uuid(), 'borrower_payment_id' => $payment['id'], 'document_id' => $documentId, 'attachment_type' => $type]);
             log_activity('attach_document', 'borrower_payment', $payment['id'], 'Attached a document to ' . $payment['payment_number']);
+            drive_backup_document($documentId);   // a proof of payment also goes to Google Drive when connected
             flash('success', 'Document was attached.');
             break;
 

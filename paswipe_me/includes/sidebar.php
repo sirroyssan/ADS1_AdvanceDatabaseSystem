@@ -78,6 +78,7 @@ $navigation = [
             ['key' => 'users',         'label' => 'Users & Roles', 'icon' => 'shield',  'path' => 'pages/users/index.php', 'admin' => true],
             ['key' => 'notifications', 'label' => 'Sent Notifications', 'icon' => 'bell',    'path' => 'pages/notifications/index.php'],
             ['key' => 'activity_logs', 'label' => 'Activity Logs', 'icon' => 'history', 'path' => 'pages/activity_logs/index.php'],
+            ['key' => 'google_drive',  'label' => 'Google Drive',  'icon' => 'folder',  'path' => 'pages/drive/index.php'],
             ['key' => 'staff_accounts', 'label' => 'Staff Accounts', 'icon' => 'users', 'path' => 'pages/staff_accounts/index.php'],
             ['key' => 'authorizations', 'label' => 'Authorization Requests', 'icon' => 'shield', 'path' => 'pages/authorizations/index.php'],
             ['key' => 'data_reset',    'label' => 'Reset Test Data', 'icon' => 'trash', 'path' => 'pages/data_reset/index.php'],
