@@ -647,7 +647,7 @@ No schema change.
 
 ## Cash advances given to borrowers
 
-On a cash advance page, **Give to a borrower** turns all or part of the withdrawn cash into a borrower obligation. The form takes the date given, amount, fee, interest per month (%), number of monthly payments and first due date.
+*(Removed: cash advances are records only, never paid in installments. See "Cash advance for a borrower" below. Kept for the shares created earlier.)* On a cash advance page, **Give to a borrower** turned all or part of the withdrawn cash into a borrower obligation. The form takes the date given, amount, fee, interest per month (%), number of monthly payments and first due date.
 
 - **Total owed** = amount given + fee + add-on interest (amount × monthly rate × months), split into equal monthly payments (`build_schedule`). The last payment absorbs any rounding.
 - **How it is stored, without a schema change:** `cash_advances` has no borrower column, so each share uses:
@@ -776,7 +776,7 @@ Every add/create action now opens one shared modal on the current page instead o
 |---|---|
 | List pages (`render_list_header` / `render_empty_state`) | Add New / Add User / Record Payment / Upload File / Send Notification in Categories, Merchants, Payment Methods, Penalty Rules, Borrowers, Obligations, Borrower Payments, Credit Cards, Statements, Card Payments, Bank Charges, Transactions, Installment Plans, Cash Loans, Cash Advances, Agreements, Agreement Templates, Demand Letters, Letter Templates, Documents, Notifications, Users |
 | Detail pages (links) | Borrower → Add payment method / obligation / Record payment, Create user; Transaction → Create plan / Add obligation / Add item; Credit card → Add cash loan / statement; Statement → Record payment; Obligation → Record payment, Create a rule; Category → Add sub-category |
-| Detail pages (inline add panels) | Borrower → Add address / contact; Agreement → Add signatory; Credit card → Add cycle; Obligation → Apply penalty; Cash loan → Add allocation; Cash advance → Give to a borrower |
+| Detail pages (inline add panels) | Borrower → Add address / contact; Agreement → Add signatory; Credit card → Add cycle; Obligation → Apply penalty; Cash loan → Add allocation; Cash advance → Apply penalty |
 | Borrower portal | Submit a payment |
 
 How it works (no duplicated forms, the existing pages and handlers do the work):
@@ -1400,7 +1400,7 @@ It charges each **active** rule whose **Bank** is the card's bank, once per over
 
 Balance figures → Card purchases → **Recent obligations** → **Recent payments** → Record details, sign-in account and payment methods → Addresses → Contacts. What the borrower owes and paid comes first, so it's easy to analyze.
 
-## Cash advance for a borrower, statement by date, convert to installment (`pages/cash_advances/`)
+## Cash advance for a borrower: a record with penalties, never installments (`pages/cash_advances/`)
 
 - **Borrower field** (Add/Edit cash advance): who got the cash. There is no schema change.
   - The borrower is kept on a linked `transactions` row: payment type *cash_advance*, the same card and reference number (`CA-…` is generated if empty), and the advance's total as the amount.
@@ -1409,16 +1409,14 @@ Balance figures → Card purchases → **Recent obligations** → **Recent payme
   - The card and the statement count the withdrawal once, from `cash_advances` (the linked transaction is excluded, as before).
   - Changing the borrower, removing them or cancelling the advance is refused once the borrower has reported or paid a repayment. The borrower is notified of every change.
 - **Statement by date:** the manual *Statement* dropdown is gone. The advance is listed in the statement period that has its date (the card's cut-off), automatically. When that period has a recorded SOA, `statement_id` is set to it. The page shows "the September 2026 statement period (Sep 1 – Sep 30)".
-- **Convert to installment** (`installment.php`, on the cash advance page): number of months, interest per month (%) and an optional fee.
-  - It creates an installment plan on the borrower's transaction, with the same calculation as a purchase's plan (add-on monthly, `installment_plan_create`). No obligation is created.
-  - The plan is listed in **Installment Plans**, and each installment is due on the card's due date of its month.
-  - It is never allowed once the cash advance is paid (`cash_advance_convert_block()`): fully repaid, marked completed, or any repayment reported or recorded. The button is hidden and the page gives the reason. Opening the form directly, or a second save, is refused again on the server. After converting, amounts are changed on the plan.
+- **Never in installments:** a cash advance is a record only. The borrower repays the total in one payment by the card's due date. *Convert to installment* and *Give to a borrower* were removed (pages `installment.php` and `give.php` deleted). Plans or shares created earlier are still shown and paid as before.
+- **Penalties:** the cash advance page has the same **Penalties** panel as a card purchase (`pages/transactions/penalties_panel.php`, shared). It shows the active rules for the card's bank, **Check penalties now**, **Apply penalty**, and waive/delete selected. The actions post to `pages/transactions/related.php` and return to the cash advance.
+- **Corrections:** *Edit* fixes a wrong amount (the borrower then owes the new total) or a wrong borrower. The borrower can only be changed while they have not reported or paid a repayment; reject or cancel those first. Both borrowers are notified.
 - **Not a transaction:** the borrower's side is an internal record (`cash_share_sql()` in `includes/borrowed.php`).
   - It is left out of the Transactions list, the Transactions report, the dashboard counts and recent list, the card page, staff activity, and the Installment Plans transaction picker.
   - Wherever it shows (borrower page, portal, payment form, late charges, agreement picker) it reads **"Cash advance CA-…"**.
   - The cash advance page lists the borrower's **repayment history** itself: date, number, notes, amount, status, and who confirmed it. *Repaid* counts only these confirmed repayments; marking the advance Completed adds no payment.
   - Opening it shows the cash advance's **Repayments** (breadcrumb Cash Advances → CA-… → Repayments) with *Open cash advance*. Edit / delete / void of it redirect to the cash advance.
-- **"Give to a borrower"** (an obligation for part of the cash) still works for advances without a Borrower. The two can't be mixed on one advance.
 - **List:** the Cash Advances list shows "For <borrower>" under the card.
 
 ## Card purchase repayments go where the borrower chose (`borrowed_allocate()` in `includes/borrowed.php`)

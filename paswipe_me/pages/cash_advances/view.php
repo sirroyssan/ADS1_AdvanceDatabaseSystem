@@ -5,6 +5,7 @@
 
 require_once __DIR__ . '/../../includes/auth_check.php';
 require_once __DIR__ . '/cash_advance_functions.php';
+require_once APP_ROOT . '/pages/transactions/transaction_functions.php';   // the penalties panel
 
 $currentUser = require_admin();
 
@@ -42,22 +43,8 @@ if ($direct) {
     $purchase = borrowed_owner_purchases(null, $direct['id'])[0] ?? null;
     $directLedger = $purchase['ledger'] ?? null;
 }
-$convertBlock = $direct ? cash_advance_convert_block($advance, $direct) : null;
-$canConvert = $direct && $convertBlock === null;
 $billedOn = statement_for_date($advance['credit_card_id'], $advance['advance_date']);
 $shares = array_values(array_filter(cash_advance_shares($advance), static fn ($s) => $s['obligation_id']));
-$given = array_sum(array_column($shares, 'amount'));
-$remaining = max(0, (float) $advance['amount'] - $given);
-$giveFields = cash_advance_give_fields($advance, $remaining);
-$prefill = $_SESSION['give_form'] ?? null;
-unset($_SESSION['give_form']);
-$giveData = $prefill ? array_intersect_key($prefill, $giveFields) : form_defaults($giveFields, [
-    'given_date'     => $advance['advance_date'],
-    'amount'         => number_format($remaining, 2, '.', ''),
-    'fee'            => (float) $advance['amount'] > 0 ? number_format((float) $advance['fee'] * $remaining / (float) $advance['amount'], 2, '.', '') : '0.00',
-    'months'         => 1,
-    'first_due_date' => schedule_due_date($advance['advance_date'], 1, 'monthly'),
-]);
 
 $pageTitle = 'Cash Advance';
 $activeNav = 'cash_advances';
@@ -118,9 +105,6 @@ require APP_ROOT . '/includes/header.php';
     <header class="panel__header">
         <h3><?= icon('users') ?> <?= e(borrower_name($direct)) ?> repays this cash advance</h3>
         <div class="action-bar no-print">
-            <?php if ($canConvert): ?>
-                <a data-modal-form class="btn btn--sm btn--primary" href="<?= e(url('pages/cash_advances/installment.php', ['id' => $advance['id']])) ?>"><?= icon('repeat') ?> <span>Convert to installment</span></a>
-            <?php endif; ?>
             <?php if ($direct['plan_id']): ?>
                 <a class="btn btn--sm btn--outline" href="<?= e(url('pages/installment_plans/view.php', ['id' => $direct['plan_id']])) ?>"><?= icon('repeat') ?> <span>Installment plan</span></a>
             <?php endif; ?>
@@ -129,71 +113,55 @@ require APP_ROOT . '/includes/header.php';
     </header>
     <?= render_details([
         'Owes'          => '<strong>' . e(format_money($direct['plan_id'] ? $direct['total_repayment'] : $direct['amount'])) . '</strong>'
-                           . ($direct['plan_id'] ? ' <span class="text-muted">(' . e($direct['number_of_installments']) . ' monthly installments of ' . e(format_money($direct['installment_amount']))
-                               . ' · interest ' . e(format_money($direct['plan_interest'])) . ((float) $direct['plan_fees'] > 0 ? ' · fee ' . e(format_money($direct['plan_fees'])) : '') . ')</span>'
+                           . ($direct['plan_id'] ? ' <span class="text-muted">(' . e($direct['number_of_installments']) . ' monthly installments of ' . e(format_money($direct['installment_amount'])) . ', set up earlier)</span>'
                              : ' <span class="text-muted">(the total amount, in one payment)</span>'),
         'Repaid'        => $directLedger ? e(format_money($directLedger['repaid'])) : '—',
+        'Late charges'  => $directLedger ? e(format_money($directLedger['penalty_unpaid'])) . ' unpaid of ' . e(format_money($directLedger['penalties'])) : '—',
         'Outstanding'   => $directLedger ? '<strong>' . e(format_money($directLedger['outstanding'])) . '</strong>' : '—',
         'Repay by'      => $directLedger && $directLedger['next_due'] ? e(format_date($directLedger['next_due']['date'])) : '—',
         'Status'        => $directLedger ? badge($directLedger['status']) : '—',
     ]) ?>
     <h4 class="form-section">Repayment history</h4>
     <?= borrowed_render_repayments(borrowed_repayments($direct['id'])) ?>
-    <p class="field-help">Repaid counts only the repayments confirmed here (recorded by you, confirmed from the borrower's portal payment, or received by staff). Marking the cash advance Completed does not add a payment.</p>
-    <p class="field-help">Tracked like a card purchase the borrower repays to you (no obligation): they see it under Card Purchases and pay it from the portal.
-        <?= $canConvert ? 'If they cannot pay it at once, convert it to monthly installments with interest.' : '' ?></p>
-    <?php if (!$canConvert && !$direct['plan_id'] && $convertBlock): ?><p class="field-help no-print"><?= icon('info') ?> <?= e($convertBlock) ?></p><?php endif; ?>
+    <p class="field-help">A cash advance is a record only: the borrower repays the total in one payment by the card's due date; it is never paid in installments.
+        Repaid counts only the repayments confirmed here (recorded by you, confirmed from the borrower's portal payment, or received by staff); marking the cash advance Completed adds no payment.
+        Wrong amount or wrong borrower? Use Edit.</p>
+</section>
+<?php
+// Late charges by the card bank's penalty rules (same panel as a card purchase).
+$txn = $direct;
+$canManage = true;
+$isLocked = in_array($direct['status'], TXN_LOCKED_STATUSES, true) || $advance['status'] === 'cancelled';
+require APP_ROOT . '/pages/transactions/penalties_panel.php';
+?>
+<?php elseif ($shares): ?>
+<section class="panel subpanel">
+    <header class="panel__header"><h3><?= icon('users') ?> Given to borrowers (earlier)</h3></header>
+    <div class="table-wrap">
+        <table class="table table--cards table--compact">
+            <thead><tr><th scope="col">Borrower</th><th scope="col">Date given</th><th scope="col" class="num">Given</th><th scope="col">Payments</th>
+                <th scope="col">Obligation</th><th scope="col" class="num">Total owed</th><th scope="col" class="num">Remaining</th></tr></thead>
+            <tbody>
+            <?php foreach ($shares as $s): ?>
+                <tr>
+                    <td data-label="Borrower"><?= related_link($s['borrower_id'], borrower_name($s), 'pages/borrowers/view.php') ?></td>
+                    <td data-label="Date given"><?= e(format_date($s['transaction_date'])) ?></td>
+                    <td data-label="Given" class="num"><?= e(format_money($s['amount'])) ?></td>
+                    <td data-label="Payments"><?= $s['number_of_installments'] ? e($s['number_of_installments']) . ' × ' . e(format_money($s['installment_amount'])) : '<span class="text-muted">—</span>' ?></td>
+                    <td data-label="Obligation"><?= $s['obligation_id'] ? related_link($s['obligation_id'], $s['obligation_number'], 'pages/obligations/view.php') . ' ' . badge($s['obligation_status']) : '<span class="text-muted">—</span>' ?></td>
+                    <td data-label="Total owed" class="num"><?= show_money($s['total_amount_due']) ?></td>
+                    <td data-label="Remaining" class="num"><?= show_money($s['outstanding_amount']) ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+    <p class="field-help">Shares given to borrowers before cash advances became records only. They are paid on their obligations.</p>
 </section>
 <?php else: ?>
 <section class="panel subpanel">
-    <header class="panel__header">
-        <h3><?= icon('users') ?> Given to borrowers</h3>
-        <?php if ($advance['status'] !== 'cancelled' && $remaining > 0.004): ?>
-            <button type="button" class="btn btn--sm btn--primary no-print" data-modal-panel="give-borrower"><?= icon('plus') ?> <span>Give to a borrower</span></button>
-        <?php endif; ?>
-    </header>
-    <section class="figure-grid">
-        <div class="figure"><p class="figure__label">Withdrawn</p><p class="figure__value"><?= e(format_money($advance['amount'])) ?></p></div>
-        <div class="figure"><p class="figure__label">Given to borrowers</p><p class="figure__value"><?= e(format_money($given)) ?></p></div>
-        <div class="figure"><p class="figure__label">Not yet given</p><p class="figure__value"><?= e(format_money($remaining)) ?></p></div>
-    </section>
-    <?php if ($advance['status'] !== 'cancelled' && $remaining > 0.004): ?>
-        <form method="post" action="<?= e(url('pages/cash_advances/give.php')) ?>" class="inline-panel no-print" id="give-borrower" <?= $prefill ? '' : 'hidden' ?> novalidate data-validate>
-            <?= csrf_field() ?>
-            <input type="hidden" name="id" value="<?= e($advance['id']) ?>">
-            <?= form_once_field('cash_advance_give') ?>
-            <p class="field-help">The borrower owes the amount given + the fee + interest (amount × monthly rate × months), split into equal monthly payments.
-                Late payments are charged by your penalty rules. The bank's fee and interest on this card are tracked separately.</p>
-            <?= render_fields($giveFields, $giveData, []) ?>
-            <div class="inline-panel__actions">
-                <button type="button" class="btn btn--outline" data-toggle-panel="give-borrower">Cancel</button>
-                <button type="submit" class="btn btn--primary" data-loading-text="Saving…"><?= icon('check') ?> <span class="btn__label">Create obligation</span></button>
-            </div>
-        </form>
-    <?php endif; ?>
-    <?php if (!$shares): ?>
-        <p class="empty-inline">Not given to any borrower yet.</p>
-    <?php else: ?>
-        <div class="table-wrap">
-            <table class="table table--cards table--compact">
-                <thead><tr><th scope="col">Borrower</th><th scope="col">Date given</th><th scope="col" class="num">Given</th><th scope="col">Payments</th>
-                    <th scope="col">Obligation</th><th scope="col" class="num">Total owed</th><th scope="col" class="num">Remaining</th></tr></thead>
-                <tbody>
-                <?php foreach ($shares as $s): ?>
-                    <tr>
-                        <td data-label="Borrower"><?= related_link($s['borrower_id'], borrower_name($s), 'pages/borrowers/view.php') ?></td>
-                        <td data-label="Date given"><?= e(format_date($s['transaction_date'])) ?></td>
-                        <td data-label="Given" class="num"><?= e(format_money($s['amount'])) ?></td>
-                        <td data-label="Payments"><?= $s['number_of_installments'] ? e($s['number_of_installments']) . ' × ' . e(format_money($s['installment_amount'])) : '<span class="text-muted">—</span>' ?></td>
-                        <td data-label="Obligation"><?= $s['obligation_id'] ? related_link($s['obligation_id'], $s['obligation_number'], 'pages/obligations/view.php') . ' ' . badge($s['obligation_status']) : '<span class="text-muted">—</span>' ?></td>
-                        <td data-label="Total owed" class="num"><?= show_money($s['total_amount_due']) ?></td>
-                        <td data-label="Remaining" class="num"><?= show_money($s['outstanding_amount']) ?></td>
-                    </tr>
-                <?php endforeach; ?>
-                </tbody>
-            </table>
-        </div>
-    <?php endif; ?>
+    <header class="panel__header"><h3><?= icon('users') ?> Borrower</h3></header>
+    <p class="empty-inline">For you — no borrower. If someone got the cash, choose them with Edit → Borrower: they then repay it, and late charges follow your penalty rules.</p>
 </section>
 <?php endif; ?>
 

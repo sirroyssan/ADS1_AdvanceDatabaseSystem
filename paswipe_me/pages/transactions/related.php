@@ -18,6 +18,9 @@ if (!is_post()) {
 $txn = find_or_redirect(transaction_find(request_id()), 'pages/transactions/index.php', 'Transaction');
 $back = 'pages/transactions/view.php?id=' . $txn['id'];
 require_csrf($back);
+if ($advanceOf = cash_share_advance($txn)) {
+    $back = 'pages/cash_advances/view.php?id=' . $advanceOf['id'];   // a cash advance's penalties are handled on the cash advance
+}
 
 $itemId = input_string($_POST, 'item_id');
 
