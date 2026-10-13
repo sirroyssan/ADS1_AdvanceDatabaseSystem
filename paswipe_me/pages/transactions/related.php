@@ -87,7 +87,16 @@ try {
             $action = input_string($_POST, 'action');
             if ($action === 'run_penalties') {
                 $created = borrowed_penalty_run(db_row('SELECT * FROM transactions WHERE id = :id', [':id' => $txn['id']]));
-                flash('success', $created ? $created . ' new penalt' . ($created === 1 ? 'y was' : 'ies were') . ' charged.' : 'No new penalty is due. Penalties are already up to date.');
+                if ($created) {
+                    flash('success', $created . ' new penalt' . ($created === 1 ? 'y was' : 'ies were') . ' charged.');
+                } elseif (!borrowed_rules_for_card($txn['credit_card_id'])) {
+                    $bank = (string) db_value('SELECT issuer FROM credit_cards WHERE id = :c', [':c' => $txn['credit_card_id']]);
+                    flash('info', 'No penalty was charged: there is no active penalty rule for ' . $bank . '. In Penalty Rules, set the rule\'s Bank to ' . $bank . ' and make it active.');
+                } elseif ($purchase['ledger']['status'] !== 'overdue') {
+                    flash('info', 'No penalty was charged: nothing on this purchase is past its repay-by date.');
+                } else {
+                    flash('info', 'No new penalty is due: every overdue month was already charged (months before a rule took effect or was last changed are never back-filled).');
+                }
                 break;
             }
             if ($action === 'add_penalty') {

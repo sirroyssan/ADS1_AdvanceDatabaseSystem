@@ -108,7 +108,11 @@ try {
 
         case 'run_penalties':
             $created = db_transaction(fn () => penalty_run_obligation(db_row('SELECT * FROM borrower_obligations WHERE id = :id FOR UPDATE', [':id' => $obligation['id']])));
-            flash('success', $created ? $created . ' new penalt' . ($created === 1 ? 'y was' : 'ies were') . ' charged.' : 'No new penalty is due. Penalties are already up to date.');
+            if ($created) {
+                flash('success', $created . ' new penalt' . ($created === 1 ? 'y was' : 'ies were') . ' charged.');
+            } else {
+                flash('info', penalty_nothing_reason(db_row('SELECT * FROM borrower_obligations WHERE id = :id', [':id' => $obligation['id']])));
+            }
             break;
 
         default:

@@ -198,6 +198,30 @@ function penalty_targets(array $o, string $today): array
 }
 
 /**
+ * Why "Check penalties now" charged nothing on an obligation, in words
+ * (no bank rule, nothing overdue, or everything already charged).
+ */
+function penalty_nothing_reason(array $o, ?string $today = null): string
+{
+    $today ??= date('Y-m-d');
+    if ((float) $o['outstanding_amount'] <= 0.004 || in_array($o['status'], ['cancelled', 'paid', 'written_off'], true)) {
+        return 'Nothing is owed on this obligation, so no penalty applies.';
+    }
+    $issuer = obligation_card_issuer($o);
+    if ($issuer === null) {
+        return 'No penalty was charged: this obligation is not linked to a card, so no bank rule applies. Use Apply penalty to add one by hand.';
+    }
+    if (!penalty_rules_for_obligation($o)) {
+        return 'No penalty was charged: there is no active penalty rule for ' . $issuer . '. In Penalty Rules, set the rule\'s Bank to ' . $issuer . ' and make it active.';
+    }
+    if (!penalty_targets($o, $today)) {
+        return 'No penalty was charged: nothing on this obligation is past its due date and grace period.';
+    }
+
+    return 'No new penalty is due: every overdue month was already charged by the active rules (months before a rule took effect or was last changed are never back-filled).';
+}
+
+/**
  * Charge every missing penalty of one obligation. Returns the number of new penalties.
  */
 function penalty_run_obligation(array $o, ?string $today = null): int
