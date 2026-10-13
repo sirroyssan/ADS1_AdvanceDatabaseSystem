@@ -125,11 +125,18 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel">
             <header class="panel__header"><h3>You chose to pay</h3></header>
             <?php if ($purchase): ?>
+                <?php $parts = borrowed_parts($payment['id']); $rest = round((float) $payment['amount'] - array_sum(array_column($parts, 'amount')), 2); ?>
+                <p><a href="<?= e(url('pages/borrowed/view.php', ['id' => $purchase['id']])) ?>">Card purchase <?= e($purchase['merchant_name'] ?: ($purchase['notes'] ? excerpt($purchase['notes'], 40) : $purchase['transaction_number'])) ?></a>
+                    <span class="text-muted">· <?= e($purchase['transaction_number']) ?></span></p>
                 <ul class="child-list">
-                    <li><a href="<?= e(url('pages/borrowed/view.php', ['id' => $purchase['id']])) ?>">Card purchase <?= e($purchase['merchant_name'] ?: ($purchase['notes'] ? excerpt($purchase['notes'], 40) : $purchase['transaction_number'])) ?></a>
-                        <span><?= e(format_money($payment['amount'])) ?></span></li>
+                    <?php foreach ($parts as $part): ?>
+                        <li><span><?= e($part['label']) ?></span><span><?= e(format_money($part['amount'])) ?></span></li>
+                    <?php endforeach; ?>
+                    <?php if ($rest > 0.004): ?>
+                        <li><span><?= $parts ? 'The rest — oldest installment first' : 'Oldest installment first (no item chosen)' ?></span><span><?= e(format_money($rest)) ?></span></li>
+                    <?php endif; ?>
                 </ul>
-                <p class="field-help">Taken off this purchase once the card owner confirms it (late charges first, then the oldest installment).</p>
+                <p class="field-help">Applied exactly as listed once the card owner confirms it.</p>
             <?php elseif (!$selections): ?>
                 <p class="empty-inline">No item chosen — the owner will post this payment.</p>
             <?php else: ?>
@@ -145,7 +152,19 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel">
             <header class="panel__header"><h3>Applied to</h3></header>
             <?php if ($purchase): ?>
-                <p class="empty-inline"><?= $payment['status'] === 'approved' ? 'Confirmed by the card owner and taken off the purchase.' : 'Not confirmed yet.' ?></p>
+                <?php if ($payment['status'] !== 'approved'): ?>
+                    <p class="empty-inline">Not confirmed yet.</p>
+                <?php else: ?>
+                    <ul class="child-list">
+                        <?php foreach ($parts as $part): ?>
+                            <li><span><?= e($part['label']) ?></span><span><?= e(format_money($part['amount'])) ?></span></li>
+                        <?php endforeach; ?>
+                        <?php if ($rest > 0.004): ?>
+                            <li><span>Oldest unpaid installment</span><span><?= e(format_money($rest)) ?></span></li>
+                        <?php endif; ?>
+                    </ul>
+                    <p class="field-help">Confirmed by the card owner and taken off <?= e($purchase['transaction_number']) ?>.</p>
+                <?php endif; ?>
             <?php elseif (!$applied): ?>
                 <p class="empty-inline"><?= $payment['status'] === 'approved' ? 'Approved — the owner will apply it shortly.' : 'Not applied yet.' ?></p>
             <?php else: ?>

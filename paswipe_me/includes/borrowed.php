@@ -1171,27 +1171,33 @@ function borrowed_parts_save(string $paymentId, string $transactionId, array $pa
     }
 }
 
-/** What a repayment is for, readable: "Late charges ₱0.50 · Installment 1 ₱6,514.50" (empty when not chosen). */
-function borrowed_parts_label(string $paymentId): string
+/** What a repayment is for: [['label' => 'Late charges', 'amount' => 0.5], ...] (empty when not chosen). */
+function borrowed_parts(string $paymentId): array
 {
     if (!borrowed_parts_table_exists()) {
-        return '';
+        return [];
     }
-    $labels = [];
+    $parts = [];
     foreach (db_all(
         'SELECT p.part, p.amount, s.installment_number FROM borrower_payment_purchase_parts p
            LEFT JOIN installment_schedules s ON s.id = p.installment_schedule_id
           WHERE p.borrower_payment_id = :p ORDER BY p.part = \'penalty\' DESC, s.installment_number',
         [':p' => $paymentId]
     ) as $r) {
-        $labels[] = match ($r['part']) {
+        $parts[] = ['label' => match ($r['part']) {
             'penalty' => 'Late charges',
-            'installment' => 'Installment ' . $r['installment_number'],
+            'installment' => $r['installment_number'] ? 'Installment ' . $r['installment_number'] : 'Installment',
             default => 'Purchase',
-        } . ' ' . format_money($r['amount']);
+        }, 'amount' => (float) $r['amount']];
     }
 
-    return implode(' · ', $labels);
+    return $parts;
+}
+
+/** What a repayment is for, readable: "Late charges ₱0.50 · Installment 1 ₱6,514.50" (empty when not chosen). */
+function borrowed_parts_label(string $paymentId): string
+{
+    return implode(' · ', array_map(static fn ($p) => $p['label'] . ' ' . format_money($p['amount']), borrowed_parts($paymentId)));
 }
 
 /**
