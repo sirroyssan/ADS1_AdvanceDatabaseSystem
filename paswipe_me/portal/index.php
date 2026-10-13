@@ -12,7 +12,7 @@ $bid = $borrower['id'];
 $allItems = portal_all_items($bid, false);
 $openItems = array_values(array_filter($allItems, static fn ($i) => $i['total'] > 0.004));
 $sum = portal_items_totals($openItems);
-$paidAll = portal_items_totals($allItems)['paid'];
+$paidAll = borrower_total_received($bid);   // approved payments, as on My Payments
 $collect = ['outstanding' => $sum['outstanding'], 'penalties' => $sum['penalties'], 'total_due' => $sum['total']];
 $nextDue = $sum['next'];
 $unpaidPenalties = db_all(
@@ -175,7 +175,7 @@ require APP_ROOT . '/includes/header.php';
                 <tfoot><tr><td colspan="6"><?= count($unpaidPenalties) ?> unpaid penalt<?= count($unpaidPenalties) === 1 ? 'y' : 'ies' ?></td><td class="num"><strong><?= e(format_money($collect['penalties'])) ?></strong></td></tr></tfoot>
             </table>
         </div>
-        <p class="field-help">Your payments pay penalties first (oldest first), then interest and fees, then the principal. Penalties are added every month while an item is overdue.</p>
+        <p class="field-help">Your payments go where you choose when you submit them (late charges or an installment). Penalties are added every month while an item is overdue.</p>
     <?php endif; ?>
 </section>
 

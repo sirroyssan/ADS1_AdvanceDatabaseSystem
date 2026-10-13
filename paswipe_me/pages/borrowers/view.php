@@ -34,7 +34,7 @@ $purchaseTotals = borrowed_totals($purchases);
 // The figures cover both: obligations and the card transactions assigned to this borrower.
 $figures = [
     'charged'   => (float) $balance['total_charged'] + $purchaseTotals['responsible'],
-    'paid'      => (float) $balance['total_paid'] + $purchaseTotals['repaid'],
+    'paid'      => borrower_total_received($id),   // approved payments (late charges included), as on Borrower Payments
     'outstanding' => (float) $balance['outstanding'] + $purchaseTotals['remaining'],
     'overdue'   => (float) $balance['overdue'] + $purchaseTotals['overdue_amount'],
     'penalties' => (float) $collect['penalties'] + $purchaseTotals['penalties'],

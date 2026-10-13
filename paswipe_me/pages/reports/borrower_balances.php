@@ -39,19 +39,39 @@ if ($state['filters']['balance'] === 'outstanding') {
 }
 
 $from = 'vw_borrower_balances v LEFT JOIN (' . borrower_totals_sql() . ') bt ON bt.borrower_id = v.borrower_id';
-$result = run_list($state, 'v.borrower_id, v.borrower_number, v.first_name, v.last_name, v.status, v.total_charged, v.total_paid, v.overdue,
+// Paid = approved payments received (late charges included), the same figure as the borrower page and the portal.
+$result = run_list($state, 'v.borrower_id, v.borrower_number, v.first_name, v.last_name, v.status, v.total_charged, (SELECT COALESCE(SUM(rp.amount), 0) FROM borrower_payments rp WHERE rp.borrower_id = v.borrower_id AND rp.status = \'approved\') AS total_paid, v.overdue,
     COALESCE(bt.outstanding, 0) AS outstanding, COALESCE(bt.penalties, 0) AS penalties, COALESCE(bt.total_due, 0) AS total_due', $from, $where, $params);
-$totals = db_row('SELECT COALESCE(SUM(v.total_charged), 0) AS charged, COALESCE(SUM(v.total_paid), 0) AS paid, COALESCE(SUM(bt.outstanding), 0) AS outstanding,
+$totals = db_row('SELECT COALESCE(SUM(v.total_charged), 0) AS charged, COALESCE(SUM((SELECT COALESCE(SUM(rp.amount), 0) FROM borrower_payments rp WHERE rp.borrower_id = v.borrower_id AND rp.status = \'approved\')), 0) AS paid, COALESCE(SUM(bt.outstanding), 0) AS outstanding,
     COALESCE(SUM(v.overdue), 0) AS overdue, COALESCE(SUM(bt.penalties), 0) AS penalties, COALESCE(SUM(bt.total_due), 0) AS total_due FROM '
     . $from . ($where ? ' WHERE ' . implode(' AND ', $where) : ''), $params);
 
-// Due this month (overdue plus installments due by the end of this month, and unpaid penalties),
-// per borrower and for every borrower matching the filters.
+// Card purchases and cash advances assigned to the borrower (tracked on their transactions) are
+// added to the obligations, as on the borrower page. Due this month (overdue plus installments due
+// by the end of this month, and unpaid penalties), per borrower and for every borrower matching the filters.
 $dueMonth = [];
-foreach (db_all('SELECT v.borrower_id FROM ' . $from . ($where ? ' WHERE ' . implode(' AND ', $where) : '') . ' AND COALESCE(bt.total_due, 0) > 0', $params) as $b) {
-    $dueMonth[$b['borrower_id']] = portal_items_totals(portal_all_items($b['borrower_id']))['due_month'];
+$owedOn = [];
+foreach (db_all('SELECT v.borrower_id FROM ' . $from . ($where ? ' WHERE ' . implode(' AND ', $where) : ''), $params) as $b) {
+    $owedOn[$b['borrower_id']] = $owed = borrowed_totals(borrowed_owner_purchases($b['borrower_id']));
+    if ($owed['outstanding'] > 0.004 || (float) db_value('SELECT COALESCE(SUM(total_due), 0) FROM (' . borrower_totals_sql() . ') x WHERE x.borrower_id = :b', [':b' => $b['borrower_id']]) > 0.004) {
+        $dueMonth[$b['borrower_id']] = portal_items_totals(portal_all_items($b['borrower_id']))['due_month'];
+    }
+    $totals['charged'] += $owed['responsible'];
+    $totals['outstanding'] += $owed['remaining'];
+    $totals['overdue'] += $owed['overdue_amount'];
+    $totals['penalties'] += $owed['penalties'];
+    $totals['total_due'] += $owed['outstanding'];
 }
 $totals['due_month'] = array_sum($dueMonth);
+foreach ($result['rows'] as &$row) {
+    $owed = $owedOn[$row['borrower_id']] ?? borrowed_totals(borrowed_owner_purchases($row['borrower_id']));
+    $row['total_charged'] = (float) $row['total_charged'] + $owed['responsible'];
+    $row['outstanding'] = (float) $row['outstanding'] + $owed['remaining'];
+    $row['overdue'] = (float) $row['overdue'] + $owed['overdue_amount'];
+    $row['penalties'] = (float) $row['penalties'] + $owed['penalties'];
+    $row['total_due'] = (float) $row['total_due'] + $owed['outstanding'];
+}
+unset($row);
 
 $pageTitle = 'Borrower Balances';
 $activeNav = 'reports';

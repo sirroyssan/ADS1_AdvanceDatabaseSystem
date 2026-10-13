@@ -1377,6 +1377,14 @@ also has the same **What is this payment for?** table.
 
 **When saving fails.** The payment, its items and the proof are saved in one database transaction, so a failure saves nothing. The form now says which part failed: "The payment was not saved: the proof file could not be recorded", or the usual message for the payment itself. It also gives the database error number. The database's own message is added when the browser runs on the server itself (XAMPP on localhost) or when `APP_DEBUG` is on (`db_error_detail()` in `includes/db_helpers.php`). From another device (a phone on the Wi-Fi) only the number is shown. The full text is always in the PHP error log (XAMPP for macOS: `/Applications/XAMPP/xamppfiles/logs/php_error_log`), on the lines starting with `[PA-KASKAS] Database write failed:` and `[PA-KASKAS] Saving the payment proof failed:`.
 
+## Paid and overdue: one definition everywhere
+
+- **Total paid** = the borrower's **approved payments**, the same total as *My Payments* and *Borrower Payments* (`borrower_total_received()` in `includes/portal.php`). It is used on the portal home, the owner's borrower page and the Borrower Balances report. Payments that went to late charges count too. Before, money put on an obligation's late charges was left out, so ₱76,030.75 received showed as ₱63,845.83.
+- **Paid** per item (portal *What I owe*) includes the late charges paid on it, for obligations as already for card purchases.
+- **Overdue** = only what is past its due date (an obligation's overdue amount plus a purchase's overdue installments), on the portal as on the owner's pages. It is not the whole balance of an overdue item.
+- **Borrower Balances report:** card purchases and cash advances are added to the obligations (charged, outstanding, overdue, penalties, total), as on the borrower page.
+- **Cash advance edit:** the total can't be lowered below what the borrower already paid on it.
+
 ## Repayment rows: tidy buttons (`pages/transactions/view.php`)
 
 A reported repayment of a purchase or cash advance shows **What it paid · Confirm · Reject** on one line on the right. The reason for rejecting is asked in a small modal on top (required; the borrower is told why), not in an inline text box. *Record a repayment you received* lays its fields out in a grid with the button on the right.

@@ -251,7 +251,7 @@ function portal_all_items(string $borrowerId, bool $openOnly = true): array
     $today = date('Y-m-d');
     $items = [];
     $obligations = db_all(
-        "SELECT o.*, COALESCE(pen.penalties_unpaid, 0) AS penalties_unpaid, t.payment_type, t.transaction_number, t.notes AS txn_notes, m.merchant_name
+        "SELECT o.*, COALESCE(pen.penalties_unpaid, 0) AS penalties_unpaid, COALESCE(pen.penalties_paid, 0) AS penalties_paid, t.payment_type, t.transaction_number, t.notes AS txn_notes, m.merchant_name
            FROM borrower_obligations o " . penalty_totals_join() . "
            LEFT JOIN transactions t ON t.id = o.transaction_id
            LEFT JOIN merchants m ON m.id = t.merchant_id
@@ -277,12 +277,14 @@ function portal_all_items(string $borrowerId, bool $openOnly = true): array
             },
             'ref' => $o['obligation_number'], 'title' => $o['description'] ?: ($o['merchant_name'] ?: ($o['transaction_number'] ?: ($o['notes'] ? excerpt($o['notes'], 50) : 'Amount owed'))),
             'date' => $o['obligation_date'], 'link' => url('portal/obligation.php', ['id' => $o['id']]),
-            'amount' => (float) $o['total_amount_due'], 'paid' => (float) $o['total_paid'], 'outstanding' => $outstanding, 'penalties' => $penalties,
+            // Paid: everything paid on the item, late charges included (as for card purchases).
+            'amount' => (float) $o['total_amount_due'], 'paid' => round((float) $o['total_paid'] + (float) $o['penalties_paid'], 2), 'outstanding' => $outstanding, 'penalties' => $penalties,
             'total' => round($outstanding + $penalties, 2), 'due_now' => $outstanding + $penalties > 0.004 ? $due['due_now'] : 0.0,
             'due_month' => $outstanding + $penalties > 0.004 ? $due['due_month'] : 0.0,
             'due_date' => $due['current']['due']['date'] ?? $o['due_date'],
             'installment' => $due['current'] !== null ? 'Installment ' . $due['current']['n'] . ' of ' . $due['installments'] : null,
             'overdue' => (float) $o['overdue_amount'] > 0.004 || ($o['due_date'] && $o['due_date'] < $today && $outstanding > 0.004),
+            'overdue_amount' => (float) $o['overdue_amount'],   // what is past its due date (the owner's figure too)
             'status' => $o['status'],
         ];
     }
@@ -311,7 +313,7 @@ function portal_all_items(string $borrowerId, bool $openOnly = true): array
             'total' => $l['outstanding'], 'due_now' => $l['status'] === 'repaid' ? 0.0 : $l['due_now'],
             'due_month' => $l['status'] === 'repaid' ? 0.0 : ($l['due_month'] ?? 0.0),
             'due_date' => $l['next_due']['date'] ?? null, 'installment' => borrowed_installment_text($l),
-            'overdue' => $l['status'] === 'overdue', 'status' => $l['status'],
+            'overdue' => $l['status'] === 'overdue', 'overdue_amount' => (float) $l['overdue_amount'], 'status' => $l['status'],
         ];
     }
 
@@ -319,6 +321,15 @@ function portal_all_items(string $borrowerId, bool $openOnly = true): array
     usort($items, static fn ($a, $b) => [$b['overdue'], $a['due_date'] === null, $a['due_date'], $b['date']] <=> [$a['overdue'], $b['due_date'] === null, $b['due_date'], $a['date']]);
 
     return $items;
+}
+
+/**
+ * Money received from a borrower: their approved payments (the same total as
+ * My Payments / Borrower Payments). Payments that went to late charges count too.
+ */
+function borrower_total_received(string $borrowerId): float
+{
+    return round((float) db_value("SELECT COALESCE(SUM(amount), 0) FROM borrower_payments WHERE borrower_id = :b AND status = 'approved'", [':b' => $borrowerId]), 2);
 }
 
 /** Totals over portal_all_items(). */
@@ -329,9 +340,8 @@ function portal_items_totals(array $items): array
         foreach (['amount', 'paid', 'outstanding', 'penalties', 'total', 'due_now', 'due_month'] as $k) {
             $sum[$k] += $i[$k];
         }
-        if ($i['overdue']) {
-            $sum['overdue'] += $i['total'];
-        }
+        // Overdue: only what is past its due date, not the whole balance of an overdue item.
+        $sum['overdue'] += $i['overdue_amount'] ?? 0.0;
         if ($i['total'] > 0.004 && $i['due_date'] !== null && $i['due_date'] >= date('Y-m-d') && ($sum['next'] === null || $i['due_date'] < $sum['next']['due_date'])) {
             $sum['next'] = $i;
         }

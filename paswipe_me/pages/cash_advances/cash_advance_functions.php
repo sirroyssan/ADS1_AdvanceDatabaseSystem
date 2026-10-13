@@ -210,6 +210,11 @@ function cash_advance_sync_borrower(array $advance, ?string $borrowerId, array $
         if ($share['plan_id']) {
             throw new DomainException('This cash advance is paid in installments; change the amounts on its installment plan instead.');
         }
+        // Never below what the borrower already paid on it (that money would be left over, owed to no charge).
+        $paid = (float) db_value("SELECT COALESCE(SUM(amount), 0) FROM borrower_payments WHERE transaction_id = :t AND status = 'approved'", [':t' => $share['id']]);
+        if ((float) $total + 0.004 < $paid) {
+            throw new DomainException(borrower_name($share) . ' already paid ' . format_money($paid) . ' on this cash advance, so its total cannot be lower than that (you entered ' . format_money($total) . ').');
+        }
         $changes += ['amount' => $total, 'transaction_date' => $advance['advance_date'], 'posting_date' => $advance['advance_date']];
     }
     if (!$changes) {
