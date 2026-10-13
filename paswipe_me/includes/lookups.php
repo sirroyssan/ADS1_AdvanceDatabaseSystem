@@ -217,7 +217,8 @@ function transaction_options(?string $includeId = null): array
 {
     $rows = db_all(
         "SELECT t.id, t.borrower_id,
-                CONCAT(t.transaction_number, ' — ', DATE_FORMAT(t.transaction_date, '%b %e, %Y'), ' — ₱', FORMAT(t.amount, 2)) AS label
+                CONCAT(IF(" . cash_share_sql('t') . ", CONCAT('Cash advance ', t.reference_number), t.transaction_number),
+                       ' — ', DATE_FORMAT(t.transaction_date, '%b %e, %Y'), ' — ₱', FORMAT(t.amount, 2)) AS label
            FROM transactions t
           WHERE (t.status <> 'cancelled' OR t.id = :keep) AND " . owner_scope('transactions', 't') . '
           ORDER BY t.transaction_date DESC',

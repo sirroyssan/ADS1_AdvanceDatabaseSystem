@@ -14,6 +14,10 @@ if (!is_post()) {
 }
 
 $txn = find_or_redirect(transaction_find(request_id()), 'pages/transactions/index.php', 'Transaction');
+if ($advanceOf = cash_share_advance($txn)) {
+    flash('info', 'This is cash advance ' . $advanceOf['reference_number'] . ' given to a borrower. Change it on the cash advance.');
+    redirect('pages/cash_advances/view.php', ['id' => $advanceOf['id']]);
+}
 require_csrf('pages/transactions/view.php?id=' . $txn['id']);
 
 try {

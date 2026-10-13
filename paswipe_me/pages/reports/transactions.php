@@ -28,7 +28,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [owner_scope('transactions', 't')];   // the signed-in user's records only
+$where = [owner_scope('transactions', 't'), 'NOT ' . cash_share_sql('t')];   // the signed-in user's records only (cash advances stay in Cash Advances)
 $params = [];
 add_search_condition($state, ['t.transaction_number', 'm.merchant_name', 'b.first_name', 'b.last_name'], $where, $params);
 foreach (['card' => 't.credit_card_id', 'payment' => 't.payment_type', 'status' => 't.status'] as $key => $column) {

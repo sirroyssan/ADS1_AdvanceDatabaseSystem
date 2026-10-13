@@ -57,10 +57,10 @@ $stats = [
     'borrowers_late'     => dashboard_value("SELECT COUNT(*) FROM borrowers WHERE id IN $myBorrowers AND status IN ('late', 'delinquent')"),
     'cards_used'         => dashboard_value("SELECT COALESCE(SUM(outstanding), 0) FROM (" . card_utilization_sql() . ") v WHERE v.id IN $myCards"),
     'cards_limit'        => cards_total_limit($myCards),   // a shared limit counts once
-    'transactions'       => dashboard_value("SELECT COUNT(*) FROM transactions t WHERE $myTxn"),
+    'transactions'       => dashboard_value("SELECT COUNT(*) FROM transactions t WHERE $myTxn AND NOT " . cash_share_sql('t')),
     'transactions_month' => dashboard_value(
         "SELECT COUNT(*) FROM transactions t
-          WHERE $myTxn AND t.transaction_date >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')"
+          WHERE $myTxn AND NOT " . cash_share_sql('t') . " AND t.transaction_date >= DATE_FORMAT(CURRENT_DATE, '%Y-%m-01')"
     ),
     'pending_payments'   => dashboard_value("SELECT COUNT(*) FROM vw_pending_payment_approvals v
                                               WHERE v.id IN (SELECT p.id FROM borrower_payments p WHERE p.borrower_id IN $myBorrowers)"),
@@ -197,7 +197,7 @@ $recentTransactions = dashboard_rows(
        JOIN credit_cards c ON c.id = t.credit_card_id
        LEFT JOIN merchants m ON m.id = t.merchant_id
        LEFT JOIN borrowers b ON b.id = t.borrower_id
-      WHERE $myTxn
+      WHERE $myTxn AND NOT " . cash_share_sql('t') . "
       ORDER BY t.transaction_date DESC, t.created_at DESC
       LIMIT 8"
 );

@@ -27,7 +27,7 @@ $state = list_state([
     ],
 ]);
 
-$where = [owner_scope('transactions', 't')];
+$where = [owner_scope('transactions', 't'), 'NOT ' . cash_share_sql('t')];   // a cash advance given to a borrower stays in Cash Advances
 $params = [];
 add_search_condition($state, ['t.transaction_number', 't.reference_number', 't.receipt_number', 'm.merchant_name', 'b.first_name', 'b.last_name'], $where, $params);
 foreach (['card' => 't.credit_card_id', 'borrower' => 't.borrower_id', 'status' => 't.status', 'payment' => 't.payment_type'] as $key => $column) {

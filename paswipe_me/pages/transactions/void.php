@@ -13,6 +13,10 @@ require_once APP_ROOT . '/includes/authorizations.php';
 $currentUser = require_admin();
 
 $txn = find_or_redirect(transaction_find(request_id()), 'pages/transactions/index.php', 'Transaction');
+if ($advanceOf = cash_share_advance($txn)) {
+    flash('info', 'This is cash advance ' . $advanceOf['reference_number'] . ' given to a borrower. Change it on the cash advance.');
+    redirect('pages/cash_advances/view.php', ['id' => $advanceOf['id']]);
+}
 $back = 'pages/transactions/view.php?id=' . $txn['id'];
 if (in_array($txn['status'], TXN_LOCKED_STATUSES, true)) {
     flash('info', 'This transaction is already ' . $txn['status'] . '.');

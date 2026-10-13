@@ -25,7 +25,7 @@ $cycles = db_all('SELECT * FROM card_billing_cycles WHERE credit_card_id = :id O
 $transactions = db_all(
     'SELECT t.id, t.transaction_number, t.transaction_date, t.amount, t.status, m.merchant_name
        FROM transactions t LEFT JOIN merchants m ON m.id = t.merchant_id
-      WHERE t.credit_card_id = :id ORDER BY t.transaction_date DESC LIMIT 8',
+      WHERE t.credit_card_id = :id AND NOT ' . cash_share_sql('t') . ' ORDER BY t.transaction_date DESC LIMIT 8',
     [':id' => $id]
 );
 $statements = db_all(

@@ -49,7 +49,7 @@ $dueSoon = count(array_filter($due, static fn ($r) => in_array($r['status'], ['d
 
 $activity = db_all(
     "(SELECT 'transaction' AS kind, t.id, t.transaction_number AS ref, t.amount, t.created_at AS at, t.transaction_date AS date, c.card_nickname AS detail, NULL AS receipt_id, t.created_by AS by_user
-        FROM transactions t JOIN credit_cards c ON c.id = t.credit_card_id WHERE t.credit_card_id IN $cards ORDER BY t.created_at DESC LIMIT 8)
+        FROM transactions t JOIN credit_cards c ON c.id = t.credit_card_id WHERE t.credit_card_id IN $cards AND NOT " . cash_share_sql('t') . " ORDER BY t.created_at DESC LIMIT 8)
      UNION ALL
      (SELECT 'payment', p.id, p.payment_number, p.amount, p.created_at, p.payment_date, CONCAT(b.first_name, ' ', b.last_name), i.receipt_id, p.reviewed_by
         FROM borrower_payments p JOIN borrowers b ON b.id = p.borrower_id LEFT JOIN payment_receipt_items i ON i.borrower_payment_id = p.id

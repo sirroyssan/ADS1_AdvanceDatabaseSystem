@@ -13,6 +13,8 @@ $canManage = user_is_admin($currentUser);
 
 $txn = find_or_redirect(transaction_find(request_id()), 'pages/transactions/index.php', 'Transaction');
 $id = $txn['id'];
+// The borrower's side of a cash advance: shown as that cash advance's repayments, changed only on the cash advance.
+$advanceOf = cash_share_advance($txn);
 
 $items = db_all('SELECT id, product_name, brand, model, quantity, unit_price, total_amount, serial_number, imei FROM transaction_items WHERE transaction_id = :id ORDER BY created_at', [':id' => $id]);
 $itemsTotal = array_sum(array_map(static fn ($i) => (float) $i['total_amount'], $items));
@@ -81,23 +83,27 @@ $activeNav = 'transactions';
 require APP_ROOT . '/includes/header.php';
 ?>
 
-<?= render_breadcrumb(['Transactions' => url('pages/transactions/index.php'), $txn['transaction_number'] => null]) ?>
+<?= $advanceOf
+    ? render_breadcrumb(['Cash Advances' => url('pages/cash_advances/index.php'), $advanceOf['reference_number'] => url('pages/cash_advances/view.php', ['id' => $advanceOf['id']]), 'Repayments' => null])
+    : render_breadcrumb(['Transactions' => url('pages/transactions/index.php'), $txn['transaction_number'] => null]) ?>
 
 <div class="print-header">
     <p class="print-header__system"><?= e(APP_NAME) ?></p>
-    <h2 class="print-header__title">Transaction <?= e($txn['transaction_number']) ?></h2>
+    <h2 class="print-header__title"><?= $advanceOf ? "Cash advance " . e($advanceOf["reference_number"]) : "Transaction " . e($txn["transaction_number"]) ?></h2>
     <p class="print-header__meta">Printed: <?= e(date('F j, Y g:i A')) ?></p>
 </div>
 
 <section class="page-header">
     <div>
-        <h2 class="page-header__title"><?= e($txn['transaction_number']) ?> · <?= e(format_money($txn['amount'])) ?></h2>
+        <h2 class="page-header__title"><?= $advanceOf ? 'Cash advance ' . e($advanceOf['reference_number']) : e($txn['transaction_number']) ?> · <?= e(format_money($txn['amount'])) ?></h2>
         <p class="page-header__subtitle"><?= e(format_date($txn['transaction_date'])) ?> · <?= e($txn['card_nickname']) ?> •••• <?= e($txn['last_four']) ?> · <?= badge($txn['status']) ?></p>
     </div>
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/transactions/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
-        <?php if (!$isLocked && $canManage): ?>
+        <?php if ($advanceOf): ?>
+            <a data-modal-form href="<?= e(url('pages/cash_advances/view.php', ['id' => $advanceOf['id']])) ?>" class="btn btn--primary"><?= icon('banknote') ?> <span>Open cash advance</span></a>
+        <?php elseif (!$isLocked && $canManage): ?>
             <a data-modal-form href="<?= e(url('pages/transactions/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
             <?php if ($txn['status'] !== 'draft'): ?>
                 <a data-modal-form href="<?= e(url('pages/transactions/void.php', ['id' => $id])) ?>" class="btn btn--outline btn--danger-outline"><?= icon('trash') ?> <span>Delete</span></a>
@@ -111,7 +117,8 @@ require APP_ROOT . '/includes/header.php';
 
 <div class="detail-layout">
     <section class="panel">
-        <header class="panel__header"><h3>Transaction details</h3></header>
+        <header class="panel__header"><h3><?= $advanceOf ? 'Cash advance given to the borrower' : 'Transaction details' ?></h3></header>
+        <?php if ($advanceOf): ?><p class="field-help">The borrower's side of cash advance <?= e($advanceOf['reference_number']) ?> — kept here for their repayments and late charges. It is not a card transaction: change it, or convert it to installments, on the cash advance.</p><?php endif; ?>
         <?= render_details([
             'Transaction number' => e($txn['transaction_number']),
             'Credit card'        => related_link($txn['credit_card_id'], $txn['card_nickname'] . ' •••• ' . $txn['last_four'], 'pages/credit_cards/view.php'),
@@ -183,7 +190,7 @@ require APP_ROOT . '/includes/header.php';
         </section>
         <?php endif; ?>
 
-        <?php if ($txn['status'] === 'draft' && $canManage): ?>
+        <?php if ($txn['status'] === 'draft' && $canManage && !$advanceOf): ?>
             <section class="panel panel--danger no-print">
                 <header class="panel__header"><h3>Delete draft</h3></header>
                 <?php if ($usage['total'] > 0): ?>

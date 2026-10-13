@@ -23,8 +23,9 @@ const LATE_CHARGES_FROM = 'applied_penalties ap
     JOIN borrowers b ON b.id = COALESCE(o.borrower_id, t.borrower_id)';
 
 const LATE_CHARGES_SELECT = "ap.*, r.name AS rule_name, b.id AS borrower_id, b.first_name, b.middle_name, b.last_name, b.suffix, b.borrower_number,
-    o.id AS obligation_id, t.id AS purchase_id, COALESCE(o.obligation_number, t.transaction_number) AS item_number,
-    IF(t.id IS NULL, 'Obligation', 'Card purchase') AS item_kind";
+    o.id AS obligation_id, t.id AS purchase_id,
+    COALESCE(o.obligation_number, IF(t.payment_type = 'cash_advance' AND EXISTS (SELECT 1 FROM cash_advances xa WHERE xa.credit_card_id = t.credit_card_id AND xa.reference_number = t.reference_number), t.reference_number, t.transaction_number)) AS item_number,
+    IF(t.id IS NULL, 'Obligation', IF(t.payment_type = 'cash_advance', 'Cash advance', 'Card purchase')) AS item_kind";
 
 /** WHERE for the list: [conditions, params]. $borrowerId: one borrower; null: the signed-in owner's borrowers. */
 function late_charges_where(?string $borrowerId): array

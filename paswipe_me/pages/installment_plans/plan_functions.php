@@ -19,11 +19,13 @@ const PLAN_STATUSES = ['active' => 'Active', 'completed' => 'Completed', 'cancel
  */
 function plan_transaction_options(): array
 {
+    // A cash advance given to a borrower is converted to installments on its own page.
     return db_options(
         "SELECT t.id, CONCAT(t.transaction_number, ' — ', DATE_FORMAT(t.transaction_date, '%b %e, %Y'), ' — ₱', FORMAT(t.amount, 2)) AS label
            FROM transactions t
           WHERE t.status NOT IN ('cancelled', 'refunded') AND " . owner_scope('transactions', 't') . "
             AND NOT EXISTS (SELECT 1 FROM installment_plans p WHERE p.transaction_id = t.id)
+            AND NOT " . cash_share_sql('t') . "
           ORDER BY t.transaction_date DESC"
     );
 }

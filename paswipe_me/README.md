@@ -1413,6 +1413,10 @@ Balance figures → Card purchases → **Recent obligations** → **Recent payme
   - It creates an installment plan on the borrower's transaction, with the same calculation as a purchase's plan (add-on monthly, `installment_plan_create`). No obligation is created.
   - The plan is listed in **Installment Plans**, and each installment is due on the card's due date of its month.
   - It is allowed only before any repayment. Afterwards the amounts are changed on the plan.
+- **Not a transaction:** the borrower's side is an internal record (`cash_share_sql()` in `includes/borrowed.php`).
+  - It is left out of the Transactions list, the Transactions report, the dashboard counts and recent list, the card page, staff activity, and the Installment Plans transaction picker.
+  - Wherever it shows (borrower page, portal, payment form, late charges, agreement picker) it reads **"Cash advance CA-…"**.
+  - Opening it shows the cash advance's **Repayments** (breadcrumb Cash Advances → CA-… → Repayments) with *Open cash advance*. Edit / delete / void of it redirect to the cash advance.
 - **"Give to a borrower"** (an obligation for part of the cash) still works for advances without a Borrower. The two can't be mixed on one advance.
 - **List:** the Cash Advances list shows "For <borrower>" under the card.
 

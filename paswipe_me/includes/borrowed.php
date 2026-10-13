@@ -671,11 +671,39 @@ function borrowed_after_decision(array $payment, string $decision): void
  * Lists: the borrower's purchases, an owner's borrowed purchases
  * ------------------------------------------------------------------ */
 
+/**
+ * SQL condition: transaction $t is the borrower's side of a cash advance or a
+ * cash loan (same card + reference number as the cash advance / loan record).
+ * It is kept so the borrower can repay it, but it is not a card transaction:
+ * the Transactions module and reports leave it out (NOT ...), and opening it
+ * goes to its cash advance.
+ */
+function cash_share_sql(string $t = 't'): string
+{
+    return "(($t.payment_type = 'cash_advance' AND EXISTS (SELECT 1 FROM cash_advances xa WHERE xa.credit_card_id = $t.credit_card_id AND xa.reference_number = $t.reference_number))
+          OR ($t.payment_type = 'cash_loan' AND EXISTS (SELECT 1 FROM cash_loans xl WHERE xl.credit_card_id = $t.credit_card_id AND xl.loan_reference = $t.reference_number)))";
+}
+
+/** The cash advance a transaction is the borrower's side of, or null. */
+function cash_share_advance(array $t): ?array
+{
+    if (($t['payment_type'] ?? '') !== 'cash_advance' || empty($t['reference_number'])) {
+        return null;
+    }
+
+    return db_row('SELECT id, reference_number, advance_date, status FROM cash_advances WHERE credit_card_id = :c AND reference_number = :r LIMIT 1',
+        [':c' => $t['credit_card_id'], ':r' => $t['reference_number']]);
+}
+
 /** SELECT of borrowed purchases with what the pages show (no other card data). */
 function borrowed_select_sql(): string
 {
-    return "SELECT t.id, t.transaction_number, t.transaction_date, t.amount, t.status, t.payment_type, t.notes, t.borrower_id, t.credit_card_id,
-                   m.merchant_name, c.issuer, c.card_nickname, c.last_four,
+    // A cash advance given to the borrower shows as that cash advance (its CA reference), not as a card transaction.
+    $share = cash_share_sql('t');
+
+    return "SELECT t.id, IF($share, t.reference_number, t.transaction_number) AS transaction_number, t.transaction_date, t.amount, t.status, t.payment_type, t.notes,
+                   t.borrower_id, t.credit_card_id, t.reference_number,
+                   COALESCE(m.merchant_name, IF($share, IF(t.payment_type = 'cash_loan', 'Cash loan', 'Cash advance'), NULL)) AS merchant_name, c.issuer, c.card_nickname, c.last_four,
                    b.first_name, b.last_name, b.borrower_number,
                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', ou.first_name, ou.last_name)), ''), ou.email) AS lender_name
               FROM transactions t
