@@ -275,15 +275,15 @@ function payment_form_handle(array $ctx): array
     $documentId = new_uuid();
     $stored = null;
     if (!$errors && $hasFile) {
-        [$stored, $uploadError] = document_store_upload($file, $documentId);
+        // Straight to the owner's Google Drive when connected, else kept on this computer.
+        [$stored, $uploadError] = document_store_upload($file, $documentId, $borrower['owner_user_id'],
+            date('Y-m-d') . ' ' . trim(($borrower['first_name'] ?? '') . ' ' . ($borrower['last_name'] ?? '')) . ' proof');
         if ($uploadError !== null) {
             $errors['proof'] = $uploadError;
         }
     }
     if ($errors) {
-        if ($stored) {
-            @unlink(APP_ROOT . '/' . DOCUMENT_STORAGE_DIR . '/' . $stored['storage_key']);
-        }
+        document_discard_stored($stored, $borrower['owner_user_id']);
         return compact('fields', 'data', 'errors', 'groups', 'chosen', 'hasProof', 'proofRequired', 'payment');
     }
 
@@ -330,10 +330,11 @@ function payment_form_handle(array $ctx): array
             }
             if ($stored) {
                 $step = 'proof';
-                db_insert('documents', ['id' => $documentId, 'document_type' => 'payment_proof'] + $stored + [
+                [$columns, $driveMeta] = document_stored_columns($stored);
+                db_insert('documents', ['id' => $documentId, 'document_type' => 'payment_proof'] + $columns + [
                     'owner_user_id' => $borrower['owner_user_id'],   // the lender who reviews it
                     'uploaded_by' => $user['id'],
-                    'metadata'    => json_encode(['description' => 'Proof of payment', 'source' => 'borrower'], JSON_UNESCAPED_UNICODE),
+                    'metadata'    => json_encode(['description' => 'Proof of payment', 'source' => 'borrower'] + $driveMeta, JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
                 ]);
                 foreach ($ids as $pid) {
                     db_insert('payment_attachments', ['id' => new_uuid(), 'borrower_payment_id' => $pid, 'document_id' => $documentId, 'attachment_type' => 'payment_proof']);
@@ -343,9 +344,7 @@ function payment_form_handle(array $ctx): array
             return $ids;
         });
     } catch (PDOException $e) {
-        if ($stored) {
-            @unlink(APP_ROOT . '/' . DOCUMENT_STORAGE_DIR . '/' . $stored['storage_key']);
-        }
+        document_discard_stored($stored, $borrower['owner_user_id']);
         // Nothing was saved (one transaction). Say which part failed.
         $errors['_form'] = $step === 'proof'
             ? 'The payment was not saved: the proof file could not be recorded. ' . db_error_detail($e)
@@ -356,9 +355,6 @@ function payment_form_handle(array $ctx): array
         return compact('fields', 'data', 'errors', 'groups', 'chosen', 'hasProof', 'proofRequired', 'payment');
     }
 
-    if ($stored) {
-        drive_backup_document($documentId);   // also to the owner's Google Drive when connected (never blocks the payment)
-    }
     log_activity($payment ? 'update' : 'create', 'borrower_payment', $saved[0] ?? null,
         ($payment ? 'Borrower updated payment of ' : 'Borrower submitted payment of ') . format_money($data['amount']), null, $data);
     $message = $payment

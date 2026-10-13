@@ -18,9 +18,9 @@ if (!$doc || (int) $doc['is_deleted'] === 1 || !portal_can_see_document($doc['id
     redirect('portal/index.php');
 }
 
-$path = document_path($doc['storage_key']) ?? drive_restore_document($doc);   // missing here: get it back from Google Drive
-if ($path === null) {
-    flash('error', 'The stored file could not be found. Please tell the owner.');
+$content = drive_document_content($doc);   // this computer, or Google Drive
+if ($content === null) {
+    flash('error', drive_is_drive_key($doc['storage_key']) ? 'The file could not be opened from Google Drive right now. Please try again later.' : 'The stored file could not be found. Please tell the owner.');
     redirect('portal/index.php');
 }
 
@@ -29,7 +29,7 @@ $inline = input_string($_GET, 'inline') === '1' && in_array($mime, DOCUMENT_INLI
 $filename = preg_replace('/[^A-Za-z0-9._ -]/', '_', $doc['original_filename']) ?: 'document';
 
 header('Content-Type: ' . $mime);
-header('Content-Length: ' . filesize($path));
+header('Content-Length: ' . strlen($content));
 header('X-Content-Type-Options: nosniff');
 if ($mime !== 'application/pdf') {
     header("Content-Security-Policy: default-src 'none'; img-src 'self'; style-src 'unsafe-inline'");
@@ -37,5 +37,5 @@ if ($mime !== 'application/pdf') {
 header('Content-Disposition: ' . ($inline ? 'inline' : 'attachment') . '; filename="' . $filename . '"; filename*=UTF-8\'\'' . rawurlencode($doc['original_filename']));
 header('Cache-Control: private, no-store');
 
-readfile($path);
+echo $content;
 exit;

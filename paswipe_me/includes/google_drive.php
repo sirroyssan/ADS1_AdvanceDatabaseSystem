@@ -1,7 +1,9 @@
 <?php
 /**
- * Proofs of payment saved to Google Drive (personal Gmail), as well as on the
- * computer - no schema change.
+ * Proofs of payment saved to Google Drive (personal Gmail) - no schema change.
+ * Once the owner's Drive is connected, a new proof goes straight to Drive
+ * (storage_key "gdrive:<file id>", nothing saved on the computer); the
+ * computer is only the fallback when Drive cannot be reached.
  *
  *   - The app signs in to Google with OAuth 2.0 (scope drive.file: it can only
  *     see and change the files it creates itself - never the rest of the Drive).
@@ -23,6 +25,7 @@ defined('APP_ROOT') or exit('No direct access.');
 const DRIVE_SCOPE = 'https://www.googleapis.com/auth/drive.file openid email';
 const DRIVE_FOLDER_NAME = 'PA-KASKAS Proofs';
 const DRIVE_TIMEOUT = 25;   // seconds per request to Google
+const DRIVE_KEY_PREFIX = 'gdrive:';   // documents.storage_key of a proof kept only in Google Drive
 
 function drive_dir(): string
 {
@@ -68,6 +71,31 @@ function drive_client(): ?array
 function drive_account(?string $userId): ?array
 {
     return $userId && is_valid_uuid($userId) ? drive_read('account-' . $userId . '.json') : null;
+}
+
+/** True when the owner's Drive is set up and connected (no request to Google). */
+function drive_is_connected(?string $ownerId): bool
+{
+    return drive_client() !== null && drive_account($ownerId) !== null;
+}
+
+/** True when the Drive settings folder can be written (else nothing can be saved). */
+function drive_storage_writable(): bool
+{
+    $dir = drive_dir();
+
+    return is_dir($dir) && is_writable($dir);
+}
+
+function drive_storage_message(): string
+{
+    return 'The Google Drive settings could not be saved: the folder ' . APP_ROOT . '/storage is not writable. On XAMPP for macOS, run in Terminal: sudo chmod -R 777 ' . APP_ROOT . '/storage - then try again.';
+}
+
+/** True when the document lives only in Google Drive. */
+function drive_is_drive_key(?string $storageKey): bool
+{
+    return is_string($storageKey) && str_starts_with($storageKey, DRIVE_KEY_PREFIX);
 }
 
 function drive_account_save(string $userId, array $account): bool
@@ -164,10 +192,12 @@ function drive_connect(string $userId, string $code): ?string
         $claims = json_decode((string) base64_decode(strtr($parts[1], '-_', '+/')), true);
         $email = $claims['email'] ?? null;
     }
-    drive_account_save($userId, [
+    if (!drive_account_save($userId, [
         'email' => $email, 'refresh_token' => $t['refresh_token'], 'access_token' => $t['access_token'],
         'expires_at' => time() + (int) ($t['expires_in'] ?? 3600) - 60, 'folder_id' => null, 'connected_at' => date('c'),
-    ]);
+    ])) {
+        return drive_storage_message();
+    }
 
     return drive_folder($userId) === null ? 'Connected, but the Drive folder could not be created yet: ' . (drive_last_error() ?? 'unknown error') : null;
 }
@@ -262,6 +292,18 @@ function drive_upload(string $userId, string $path, string $name, string $mime):
     return ['id' => $f['id'], 'link' => $f['webViewLink'] ?? null];
 }
 
+/** Remove a file the app created (used when the payment it belonged to was not saved). */
+function drive_delete(string $userId, string $fileId): bool
+{
+    $token = drive_token($userId);
+    if ($token === null) {
+        return false;
+    }
+    [$status] = drive_http('DELETE', 'https://www.googleapis.com/drive/v3/files/' . rawurlencode($fileId), ['Authorization: Bearer ' . $token]);
+
+    return $status === 204 || $status === 200;
+}
+
 /** A Drive file's content, or null. */
 function drive_download(string $userId, string $fileId): ?string
 {
@@ -293,7 +335,7 @@ function drive_backup_document(string $documentId): string
             return 'skipped';
         }
         $meta = drive_doc_meta($doc);
-        if (!empty($meta['drive']['file_id'])) {
+        if (!empty($meta['drive']['file_id']) || drive_is_drive_key($doc['storage_key'])) {
             return 'already';
         }
         $owner = $doc['owner_user_id'];
@@ -361,7 +403,7 @@ function drive_restore_document(array $doc): ?string
 {
     require_once APP_ROOT . '/pages/documents/document_functions.php';
     $meta = drive_doc_meta($doc);
-    if (empty($meta['drive']['file_id']) || empty($doc['owner_user_id'])) {
+    if (drive_is_drive_key($doc['storage_key']) || empty($meta['drive']['file_id']) || empty($doc['owner_user_id'])) {
         return null;
     }
     $content = drive_download($doc['owner_user_id'], $meta['drive']['file_id']);
@@ -377,6 +419,28 @@ function drive_restore_document(array $doc): ?string
     }
 
     return @file_put_contents($target, $content) !== false ? document_path($doc['storage_key']) : null;
+}
+
+/**
+ * The file's content for a download: from this computer, or from Google
+ * Drive (a Drive-only proof, or a local copy that went missing). Null when
+ * it cannot be found.
+ */
+function drive_document_content(array $doc): ?string
+{
+    require_once APP_ROOT . '/pages/documents/document_functions.php';
+    if (drive_is_drive_key($doc['storage_key'])) {
+        return empty($doc['owner_user_id']) ? null : drive_download($doc['owner_user_id'], substr($doc['storage_key'], strlen(DRIVE_KEY_PREFIX)));
+    }
+    $path = document_path($doc['storage_key']) ?? drive_restore_document($doc);
+    if ($path !== null) {
+        $content = @file_get_contents($path);
+        return $content === false ? null : $content;
+    }
+    // Missing here and storage not writable: still serve it straight from Drive.
+    $meta = drive_doc_meta($doc);
+
+    return !empty($meta['drive']['file_id']) && !empty($doc['owner_user_id']) ? drive_download($doc['owner_user_id'], $meta['drive']['file_id']) : null;
 }
 
 /** "In Google Drive" link for the owner (empty when not saved there). */

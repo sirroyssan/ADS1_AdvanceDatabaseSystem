@@ -93,9 +93,15 @@ function document_path(string $storageKey): ?string
 /**
  * Validate and store an uploaded file. Returns [storage data, error message].
  *
+ * $driveOwner: for a proof of payment, the owner whose Google Drive gets it.
+ * When that Drive is connected the file goes straight there (storage_key
+ * "gdrive:<file id>", data['drive'] = {file_id, link, uploaded_at}) and
+ * nothing is saved on this computer; when Drive cannot be reached it is saved
+ * here as before, and sent to Drive later (System → Google Drive).
+ *
  * @return array{0: ?array, 1: ?string}
  */
-function document_store_upload(array $file, string $documentId): array
+function document_store_upload(array $file, string $documentId, ?string $driveOwner = null, string $driveName = ''): array
 {
     $error = $file['error'] ?? UPLOAD_ERR_NO_FILE;
 
@@ -129,15 +135,33 @@ function document_store_upload(array $file, string $documentId): array
         }
     }
 
+    // Google Drive first (proofs of payment, when the owner connected it).
+    $driveError = null;
+    if ($driveOwner !== null && function_exists('drive_is_connected') && drive_is_connected($driveOwner)) {
+        $upload = drive_upload($driveOwner, $file['tmp_name'], ($driveName !== '' ? $driveName . ' - ' : date('Y-m-d') . ' ') . $name, $mime);
+        if ($upload !== null) {
+            return [[
+                'original_filename' => mb_substr($name, 0, 500),
+                'storage_key'       => DRIVE_KEY_PREFIX . $upload['id'],
+                'mime_type'         => $mime,
+                'file_size'         => filesize($file['tmp_name']),
+                'checksum'          => hash_file('sha256', $file['tmp_name']),
+                'drive'             => ['file_id' => $upload['id'], 'link' => $upload['link'], 'uploaded_at' => date('c')],
+            ], null];
+        }
+        $driveError = drive_last_error();   // not reachable now: keep it on this computer instead
+    }
+
     $folder = date('Y') . '/' . date('m');
     $dir = APP_ROOT . '/' . DOCUMENT_STORAGE_DIR . '/' . $folder;
     if (!is_dir($dir) && !@mkdir($dir, 0775, true) && !is_dir($dir)) {
-        return [null, 'The storage folder could not be created. Check that storage/documents is writable. On XAMPP for macOS, run in Terminal: sudo chmod -R 777 ' . APP_ROOT . '/storage'];
+        return [null, ($driveError ? 'Google Drive could not be reached (' . $driveError . ') and ' : '')
+            . 'The storage folder could not be created. Check that storage/documents is writable. On XAMPP for macOS, run in Terminal: sudo chmod -R 777 ' . APP_ROOT . '/storage'];
     }
 
     $storageKey = $folder . '/' . $documentId . '.' . $extension;
     if (!@move_uploaded_file($file['tmp_name'], APP_ROOT . '/' . DOCUMENT_STORAGE_DIR . '/' . $storageKey)) {
-        return [null, 'The file could not be saved. Check that storage/documents is writable. On XAMPP for macOS, run in Terminal: sudo chmod -R 777 ' . APP_ROOT . '/storage'];
+        return [null, ($driveError ? 'Google Drive could not be reached (' . $driveError . ') and t' : 'T') . 'he file could not be saved. Check that storage/documents is writable. On XAMPP for macOS, run in Terminal: sudo chmod -R 777 ' . APP_ROOT . '/storage'];
     }
 
     $stored = APP_ROOT . '/' . DOCUMENT_STORAGE_DIR . '/' . $storageKey;
@@ -148,7 +172,7 @@ function document_store_upload(array $file, string $documentId): array
         'mime_type'         => $mime,
         'file_size'         => filesize($stored),
         'checksum'          => hash_file('sha256', $stored),
-    ], null];
+    ] + ($driveError ? ['drive_error' => ['message' => $driveError, 'at' => date('c')]] : []), null];   // waits for "Send pending proofs"
 }
 
 function format_bytes(?int $bytes): string
@@ -161,4 +185,27 @@ function format_bytes(?int $bytes): string
     }
 
     return $bytes >= 1024 ? number_format($bytes / 1024, 0) . ' KB' : $bytes . ' B';
+}
+
+/** Undo a stored upload that was not saved in the end (the local file, or the Drive file). */
+function document_discard_stored(?array $stored, ?string $driveOwner = null): void
+{
+    if (!$stored) {
+        return;
+    }
+    if (str_starts_with($stored['storage_key'], DRIVE_KEY_PREFIX)) {
+        if ($driveOwner !== null) {
+            drive_delete($driveOwner, substr($stored['storage_key'], strlen(DRIVE_KEY_PREFIX)));
+        }
+        return;
+    }
+    @unlink(APP_ROOT . '/' . DOCUMENT_STORAGE_DIR . '/' . $stored['storage_key']);
+}
+
+/** Split the Drive data off a stored upload: [columns for the documents row, metadata entries (drive / drive_error)]. */
+function document_stored_columns(array $stored): array
+{
+    $meta = array_intersect_key($stored, ['drive' => 1, 'drive_error' => 1]);
+
+    return [array_diff_key($stored, $meta), $meta];
 }

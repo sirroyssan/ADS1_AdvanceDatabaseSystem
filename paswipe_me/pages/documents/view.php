@@ -10,7 +10,7 @@ $currentUser = require_admin();
 
 $doc = find_or_redirect(document_find(request_id()), 'pages/documents/index.php', 'Document');
 $usage = document_usage($doc['id']);
-$fileExists = document_path($doc['storage_key']) !== null;
+$fileExists = drive_is_drive_key($doc['storage_key']) || document_path($doc['storage_key']) !== null;   // a Drive-only proof opens from Drive
 $previewUrl = url('pages/documents/download.php', ['id' => $doc['id'], 'inline' => '1']);
 $isImage = str_starts_with((string) $doc['mime_type'], 'image/');
 $isPdf = $doc['mime_type'] === 'application/pdf';

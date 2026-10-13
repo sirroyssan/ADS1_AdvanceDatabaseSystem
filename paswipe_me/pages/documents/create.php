@@ -18,24 +18,27 @@ if (is_post()) {
     [$data, $errors] = validate_fields($fields, $_POST);
 
     $id = new_uuid();
-    [$stored, $uploadError] = $errors ? [null, null] : document_store_upload($_FILES['file'] ?? [], $id);
+    // A proof of payment goes straight to Google Drive when connected.
+    $driveOwner = ($data['document_type'] ?? null) === 'payment_proof' ? owner_id() : null;
+    [$stored, $uploadError] = $errors ? [null, null] : document_store_upload($_FILES['file'] ?? [], $id, $driveOwner, date('Y-m-d') . ' proof');
     if ($uploadError !== null) {
         $errors['file'] = $uploadError;
     }
 
     if (!$errors && $stored) {
         try {
-            db_insert('documents', ['id' => $id, 'document_type' => $data['document_type']] + $stored + [
+            [$columns, $driveMeta] = document_stored_columns($stored);
+            $meta = ($data['description'] ? ['description' => $data['description']] : []) + $driveMeta;
+            db_insert('documents', ['id' => $id, 'document_type' => $data['document_type']] + $columns + [
                 'owner_user_id' => owner_id(),
                 'uploaded_by' => $currentUser['id'],
-                'metadata'    => json_encode($data['description'] ? ['description' => $data['description']] : new stdClass(), JSON_UNESCAPED_UNICODE),
+                'metadata'    => json_encode($meta ?: new stdClass(), JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES),
             ]);
             log_activity('upload', 'document', $id, 'Uploaded ' . $stored['original_filename']);
-            drive_backup_document($id);   // a proof of payment also goes to Google Drive when connected
             flash('success', 'File "' . $stored['original_filename'] . '" was uploaded.');
             redirect('pages/documents/view.php', ['id' => $id]);
         } catch (PDOException $e) {
-            @unlink(APP_ROOT . '/' . DOCUMENT_STORAGE_DIR . '/' . $stored['storage_key']);
+            document_discard_stored($stored, $driveOwner);
             $errors['_form'] = db_error_message($e);
         }
     }

@@ -1379,11 +1379,18 @@ also has the same **What is this payment for?** table.
 
 ## Proofs of payment in Google Drive (`includes/google_drive.php`, System → Google Drive)
 
-Each proof of payment is saved on this computer **and** in the owner's Google Drive (personal Gmail), in a folder "PA-KASKAS Proofs". There is no schema change.
+Once the owner's Google Drive (personal Gmail) is connected, a proof of payment goes **straight to Drive**, into a folder "PA-KASKAS Proofs", and nothing is saved on this computer. The computer is only the fallback when Google can't be reached. There is no schema change.
 
-- **When:** a borrower submits a payment with a proof, you record one, a proof is uploaded in Document Files, or one is attached to a payment.
-- **Drive never blocks a payment.** When Google can't be reached, the payment is saved, the proof stays on the computer, and the page shows "Not yet in Drive" with the reason. *Send pending proofs now* uploads them later, including proofs from before Drive was connected (25 per click).
-- **Where it's recorded:** the document's metadata JSON (`metadata.drive.file_id`, `link`). The payment page and Document Files show an *In Google Drive* link to the owner. If the file is missing on the computer, opening it downloads it back from Drive.
+- **When:** a borrower submits a payment with a proof, you record one, or a proof of payment is uploaded in Document Files. A document attached to a payment later is also sent to Drive.
+- **Where it's recorded:**
+  - A proof kept only in Drive has `documents.storage_key` = `gdrive:<Drive file id>`.
+  - The document's metadata JSON holds `metadata.drive.file_id` and `link`.
+  - Opening or downloading the proof (owner or borrower portal) fetches it from Drive. The payment page and Document Files show an *In Google Drive* link to the owner.
+- **Drive never blocks a payment.** When Google can't be reached (no internet, sign-in expired), Drive is tried once:
+  - The proof is saved on the computer instead, and `metadata.drive_error` records the reason.
+  - The Google Drive page shows it as "Not yet in Drive". *Send pending proofs now* uploads it later (25 per click), including proofs from before Drive was connected.
+  - If the payment itself fails to save, the file just uploaded to Drive is deleted again.
+- **The `storage` folder must still be writable.** It holds the Drive settings (`storage/google_drive/`), the fallback copies and other documents. When it is not writable, the Google Drive page says so with the fix. On XAMPP for macOS, run `sudo chmod -R 777 /Applications/XAMPP/xamppfiles/htdocs/paswipe_me/storage`.
 - **Privacy:**
   - The app asks only for Google's `drive.file` permission, so it sees just the files it created itself, never the rest of the Drive. Files stay private to the Gmail account.
   - The Client secret and tokens are kept in `storage/google_drive/`, which is closed to the web, never shown again, not committed and not zipped.

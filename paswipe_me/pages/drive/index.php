@@ -26,7 +26,10 @@ if (is_post()) {
                 flash('error', 'Enter the Client secret.');
                 break;
             }
-            drive_write('client.json', ['client_id' => $id, 'client_secret' => $secret !== '' ? $secret : $old['client_secret'], 'saved_at' => date('c')]);
+            if (!drive_write('client.json', ['client_id' => $id, 'client_secret' => $secret !== '' ? $secret : $old['client_secret'], 'saved_at' => date('c')])) {
+                flash('error', drive_storage_message());
+                break;
+            }
             log_activity('update', 'google_drive', null, 'Google Drive sign-in (OAuth client) saved');
             flash('success', 'Saved. Now click Connect Google Drive.');
             break;
@@ -70,6 +73,7 @@ $account = drive_account($me);
 $pending = $account ? count(drive_pending_documents($me)) : 0;
 $saved = $account ? drive_saved_count($me) : 0;
 $curlOk = function_exists('curl_init');
+$storageOk = drive_storage_writable();
 
 $pageTitle = 'Google Drive';
 $activeNav = 'google_drive';
@@ -81,12 +85,16 @@ require APP_ROOT . '/includes/header.php';
 <section class="page-header">
     <div>
         <h2 class="page-header__title">Google Drive</h2>
-        <p class="page-header__subtitle">Proofs of payment are also saved in your Google Drive (folder "<?= e(DRIVE_FOLDER_NAME) ?>"), as well as on this computer.</p>
+        <p class="page-header__subtitle">Once connected, proofs of payment are saved straight to your Google Drive (folder "<?= e(DRIVE_FOLDER_NAME) ?>") instead of this computer. The computer keeps a proof only when Google cannot be reached; it is sent to Drive later.</p>
     </div>
 </section>
 
 <?php if (!$curlOk): ?>
     <div class="alert alert--error"><?= icon('alert') ?><span>The PHP <strong>curl</strong> extension is off, so the app cannot reach Google. In XAMPP it is normally on; check php.ini (extension=curl) and restart Apache.</span></div>
+<?php endif; ?>
+
+<?php if (!$storageOk): ?>
+    <div class="alert alert--error"><?= icon('alert') ?><span><?= e(drive_storage_message()) ?></span></div>
 <?php endif; ?>
 
 <section class="panel">
