@@ -2857,10 +2857,13 @@ html.has-modal-form {
     flex: 1 1 100%;
 }
 
-/* Decision buttons keep their natural size, on the right - not full width. */
-.notice-decision .status-form .btn--block {
+/* Action buttons in records and modals (Save decision, Approve, Delete ...) keep their
+   natural size, on the right - never the full width. Sign-in forms keep theirs. */
+.content .btn--block,
+.modal-form__body .btn--block {
+    display: flex;
     flex: 0 0 auto;
-    width: auto;
+    width: fit-content;
     min-width: 150px;
     margin-left: auto;
 }
