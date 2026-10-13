@@ -1403,6 +1403,15 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/paswipe_me/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Fix: "Field 'DB_ROW_HASH_1' doesn't have a default value" when saving a file
+
+- **Cause:** `documents.storage_key` was `TEXT NOT NULL UNIQUE`. MariaDB keeps a unique key on a `TEXT` column with a hidden hash column (`DB_ROW_HASH_1`). Older MariaDB versions, like the 10.4 that ships with XAMPP, break inserts on that column after the table has been altered (the owner column was added to `documents` earlier). Every upload then failed, so the payment was not saved.
+- **Fix (schema change, index only, no data changed):** the key is now a normal unique index on the first 255 characters, `uq_documents_storage_key (storage_key(255))`. The app's keys are under 60 characters (`2026/10/<uuid>.png`, `gdrive:<id>`), so duplicates are still refused as before.
+- **Applied automatically** once, before the next upload (`documents_key_index_upgrade()` in `pages/documents/document_functions.php`, marker `storage/upgrade_documents_key.done`):
+  - It first checks that every existing key fits in 255 characters and none would clash. Otherwise it changes nothing and writes the reason to the PHP error log.
+  - To run it by hand: `db/upgrade_documents_key.sql`.
+  - New installs get the same index from the schema file.
+
 ## Paid and overdue: one definition everywhere
 
 - **Total paid** = the borrower's **approved payments**, the same total as *My Payments* and *Borrower Payments* (`borrower_total_received()` in `includes/portal.php`). It is used on the portal home, the owner's borrower page and the Borrower Balances report. Payments that went to late charges count too. Before, money put on an obligation's late charges was left out, so ₱76,030.75 received showed as ₱63,845.83.

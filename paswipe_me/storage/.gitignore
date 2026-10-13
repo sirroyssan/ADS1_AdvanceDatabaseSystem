@@ -25,3 +25,4 @@ upgrade_purchase_status.done
 
 # Google Drive sign-in and tokens (secrets) - never committed or zipped.
 google_drive/
+upgrade_documents_key.done

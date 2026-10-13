@@ -234,14 +234,15 @@ CREATE TABLE documents (
     'cash_loan_approval','bank_correspondence','agreement',
     'signed_agreement','demand_letter','other') NOT NULL,
     original_filename VARCHAR(500) NOT NULL,
-    storage_key TEXT NOT NULL UNIQUE,
+    storage_key TEXT NOT NULL,   -- unique via uq_documents_storage_key (first 255 characters)
     mime_type VARCHAR(150),
     file_size BIGINT,
     checksum VARCHAR(128),
     uploaded_by CHAR(36) REFERENCES users(id),
     uploaded_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
     metadata JSON NOT NULL DEFAULT '{}',
-    is_deleted TINYINT(1) NOT NULL DEFAULT FALSE
+    is_deleted TINYINT(1) NOT NULL DEFAULT FALSE,
+    UNIQUE KEY uq_documents_storage_key (storage_key(255))
 );
 
 CREATE TABLE credit_card_statements (

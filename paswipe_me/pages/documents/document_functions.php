@@ -75,6 +75,44 @@ function document_usage(string $id): array
     ], $id);
 }
 
+const DOCUMENTS_KEY_MARKER = 'storage/upgrade_documents_key.done';
+
+/**
+ * One-time fix (same as db/upgrade_documents_key.sql): documents.storage_key
+ * was UNIQUE on a TEXT column, which MariaDB keeps with a hidden hash column
+ * (DB_ROW_HASH_1). Older MariaDB (e.g. 10.4 in XAMPP) breaks inserts on it
+ * after the table was altered: "Field 'DB_ROW_HASH_1' doesn't have a default
+ * value". The same rule as a normal unique index on the first 255 characters
+ * (the app's keys are under 60). Data is not changed; it stops when the
+ * existing keys would not fit (nothing is changed then).
+ */
+function documents_key_index_upgrade(): void
+{
+    if (marker_exists(DOCUMENTS_KEY_MARKER)) {
+        return;
+    }
+    try {
+        $index = db_row(
+            "SELECT INDEX_NAME AS name, INDEX_TYPE AS type, SUB_PART AS part FROM information_schema.STATISTICS
+              WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'documents' AND COLUMN_NAME = 'storage_key' AND NON_UNIQUE = 0 LIMIT 1"
+        );
+        if (!$index || $index['type'] !== 'BTREE' || (int) $index['part'] !== 255) {
+            $tooLong = (int) db_value('SELECT COUNT(*) FROM documents WHERE CHAR_LENGTH(storage_key) > 255');
+            $clash = (int) db_value('SELECT COUNT(*) FROM (SELECT LEFT(storage_key, 255) k FROM documents GROUP BY k HAVING COUNT(*) > 1) x');
+            if ($tooLong || $clash) {
+                error_log('[' . APP_NAME . '] documents.storage_key index not changed: ' . $tooLong . ' key(s) over 255 characters, ' . $clash . ' clash(es).');
+                return;
+            }
+            db()->exec('ALTER TABLE documents ' . ($index ? 'DROP INDEX `' . str_replace('`', '', $index['name']) . '`, ' : '')
+                . 'ADD UNIQUE KEY uq_documents_storage_key (storage_key(255))');
+            log_activity('upgrade', 'system', null, 'documents.storage_key: unique index rebuilt (MariaDB DB_ROW_HASH fix)', null, null, SYSTEM_ACTOR);
+        }
+        marker_write(DOCUMENTS_KEY_MARKER);
+    } catch (PDOException $e) {
+        error_log('[' . APP_NAME . '] documents.storage_key index upgrade failed: ' . $e->getMessage());
+    }
+}
+
 /**
  * Absolute path of a stored file, refusing anything outside the storage folder.
  */
@@ -103,6 +141,7 @@ function document_path(string $storageKey): ?string
  */
 function document_store_upload(array $file, string $documentId, ?string $driveOwner = null, string $driveName = ''): array
 {
+    documents_key_index_upgrade();   // before any transaction: it changes an index
     $error = $file['error'] ?? UPLOAD_ERR_NO_FILE;
 
     if ($error === UPLOAD_ERR_NO_FILE) {
