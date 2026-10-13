@@ -279,8 +279,9 @@ function payment_form_handle(array $ctx): array
         return compact('fields', 'data', 'errors', 'groups', 'chosen', 'hasProof', 'proofRequired', 'payment');
     }
 
+    $step = 'payment';
     try {
-        $saved = db_transaction(static function () use ($ctx, $borrower, $payment, $data, $purchases, $selections, $rest, $stored, $documentId) {
+        $saved = db_transaction(static function () use ($ctx, $borrower, $payment, $data, $purchases, $selections, $rest, $stored, $documentId, &$step) {
             $user = $ctx['user'];
             $ids = [];
             $common = array_intersect_key($data, array_flip(['payment_method_id', 'payment_date', 'reference_number', 'notes']));
@@ -318,6 +319,7 @@ function payment_form_handle(array $ctx): array
                 }
             }
             if ($stored) {
+                $step = 'proof';
                 db_insert('documents', ['id' => $documentId, 'document_type' => 'payment_proof'] + $stored + [
                     'owner_user_id' => $borrower['owner_user_id'],   // the lender who reviews it
                     'uploaded_by' => $user['id'],
@@ -334,7 +336,13 @@ function payment_form_handle(array $ctx): array
         if ($stored) {
             @unlink(APP_ROOT . '/' . DOCUMENT_STORAGE_DIR . '/' . $stored['storage_key']);
         }
-        $errors['_form'] = db_error_message($e);
+        // Nothing was saved (one transaction). Say which part failed.
+        $errors['_form'] = $step === 'proof'
+            ? 'The payment was not saved: the proof file could not be recorded. ' . db_error_detail($e)
+            : db_error_message($e);
+        if ($step === 'proof') {
+            error_log('[' . APP_NAME . '] Saving the payment proof failed: ' . $e->getMessage());
+        }
         return compact('fields', 'data', 'errors', 'groups', 'chosen', 'hasProof', 'proofRequired', 'payment');
     }
 

@@ -187,6 +187,22 @@ function usage_text(array $usage): string
 /**
  * Safe, user-facing message for a failed write.
  */
+/**
+ * "(Database error 1032)" - plus the database's own message when it is safe to
+ * show: APP_DEBUG is on, or the browser is on the server itself (XAMPP on
+ * localhost). The full message is always in the PHP error log.
+ */
+function db_error_detail(PDOException $e): string
+{
+    $code = (string) ($e->errorInfo[1] ?? $e->getCode());
+    $local = in_array($_SERVER['REMOTE_ADDR'] ?? '', ['127.0.0.1', '::1'], true);
+    if ((defined('APP_DEBUG') && APP_DEBUG) || $local) {
+        return '(Database error ' . $code . ': ' . (string) ($e->errorInfo[2] ?? $e->getMessage()) . ')';
+    }
+
+    return '(Database error ' . $code . '. The details are in the PHP error log.)';
+}
+
 function db_error_message(PDOException $e, string $fallback = 'Unable to save the record. Please check the information and try again.'): string
 {
     error_log('[' . APP_NAME . '] Database write failed: ' . $e->getMessage());
@@ -199,6 +215,6 @@ function db_error_message(PDOException $e, string $fallback = 'Unable to save th
         1452       => 'A selected related record does not exist.',
         1644       => (string) ($e->errorInfo[2] ?? $fallback),   // SIGNAL from a schema trigger
         4025, 3819 => 'The submitted values are not allowed by the database rules.',
-        default    => $fallback,
+        default    => $fallback . ' ' . db_error_detail($e),
     };
 }
