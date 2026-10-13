@@ -26,11 +26,22 @@ if (is_post()) {
     if (!$errors) {
         try {
             $id = new_uuid();
-            card_usage_apply([$data['credit_card_id']], fn () => db_insert('cash_advances', ['id' => $id] + $data));
-            log_activity('create', 'cash_advance', $id, 'Recorded cash advance of ' . format_money($data['amount']), null, $data);
-            flash('success', 'Cash advance was recorded.');
+            $borrowerId = $data['borrower_id'] ?? null;
+            unset($data['borrower_id']);   // kept on the borrower's transaction, not on the advance
+            if ($borrowerId !== null && !$data['reference_number']) {
+                $data['reference_number'] = generate_reference('CA', 'cash_advances', 'reference_number');   // links the advance and the borrower's share
+            }
+            $note = card_usage_apply([$data['credit_card_id']], function () use ($id, $data, $borrowerId, $currentUser) {
+                db_insert('cash_advances', ['id' => $id] + $data);
+
+                return cash_advance_sync_borrower(db_row('SELECT * FROM cash_advances WHERE id = :id', [':id' => $id]), $borrowerId, $currentUser);
+            });
+            log_activity('create', 'cash_advance', $id, 'Recorded cash advance of ' . format_money($data['amount']), null, $data + ['borrower_id' => $borrowerId]);
+            flash('success', trim('Cash advance was recorded. ' . $note . ' It is listed in ' . statement_for_date($data['credit_card_id'], $data['advance_date'])['label'] . '.'));
             statement_placement_notice($data['credit_card_id'], $data['advance_date'], $reconcile);
             redirect('pages/cash_advances/view.php', ['id' => $id]);
+        } catch (DomainException $e) {
+            $errors['_form'] = $e->getMessage();
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
         }

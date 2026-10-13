@@ -18,14 +18,20 @@ if ($advance['status'] === 'cancelled') {
 $fields = cash_advance_fields($advance);
 $fields['total_amount']['attrs']['data-keep'] = '1';
 $givenToBorrowers = cash_advance_given_total($advance);
-if ($givenToBorrowers > 0) {
+$share = cash_advance_direct_share($advance);
+if ($givenToBorrowers > 0 || $share) {
     // The card and reference number link this withdrawal to the borrowers' shares.
     foreach (['credit_card_id', 'reference_number'] as $locked) {
         $fields[$locked]['readonly'] = true;
-        $fields[$locked]['help'] = 'Locked: part of this cash advance was given to borrowers.';
+        $fields[$locked]['help'] = 'Locked: this cash advance is linked to a borrower.';
     }
 }
-$data = form_data_from_row($fields, $advance);
+if ($givenToBorrowers > 0) {
+    $fields['borrower_id']['readonly'] = true;
+    $fields['borrower_id']['help'] = 'Given with "Give to a borrower" - see the cash advance page.';
+}
+$fields['borrower_id']['options'] = borrower_options($share['borrower_id'] ?? null);
+$data = form_data_from_row($fields, $advance + ['borrower_id' => $share['borrower_id'] ?? null]);
 $errors = [];
 
 if (is_post()) {
@@ -37,11 +43,22 @@ if (is_post()) {
 
     if (!$errors) {
         try {
-            card_usage_apply([$advance['credit_card_id'], $data['credit_card_id'] ?? null], fn () => db_update('cash_advances', $data, $advance['id']));
-            log_activity('update', 'cash_advance', $advance['id'], 'Updated cash advance', array_intersect_key($advance, $data), $data);
-            flash('success', 'Cash advance was updated successfully.');
+            $borrowerId = $givenToBorrowers > 0 ? null : ($data['borrower_id'] ?? null);
+            unset($data['borrower_id']);
+            if ($borrowerId !== null && !($data['reference_number'] ?? $advance['reference_number'])) {
+                $data['reference_number'] = generate_reference('CA', 'cash_advances', 'reference_number');
+            }
+            $note = card_usage_apply([$advance['credit_card_id'], $data['credit_card_id'] ?? null], function () use ($advance, $data, $borrowerId, $givenToBorrowers, $currentUser) {
+                db_update('cash_advances', $data, $advance['id']);
+
+                return $givenToBorrowers > 0 ? '' : cash_advance_sync_borrower(db_row('SELECT * FROM cash_advances WHERE id = :id', [':id' => $advance['id']]), $borrowerId, $currentUser);
+            });
+            log_activity('update', 'cash_advance', $advance['id'], 'Updated cash advance', array_intersect_key($advance, $data) + ['borrower_id' => $share['borrower_id'] ?? null], $data + ['borrower_id' => $borrowerId]);
+            flash('success', trim('Cash advance was updated successfully. ' . $note));
             statement_move_notice($advance['credit_card_id'], $advance['advance_date'], $data['credit_card_id'] ?? $advance['credit_card_id'], $data['advance_date'] ?? $advance['advance_date']);
             redirect('pages/cash_advances/view.php', ['id' => $advance['id']]);
+        } catch (DomainException $e) {
+            $errors['_form'] = $e->getMessage();
         } catch (PDOException $e) {
             $errors['_form'] = db_error_message($e);
         }

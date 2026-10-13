@@ -18,16 +18,33 @@ if (is_post()) {
     if ($status === 'cancelled' && $openShares) {
         flash('error', 'This cash advance was given to borrowers who still owe it. Cancel or settle their obligations first.');
     } elseif ($advance['status'] === 'active' && in_array($status, ['completed', 'cancelled'], true)) {
-        card_usage_apply([$advance['credit_card_id']], fn () => db_update('cash_advances', ['status' => $status], $advance['id']));
-        log_activity('status_change', 'cash_advance', $advance['id'], 'Cash advance marked ' . $status, ['status' => $advance['status']], ['status' => $status]);
-        flash('success', 'Cash advance marked as ' . humanize($status) . '.');
+        try {
+            // Cancelling also cancels the borrower's cash advance (never one with repayments).
+            $note = card_usage_apply([$advance['credit_card_id']], function () use ($advance, $status, $currentUser) {
+                db_update('cash_advances', ['status' => $status], $advance['id']);
+
+                return $status === 'cancelled' ? cash_advance_sync_borrower(['status' => 'cancelled'] + $advance, null, $currentUser) : '';
+            });
+            log_activity('status_change', 'cash_advance', $advance['id'], 'Cash advance marked ' . $status, ['status' => $advance['status']], ['status' => $status]);
+            flash('success', trim('Cash advance marked as ' . humanize($status) . '. ' . $note));
+        } catch (DomainException $e) {
+            flash('error', $e->getMessage());
+        }
     } else {
         flash('error', 'That status change is not allowed.');
     }
     redirect('pages/cash_advances/view.php', ['id' => $advance['id']]);
 }
 
-$shares = cash_advance_shares($advance);
+$direct = cash_advance_direct_share($advance);
+$directLedger = null;
+if ($direct) {
+    $purchase = borrowed_owner_purchases(null, $direct['id'])[0] ?? null;
+    $directLedger = $purchase['ledger'] ?? null;
+}
+$canConvert = $direct && !$direct['plan_id'] && $advance['status'] === 'active' && cash_advance_share_repayments($direct['id']) === 0;
+$billedOn = statement_for_date($advance['credit_card_id'], $advance['advance_date']);
+$shares = array_values(array_filter(cash_advance_shares($advance), static fn ($s) => $s['obligation_id']));
 $given = array_sum(array_column($shares, 'amount'));
 $remaining = max(0, (float) $advance['amount'] - $given);
 $giveFields = cash_advance_give_fields($advance, $remaining);
@@ -84,7 +101,9 @@ require APP_ROOT . '/includes/header.php';
         'Fee'              => e(format_money($advance['fee'])),
         'Interest'         => e(format_money($advance['interest'])),
         'Total amount'     => '<strong>' . e(format_money($advance['total_amount'])) . '</strong>',
-        'Statement'        => related_link($advance['statement_id'], $advance['statement_date'] ? 'Statement of ' . format_date($advance['statement_date']) : null, 'pages/statements/view.php'),
+        'Borrower'         => $direct ? related_link($direct['borrower_id'], borrower_name($direct), 'pages/borrowers/view.php') : '<span class="text-muted">For me (no borrower)</span>',
+        'Statement'        => e(ucfirst($billedOn['label']))
+                              . ($advance['statement_id'] ? ' · ' . related_link($advance['statement_id'], 'recorded SOA of ' . format_date($advance['statement_date']), 'pages/statements/view.php') : ''),
         'Status'           => badge($advance['status']),
         'Notes'            => show_multiline($advance['notes']),
         'Recorded'         => e(format_datetime($advance['created_at'])),
@@ -93,6 +112,34 @@ require APP_ROOT . '/includes/header.php';
     <p class="field-help no-print">Cash advances are never deleted; cancel a mistaken entry instead.</p>
 </section>
 
+<?php if ($direct): ?>
+<section class="panel subpanel">
+    <header class="panel__header">
+        <h3><?= icon('users') ?> <?= e(borrower_name($direct)) ?> repays this cash advance</h3>
+        <div class="action-bar no-print">
+            <?php if ($canConvert): ?>
+                <a data-modal-form class="btn btn--sm btn--primary" href="<?= e(url('pages/cash_advances/installment.php', ['id' => $advance['id']])) ?>"><?= icon('repeat') ?> <span>Convert to installment</span></a>
+            <?php endif; ?>
+            <?php if ($direct['plan_id']): ?>
+                <a class="btn btn--sm btn--outline" href="<?= e(url('pages/installment_plans/view.php', ['id' => $direct['plan_id']])) ?>"><?= icon('repeat') ?> <span>Installment plan</span></a>
+            <?php endif; ?>
+            <a class="btn btn--sm btn--outline" href="<?= e(url('pages/transactions/view.php', ['id' => $direct['id']])) ?>"><?= icon('eye') ?> <span>Repayments</span></a>
+        </div>
+    </header>
+    <?= render_details([
+        'Owes'          => '<strong>' . e(format_money($direct['plan_id'] ? $direct['total_repayment'] : $direct['amount'])) . '</strong>'
+                           . ($direct['plan_id'] ? ' <span class="text-muted">(' . e($direct['number_of_installments']) . ' monthly installments of ' . e(format_money($direct['installment_amount']))
+                               . ' · interest ' . e(format_money($direct['plan_interest'])) . ((float) $direct['plan_fees'] > 0 ? ' · fee ' . e(format_money($direct['plan_fees'])) : '') . ')</span>'
+                             : ' <span class="text-muted">(the total amount, in one payment)</span>'),
+        'Repaid'        => $directLedger ? e(format_money($directLedger['repaid'])) : '—',
+        'Outstanding'   => $directLedger ? '<strong>' . e(format_money($directLedger['outstanding'])) . '</strong>' : '—',
+        'Repay by'      => $directLedger && $directLedger['next_due'] ? e(format_date($directLedger['next_due']['date'])) : '—',
+        'Status'        => $directLedger ? badge($directLedger['status']) : '—',
+    ]) ?>
+    <p class="field-help">Tracked like a card purchase the borrower repays to you (no obligation): they see it under Card Purchases and pay it from the portal.
+        <?= $canConvert ? 'If they cannot pay it at once, convert it to monthly installments with interest.' : '' ?></p>
+</section>
+<?php else: ?>
 <section class="panel subpanel">
     <header class="panel__header">
         <h3><?= icon('users') ?> Given to borrowers</h3>
@@ -143,5 +190,6 @@ require APP_ROOT . '/includes/header.php';
         </div>
     <?php endif; ?>
 </section>
+<?php endif; ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

@@ -1377,6 +1377,22 @@ also has the same **What is this payment for?** table.
 
 **When saving fails.** The payment, its items and the proof are saved in one database transaction, so a failure saves nothing. The form now says which part failed: "The payment was not saved: the proof file could not be recorded", or the usual message for the payment itself. It also gives the database error number. The database's own message is added when the browser runs on the server itself (XAMPP on localhost) or when `APP_DEBUG` is on (`db_error_detail()` in `includes/db_helpers.php`). From another device (a phone on the Wi-Fi) only the number is shown. The full text is always in the PHP error log (XAMPP for macOS: `/Applications/XAMPP/xamppfiles/logs/php_error_log`), on the lines starting with `[PA-KASKAS] Database write failed:` and `[PA-KASKAS] Saving the payment proof failed:`.
 
+## Cash advance for a borrower, statement by date, convert to installment (`pages/cash_advances/`)
+
+- **Borrower field** (Add/Edit cash advance): who got the cash. There is no schema change.
+  - The borrower is kept on a linked `transactions` row: payment type *cash_advance*, the same card and reference number (`CA-…` is generated if empty), and the advance's total as the amount.
+  - It is tracked like a card purchase repaid to the owner (`cash_advance_sync_borrower`). No obligation is created.
+  - The borrower sees it under Card Purchases as "Cash advance", repays it from the portal, and late charges follow the card's penalty rules.
+  - The card and the statement count the withdrawal once, from `cash_advances` (the linked transaction is excluded, as before).
+  - Changing the borrower, removing them or cancelling the advance is refused once the borrower has reported or paid a repayment. The borrower is notified of every change.
+- **Statement by date:** the manual *Statement* dropdown is gone. The advance is listed in the statement period that has its date (the card's cut-off), automatically. When that period has a recorded SOA, `statement_id` is set to it. The page shows "the September 2026 statement period (Sep 1 – Sep 30)".
+- **Convert to installment** (`installment.php`, on the cash advance page): number of months, interest per month (%) and an optional fee.
+  - It creates an installment plan on the borrower's transaction, with the same calculation as a purchase's plan (add-on monthly, `installment_plan_create`). No obligation is created.
+  - The plan is listed in **Installment Plans**, and each installment is due on the card's due date of its month.
+  - It is allowed only before any repayment. Afterwards the amounts are changed on the plan.
+- **"Give to a borrower"** (an obligation for part of the cash) still works for advances without a Borrower. The two can't be mixed on one advance.
+- **List:** the Cash Advances list shows "For <borrower>" under the card.
+
 ## Card purchase repayments go where the borrower chose (`borrowed_allocate()` in `includes/borrowed.php`)
 
 When paying a card purchase, the borrower ticks rows (Late charges, Installment 1 of 12 …) and types an amount for each. Those choices are now saved with the repayment in the new table `borrower_payment_purchase_parts` (additive schema change, `db/upgrade_purchase_parts.sql`, created automatically on first page load, marker `storage/upgrade_purchase_parts.done`; its key columns copy the character set and collation of `borrower_payments.id`, `transactions.id` and `installment_schedules.id`, so it works whatever collation the database was created with. If the table is ever missing, the pages still open and repayments count as "no choice" until it is created). The portal, the owner's own form and staff "Receive payment" all save them. Once the card owner confirms the repayment, each amount is applied exactly there:

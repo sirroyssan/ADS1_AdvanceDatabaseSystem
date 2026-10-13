@@ -44,7 +44,10 @@ if ($state['filters']['to'] !== '') {
 }
 
 $from = 'cash_advances a JOIN credit_cards c ON c.id = a.credit_card_id';
-$result = run_list($state, 'a.id, a.advance_date, a.reference_number, a.channel, a.amount, a.fee, a.interest, a.total_amount, a.status, c.card_nickname, c.last_four', $from, $where, $params);
+$result = run_list($state, 'a.id, a.advance_date, a.reference_number, a.channel, a.amount, a.fee, a.interest, a.total_amount, a.status, c.card_nickname, c.last_four,
+    (SELECT GROUP_CONCAT(DISTINCT CONCAT(b.first_name, \' \', b.last_name) ORDER BY b.last_name SEPARATOR \', \')
+       FROM transactions t JOIN borrowers b ON b.id = t.borrower_id
+      WHERE t.payment_type = \'cash_advance\' AND t.credit_card_id = a.credit_card_id AND t.reference_number = a.reference_number AND t.status <> \'cancelled\') AS borrowers', $from, $where, $params);
 $totals = db_row("SELECT COALESCE(SUM(IF(a.status <> 'cancelled', a.amount, 0)), 0) AS amount, COALESCE(SUM(IF(a.status <> 'cancelled', a.total_amount, 0)), 0) AS total FROM "
     . $from . ' WHERE ' . implode(' AND ', $where), $params);
 
@@ -81,7 +84,7 @@ require APP_ROOT . '/includes/header.php';
                     <tr>
                         <td class="col-num" data-label="#"><?= e($result['pager']['offset'] + $i + 1) ?></td>
                         <td data-label="Date"><a data-modal-form class="table-link" href="<?= e(url('pages/cash_advances/view.php', ['id' => $row['id']])) ?>"><?= e(format_date($row['advance_date'])) ?></a></td>
-                        <td data-label="Card"><?= e($row['card_nickname']) ?> <span class="text-muted">•••• <?= e($row['last_four']) ?></span></td>
+                        <td data-label="Card"><?= e($row['card_nickname']) ?> <span class="text-muted">•••• <?= e($row['last_four']) ?></span><?= $row['borrowers'] ? '<br><span class="text-muted">For ' . e($row['borrowers']) . '</span>' : '' ?></td>
                         <td data-label="Reference / Channel"><?= show(trim(($row['reference_number'] ?? '') . ($row['channel'] ? ' · ' . $row['channel'] : ''), ' ·')) ?></td>
                         <td data-label="Amount" class="num"><?= e(format_money($row['amount'])) ?></td>
                         <td data-label="Fee + Interest" class="num"><?= e(format_money((float) $row['fee'] + (float) $row['interest'])) ?></td>

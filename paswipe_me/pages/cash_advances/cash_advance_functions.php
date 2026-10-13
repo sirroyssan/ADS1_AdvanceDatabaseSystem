@@ -8,25 +8,29 @@ defined('APP_ROOT') or exit('No direct access.');
 
 function cash_advance_fields(?array $current = null): array
 {
-    [$statementOptions, $statementData] = statement_options();
-
     return [
         'credit_card_id'   => ['label' => 'Credit card', 'type' => 'select', 'options' => credit_card_options($current['credit_card_id'] ?? null, false), 'required' => true, 'empty_label' => 'Select card'],
-        'advance_date'     => ['label' => 'Advance date', 'type' => 'date', 'required' => true, 'initial' => date('Y-m-d')],
+        'advance_date'     => ['label' => 'Advance date', 'type' => 'date', 'required' => true, 'initial' => date('Y-m-d'),
+                               'help' => 'It goes on the statement whose period has this date (cut-off) automatically.'],
         'reference_number' => ['label' => 'Reference number', 'type' => 'text', 'max' => 150],
         'channel'          => ['label' => 'Channel', 'type' => 'text', 'max' => 100, 'help' => 'e.g. ATM, over the counter.'],
+        'borrower_id'      => ['label' => 'Borrower', 'type' => 'select', 'options' => borrower_options($current['borrower_id'] ?? null), 'empty_label' => '— For me (no borrower) —',
+                               'help' => 'Who got the cash. They repay the total amount by the card\'s due date, or in monthly installments after you convert it.'],
         'status'           => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_CASH_ADVANCE_STATUS), 'required' => true, 'initial' => 'active'],
         'amount'           => ['label' => 'Amount withdrawn', 'type' => 'decimal', 'required' => true, 'min' => 0, 'section' => 'Amounts'],
         'fee'              => ['label' => 'Fee', 'type' => 'decimal', 'min' => 0, 'default' => '0.00'],
         'interest'         => ['label' => 'Interest', 'type' => 'decimal', 'min' => 0, 'default' => '0.00'],
         'total_amount'     => ['label' => 'Total amount', 'type' => 'decimal', 'min' => 0, 'help' => 'Leave blank for amount + fee + interest.',
                                'attrs' => ['data-sum' => 'f_amount,f_fee,f_interest']],
-        'statement_id'     => ['label' => 'Statement', 'type' => 'select', 'options' => $statementOptions, 'option_data' => $statementData,
-                               'attrs' => ['data-depends-on' => 'f_credit_card_id'], 'empty_label' => '— Not linked to a statement —', 'section' => 'Other'],
-        'notes'            => ['label' => 'Notes', 'type' => 'textarea', 'rows' => 3],
+        'notes'            => ['label' => 'Notes', 'type' => 'textarea', 'rows' => 3, 'section' => 'Other'],
     ];
 }
 
+/**
+ * Validate. Returns [data, errors]; data['borrower_id'] is not a column (the
+ * borrower is kept on the linked transaction - cash_advance_sync_borrower) and
+ * data['statement_id'] is set from the date: the recorded SOA whose period has it.
+ */
 function cash_advance_validate(array $fields, array $input, ?string $id = null): array
 {
     [$data, $errors] = validate_fields($fields, $input, $id);
@@ -34,12 +38,23 @@ function cash_advance_validate(array $fields, array $input, ?string $id = null):
     if ($data['total_amount'] === null && !isset($errors['amount'], $errors['fee'], $errors['interest'])) {
         $data['total_amount'] = number_format((float) $data['amount'] + (float) $data['fee'] + (float) $data['interest'], 2, '.', '');
     }
+    if (array_key_exists('borrower_id', $data) && $data['borrower_id'] !== null && !owns('borrowers', $data['borrower_id'])) {
+        $errors['borrower_id'] = 'Choose one of your borrowers.';
+    }
     $cardId = $data['credit_card_id'] ?? ($id ? db_value('SELECT credit_card_id FROM cash_advances WHERE id = :id', [':id' => $id]) : null);
-    if ($data['statement_id'] && $cardId && !belongs_to('credit_card_statements', $data['statement_id'], 'credit_card_id', $cardId)) {
-        $errors['statement_id'] = 'The statement must belong to the selected card.';
+    if (!$errors && $cardId && !empty($data['advance_date'])) {
+        $data['statement_id'] = cash_advance_statement_for($cardId, $data['advance_date']);
     }
 
     return [$data, $errors];
+}
+
+/** The recorded statement (SOA) whose period has this date, or null (then it is billed on the upcoming one). */
+function cash_advance_statement_for(string $cardId, string $date): ?string
+{
+    $card = db_row('SELECT * FROM credit_cards WHERE id = :c', [':c' => $cardId]);
+
+    return $card ? (card_period_containing(card_period_context($card), $date)['statement_id'] ?? null) : null;
 }
 
 function cash_advance_find(string $id): ?array
@@ -94,7 +109,175 @@ function cash_advance_shares(array $advance): array
 
 function cash_advance_given_total(array $advance): float
 {
-    return array_sum(array_map(static fn ($s) => (float) $s['amount'], cash_advance_shares($advance)));
+    return array_sum(array_map(static fn ($s) => $s['obligation_id'] ? (float) $s['amount'] : 0.0, cash_advance_shares($advance)));
+}
+
+/* ------------------------------------------------------------------
+ * The advance's borrower (the Borrower field): the whole advance is theirs.
+ * Stored like a card purchase repaid to the owner - a transactions row
+ * (payment_type 'cash_advance', same card and reference number, amount = the
+ * advance's total) and no obligation. The borrower repays it by the card's
+ * due date, or in monthly installments once converted (an installment plan
+ * on that transaction, listed in Installment Plans).
+ * ------------------------------------------------------------------ */
+
+/** The advance's borrower transaction (no obligation), or null. */
+function cash_advance_direct_share(array $advance): ?array
+{
+    if (!$advance['reference_number']) {
+        return null;
+    }
+
+    return db_row(
+        "SELECT t.*, b.first_name, b.middle_name, b.last_name, b.suffix, b.borrower_number, p.id AS plan_id, p.number_of_installments, p.installment_amount,
+                p.interest_amount AS plan_interest, p.fees_amount AS plan_fees, p.total_repayment
+           FROM transactions t
+           JOIN borrowers b ON b.id = t.borrower_id
+           LEFT JOIN installment_plans p ON p.transaction_id = t.id AND p.status <> 'cancelled'
+          WHERE t.payment_type = 'cash_advance' AND t.credit_card_id = :c AND t.reference_number = :r AND t.status <> 'cancelled'
+            AND NOT EXISTS (SELECT 1 FROM borrower_obligations o WHERE o.transaction_id = t.id AND o.status <> 'cancelled')
+          ORDER BY t.created_at LIMIT 1",
+        [':c' => $advance['credit_card_id'], ':r' => $advance['reference_number']]
+    );
+}
+
+/** Repayments reported or confirmed on the borrower's transaction. */
+function cash_advance_share_repayments(string $transactionId): int
+{
+    return (int) db_value("SELECT COUNT(*) FROM borrower_payments WHERE transaction_id = :t AND status NOT IN ('rejected', 'cancelled')", [':t' => $transactionId]);
+}
+
+/**
+ * After the advance was saved (inside the save transaction): create, update or
+ * cancel the borrower's transaction so it follows the Borrower field, the date
+ * and the total. Throws DomainException when a change would lose repayments.
+ * Returns a note for the flash message, or ''.
+ */
+function cash_advance_sync_borrower(array $advance, ?string $borrowerId, array $user): string
+{
+    $share = cash_advance_direct_share($advance);
+    $wanted = $advance['status'] !== 'cancelled' ? $borrowerId : null;
+    $total = number_format((float) $advance['total_amount'], 2, '.', '');
+
+    if ($share === null) {
+        if ($wanted === null) {
+            return '';
+        }
+        if (cash_advance_given_total($advance) > 0) {
+            throw new DomainException('Part of this cash advance was already given with "Give to a borrower"; it cannot also have a borrower.');
+        }
+        $id = new_uuid();
+        db_insert('transactions', [
+            'id' => $id, 'transaction_number' => generate_reference('TXN', 'transactions', 'transaction_number'), 'credit_card_id' => $advance['credit_card_id'],
+            'borrower_id' => $wanted, 'transaction_date' => $advance['advance_date'], 'posting_date' => $advance['advance_date'],
+            'transaction_type' => 'card_user', 'payment_type' => 'cash_advance', 'status' => 'active',
+            'amount' => $total, 'currency' => 'PHP', 'reference_number' => $advance['reference_number'],
+            'notes' => 'Cash advance ' . $advance['reference_number'] . ($advance['channel'] ? ' (' . $advance['channel'] . ')' : ''),
+            'created_by' => $user['id'], 'updated_by' => $user['id'],
+        ]);
+        notify_borrower($wanted, 'cash_advance', 'Cash advance: ' . format_money($total),
+            'A cash advance of ' . format_money($total) . ' (' . format_date($advance['advance_date']) . ') was recorded for you. See it under Card Purchases for when to repay it.',
+            'borrowed_purchase', $id);
+
+        return 'The borrower now owes ' . format_money($total) . ' on this cash advance.';
+    }
+
+    $used = cash_advance_share_repayments($share['id']);
+    if ($wanted === null) {
+        if ($used > 0) {
+            throw new DomainException(borrower_name($share) . ' already reported or paid repayments on this cash advance, so it stays theirs. Reject or cancel those repayments first.');
+        }
+        db_update('transactions', ['status' => 'cancelled', 'updated_by' => $user['id']], $share['id']);
+        if ($share['plan_id']) {
+            db_update('installment_plans', ['status' => 'cancelled'], $share['plan_id']);
+        }
+        notify_borrower($share['borrower_id'], 'cash_advance', 'Cash advance removed',
+            'The cash advance of ' . format_money($share['amount']) . ' (' . format_date($share['transaction_date']) . ') is no longer recorded for you.', 'borrowed_purchase', $share['id']);
+
+        return 'The cash advance is no longer assigned to ' . borrower_name($share) . '.';
+    }
+
+    $changes = [];
+    if ($wanted !== $share['borrower_id']) {
+        if ($used > 0) {
+            throw new DomainException(borrower_name($share) . ' already reported or paid repayments on this cash advance; the borrower cannot be changed.');
+        }
+        $changes['borrower_id'] = $wanted;
+    }
+    if ($total !== number_format((float) $share['amount'], 2, '.', '') || $advance['advance_date'] !== $share['transaction_date']) {
+        if ($share['plan_id']) {
+            throw new DomainException('This cash advance is paid in installments; change the amounts on its installment plan instead.');
+        }
+        $changes += ['amount' => $total, 'transaction_date' => $advance['advance_date'], 'posting_date' => $advance['advance_date']];
+    }
+    if (!$changes) {
+        return '';
+    }
+    db_update('transactions', $changes + ['updated_by' => $user['id']], $share['id']);
+    if (isset($changes['borrower_id'])) {
+        notify_borrower($share['borrower_id'], 'cash_advance', 'Cash advance removed',
+            'The cash advance of ' . format_money($share['amount']) . ' is no longer recorded for you.', 'borrowed_purchase', $share['id']);
+    }
+    notify_borrower($wanted, 'cash_advance', 'Cash advance ' . (isset($changes['borrower_id']) ? 'recorded' : 'updated') . ': ' . format_money($total),
+        'Your cash advance of ' . format_money($total) . ' (' . format_date($advance['advance_date']) . ') was ' . (isset($changes['borrower_id']) ? 'recorded for you' : 'updated') . '.',
+        'borrowed_purchase', $share['id']);
+
+    return 'The borrower\'s cash advance was updated.';
+}
+
+/** Fields of "Convert to installment". */
+function cash_advance_installment_fields(): array
+{
+    return [
+        'months'         => ['label' => 'Number of monthly installments', 'type' => 'int', 'min' => 1, 'max' => 60, 'required' => true],
+        'monthly_rate'   => ['label' => 'Interest per month (%)', 'type' => 'decimal', 'scale' => 4, 'digits' => 8, 'min' => 0, 'default' => '0',
+                             'help' => 'Add-on interest: amount × rate × months.'],
+        'fee'            => ['label' => 'Fee', 'type' => 'decimal', 'min' => 0, 'default' => '0.00', 'help' => 'One-time fee added to the installments (optional).'],
+        'first_due_date' => ['label' => 'First installment due', 'type' => 'date', 'required' => true],
+    ];
+}
+
+/**
+ * Convert the borrower's cash advance into monthly installments: an
+ * installment plan on its transaction (no obligation). Returns the plan id.
+ */
+function cash_advance_convert(array $advance, array $data, array $user): string
+{
+    require_once APP_ROOT . '/pages/installment_plans/plan_functions.php';
+
+    return card_usage_apply([$advance['credit_card_id']], function () use ($advance, $data, $user) {
+        db_value('SELECT id FROM cash_advances WHERE id = :id FOR UPDATE', [':id' => $advance['id']]);
+        $share = cash_advance_direct_share($advance);
+        if (!$share || $advance['status'] !== 'active') {
+            throw new DomainException('Only an active cash advance with a borrower can be converted.');
+        }
+        if ($share['plan_id']) {
+            throw new DomainException('This cash advance is already paid in installments.');
+        }
+        if (cash_advance_share_repayments($share['id']) > 0) {
+            throw new DomainException('Repayments were already reported or recorded on this cash advance; convert it before any repayment.');
+        }
+        // Same calculation as a card purchase's installment plan (add-on monthly interest, fee spread).
+        $amount = (float) $share['amount'];
+        $months = (int) $data['months'];
+        $fee = (float) ($data['fee'] ?? 0);
+        $terms = [
+            'principal' => number_format($amount, 2, '.', ''), 'months' => $months, 'interest_method' => 'add_on_monthly',
+            'interest_rate' => number_format((float) ($data['monthly_rate'] ?? 0), 4, '.', ''), 'interest_amount' => null,
+            'fee_type' => $fee > 0 ? 'fixed' : 'none', 'fee_value' => $fee > 0 ? number_format($fee, 2, '.', '') : '', 'fee_billing' => 'spread',
+            'first_due_date' => $data['first_due_date'],
+        ];
+        if ($problems = installment_terms_errors($terms)) {
+            throw new DomainException(reset($problems));
+        }
+        $planId = installment_plan_create(['id' => $share['id'], 'transaction_id' => $share['id'], 'transaction_date' => $share['transaction_date']], $terms, null);
+        $t = db_row('SELECT installment_amount AS monthly, total_repayment AS total FROM installment_plans WHERE id = :id', [':id' => $planId]);
+        notify_borrower($share['borrower_id'], 'cash_advance', 'Cash advance in installments',
+            'Your cash advance of ' . format_money($amount) . ' is now ' . $months . ' monthly installment(s) of ' . format_money($t['monthly'])
+            . ' (total ' . format_money($t['total']) . ', first due ' . format_date($data['first_due_date']) . ').', 'borrowed_purchase', $share['id']);
+
+        return $planId;
+    });
 }
 
 function cash_advance_give_fields(array $advance, float $remaining): array
