@@ -1389,6 +1389,12 @@ The repayment history and the "Repayment to confirm" modal show what each repaym
 
 On upgrade, the paid/remaining amounts of every purchase penalty are re-split once by this rule. Repayments confirmed before this change had no saved choice, so they now count toward the installments first. Penalties they used to cover become unpaid again; the owner can waive them in the purchase's Penalties panel.
 
+## Late charges and finance charges (`includes/late_charges.php`)
+
+- **Borrower portal → Late Charges** (`portal/penalties.php`) lists the late charges on the borrower's obligations **and card purchases**: amount, paid, to pay, and status (unpaid / paid / waived). The top boxes use the same totals as My Account, purchases included. Below is **Finance charges and bank fees**: the interest and fees recorded on the borrower's items (a purchase's installment plan interest and bank fee, an obligation's agreed interest and fees). These are already part of the installments, not extra.
+- **Owner → Borrowers → Late & Finance Charges** (`pages/late_charges/index.php`, new) lists the same for all your borrowers, with a borrower filter. It also shows your cards' **bank charges** (from Bank Charges). Bank charges are not linked to a borrower in the records, so borrowers don't see them.
+- **What it paid** (`pages/transactions/repayment_parts.php`, on a purchase's repayment history): the card owner can record how a repayment was split, for example ₱0.50 late charges + the rest on Installment 1. This is for repayments saved before borrowers' choices were kept. The split is logged and the borrower is notified. Whatever is not split pays the installments oldest first.
+
 ## Agreement terms come from the records (`pages/agreements/agreement_functions.php`)
 
 In Add/Edit agreement, choosing a **Transaction** or an **Obligation** fills the Terms section with what is already recorded for it. Nothing is recalculated:

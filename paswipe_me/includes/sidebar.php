@@ -33,6 +33,7 @@ $navigation = [
             ['key' => 'borrowers',         'label' => 'Borrowers',         'icon' => 'users',     'path' => 'pages/borrowers/index.php'],
             ['key' => 'obligations',       'label' => 'Obligations',       'icon' => 'file-text', 'path' => 'pages/obligations/index.php'],
             ['key' => 'borrower_payments', 'label' => 'Borrower Payments', 'icon' => 'receipt',   'path' => 'pages/borrower_payments/index.php'],
+            ['key' => 'late_charges',      'label' => 'Late & Finance Charges', 'icon' => 'alert', 'path' => 'pages/late_charges/index.php'],
             ['key' => 'staff_receive',     'label' => 'Receive Payment',   'icon' => 'wallet',    'path' => 'pages/staff/receive.php'],
             ['key' => 'staff_receipts',    'label' => 'Receipts',          'icon' => 'file-text', 'path' => 'pages/staff/receipts.php'],
         ],

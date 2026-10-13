@@ -210,12 +210,18 @@ require APP_ROOT . '/includes/header.php';
             <?php if ($l['mode'] === 'transaction'): ?>
                 <h4 class="form-section">Repayments</h4>
                 <?= borrowed_render_repayments($repayments, static function ($r) use ($related, $id, $canManage) {
-                    if (!$canManage || !in_array($r['status'], BORROWED_REPORTED_STATUSES, true)) {
+                    if (!$canManage || !in_array($r['status'], array_merge(['approved'], BORROWED_REPORTED_STATUSES), true)) {
                         return '';
+                    }
+                    // What it paid: late charges / which installment (the borrower's split).
+                    $split = '<a data-modal-form class="btn btn--sm btn--outline" href="' . e(url('pages/transactions/repayment_parts.php', ['id' => $id, 'payment_id' => $r['id']])) . '">'
+                        . icon('edit') . ' <span>What it paid</span></a> ';
+                    if ($r['status'] === 'approved') {
+                        return $split;
                     }
                     $url = url('pages/transactions/repayment.php');
 
-                    return post_button($url, ['id' => $id, 'action' => 'confirm', 'payment_id' => $r['id']], 'Confirm', 'check', 'btn btn--sm btn--primary',
+                    return $split . post_button($url, ['id' => $id, 'action' => 'confirm', 'payment_id' => $r['id']], 'Confirm', 'check', 'btn btn--sm btn--primary',
                             'Confirm that you received ' . format_money($r['amount']) . '? It is then taken off what the borrower owes.', false, 'Confirm repayment?')
                         . '<form method="post" action="' . e($url) . '" class="inline-form">' . csrf_field()
                         . '<input type="hidden" name="id" value="' . e($id) . '"><input type="hidden" name="action" value="reject"><input type="hidden" name="payment_id" value="' . e($r['id']) . '">'
