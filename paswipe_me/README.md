@@ -1377,6 +1377,15 @@ also has the same **What is this payment for?** table.
 
 **When saving fails.** The payment, its items and the proof are saved in one database transaction, so a failure saves nothing. The form now says which part failed: "The payment was not saved: the proof file could not be recorded", or the usual message for the payment itself. It also gives the database error number. The database's own message is added when the browser runs on the server itself (XAMPP on localhost) or when `APP_DEBUG` is on (`db_error_detail()` in `includes/db_helpers.php`). From another device (a phone on the Wi-Fi) only the number is shown. The full text is always in the PHP error log (XAMPP for macOS: `/Applications/XAMPP/xamppfiles/logs/php_error_log`), on the lines starting with `[PA-KASKAS] Database write failed:` and `[PA-KASKAS] Saving the payment proof failed:`.
 
+## Agreement terms come from the records (`pages/agreements/agreement_functions.php`)
+
+In Add/Edit agreement, choosing a **Transaction** or an **Obligation** fills the Terms section with what is already recorded for it. Nothing is recalculated:
+
+- **Obligation:** original amount, agreed charges (agreed interest + agreed fees), and its schedule. The schedule is the installment plan of its purchase, or its own monthly schedule. It gives the installment amount (first month), the number of installments and the payment terms text (for example "11 monthly installments of ₱6,316.58 and a last one of ₱6,316.62 (Dec 16, 2025 to Nov 16, 2026). Total to pay: ₱75,799.00.").
+- **Transaction:** the obligation that covers it, which is also selected when there is exactly one. Otherwise its installment plan (principal, installment amount, count, interest + fees, the schedule's dates). Otherwise one payment of its amount.
+
+You can still change any value. Terms left empty when saving are filled in the same way on the server (`agreement_validate`). The same terms are used when an agreement is started from an obligation (`create.php?obligation_id=`).
+
 ## Reset test data (System → Reset Test Data, `includes/data_reset.php`)
 
 Clears **your own** test financial records so you can record from zero, and keeps your master data.

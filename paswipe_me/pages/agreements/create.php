@@ -12,10 +12,13 @@ $fields = agreement_fields();
 $preset = [];
 $obligationId = input_string($_GET, 'obligation_id');
 if (is_valid_uuid($obligationId)) {
-    $o = db_row('SELECT borrower_id, transaction_id, original_amount, agreed_interest + agreed_fees AS charges FROM borrower_obligations o WHERE id = :id AND ' . owner_scope('borrower_obligations', 'o'), [':id' => $obligationId]);
+    $o = db_row('SELECT * FROM borrower_obligations o WHERE id = :id AND ' . owner_scope('borrower_obligations', 'o'), [':id' => $obligationId]);
     if ($o) {
+        // The terms recorded for the obligation, as they are.
+        $terms = agreement_terms_obligation($o);
         $preset = ['obligation_id' => $obligationId, 'borrower_id' => $o['borrower_id'], 'transaction_id' => $o['transaction_id'],
-                   'original_amount' => $o['original_amount'], 'agreed_charges' => $o['charges']];
+                   'original_amount' => $terms['original'], 'installment_amount' => $terms['installment'], 'installment_count' => $terms['count'],
+                   'agreed_charges' => $terms['charges'], 'payment_terms' => $terms['terms']];
     }
 }
 $borrowerId = input_string($_GET, 'borrower_id');
