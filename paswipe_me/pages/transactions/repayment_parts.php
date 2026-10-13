@@ -40,6 +40,7 @@ foreach (db_all('SELECT part, installment_schedule_id, amount FROM borrower_paym
 }
 $values = array_map(static fn ($v) => number_format($v, 2, '.', ''), $current);
 $error = null;
+$errorKey = null;   // the row whose amount is wrong (highlighted)
 
 if (is_post()) {
     require_csrf($back);
@@ -54,18 +55,20 @@ if (is_post()) {
         }
         if (!preg_match('/^\d{1,13}(\.\d{1,2})?$/', $raw)) {
             $error = 'Enter a valid amount for ' . $t['label'] . '.';
+            $errorKey = $key;
             break;
         }
         $amount = round((float) $raw, 2);
         if ($amount > $t['owes'] + 0.004) {
-            $error = $t['label'] . ' is only ' . format_money($t['owes']) . '.';
+            $error = $t['label'] . ' is only ' . format_money($t['owes']) . ' - enter at most that.';
+            $errorKey = $key;
             break;
         }
         $parts[] = ['part' => $t['part'], 'installment_schedule_id' => $t['schedule_id'], 'amount' => $amount, 'label' => $t['label']];
         $sum += $amount;
     }
     if ($error === null && $sum > (float) $payment['amount'] + 0.004) {
-        $error = 'You split ' . format_money($sum) . ', more than the ' . format_money($payment['amount']) . ' repayment.';
+        $error = 'You split ' . format_money($sum) . ', more than the ' . format_money($payment['amount']) . ' repayment. Lower some amounts.';
     }
     if ($error === null) {
         $before = borrowed_parts_label($payment['id']);
@@ -86,6 +89,7 @@ if (is_post()) {
 }
 
 $pageTitle = 'What it paid';
+$pageScripts = ['assets/js/repayment-parts.js'];
 $activeNav = 'transactions';
 require APP_ROOT . '/includes/header.php';
 ?>
@@ -108,19 +112,22 @@ require APP_ROOT . '/includes/header.php';
     <?= csrf_field() ?>
     <input type="hidden" name="id" value="<?= e($txn['id']) ?>">
     <input type="hidden" name="payment_id" value="<?= e($payment['id']) ?>">
-    <?php if ($error !== null): ?><div class="alert alert--error" role="alert"><?= e($error) ?></div><?php endif; ?>
+    <?php if ($error !== null): ?><div class="alert alert--error" role="alert"><?= icon('alert') ?><span>Not saved: <?= e($error) ?></span></div><?php endif; ?>
     <p class="field-help">Enter the amounts the borrower chose. Whatever is left of the <?= e(format_money($payment['amount'])) ?> pays the installments oldest first.</p>
-    <div class="table-wrap"><table class="table table--compact">
+    <div class="table-wrap"><table class="table table--compact" data-split data-split-total="<?= e(number_format((float) $payment['amount'], 2, '.', '')) ?>">
         <thead><tr><th scope="col">Charge</th><th scope="col">Repay by</th><th scope="col" class="num">Amount</th><th scope="col" class="num">This repayment pays</th></tr></thead>
         <tbody>
         <?php foreach ($targets as $key => $t): ?>
             <?php if ($key === 'penalty' && $t['owes'] <= 0.004) { continue; } ?>
             <tr><td><?= e($t['label']) ?></td><td><?= isset($t['due']) && $t['due'] ? e(format_date($t['due'])) : '—' ?></td>
                 <td class="num"><?= e(format_money($t['owes'])) ?></td>
-                <td class="num"><input type="text" inputmode="decimal" class="input-num" data-scale="2" name="part[<?= e($key) ?>]" value="<?= e($values[$key] ?? '') ?>"
-                       aria-label="<?= e($t['label']) ?> amount" placeholder="0.00" style="max-width: 140px"></td></tr>
+                <td class="num"><input type="text" inputmode="decimal" class="input-num<?= $errorKey === $key ? ' is-invalid' : '' ?>" data-scale="2" name="part[<?= e($key) ?>]" value="<?= e($values[$key] ?? '') ?>"
+                       data-owes="<?= e(number_format((float) $t['owes'], 2, '.', '')) ?>" aria-label="<?= e($t['label']) ?> amount" placeholder="0.00" style="max-width: 140px"
+                       <?= $errorKey === $key ? 'aria-invalid="true"' : '' ?>></td></tr>
         <?php endforeach; ?>
         </tbody>
+        <tfoot><tr><td colspan="3">Split <strong data-split-assigned>—</strong> of <?= e(format_money($payment['amount'])) ?> ·
+            <span data-split-rest-label>left for the oldest installments</span> <strong data-split-rest>—</strong></td><td></td></tr></tfoot>
     </table></div>
     <div class="form-actions">
         <a href="<?= e(url($back)) ?>" class="btn btn--outline">Cancel</a>

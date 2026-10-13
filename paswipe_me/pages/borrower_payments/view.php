@@ -86,6 +86,31 @@ require APP_ROOT . '/includes/header.php';
 </section>
 <?php endif; ?>
 
+<?php if ($purchase): ?>
+<?php $parts = borrowed_parts($id); $rest = round((float) $payment['amount'] - array_sum(array_column($parts, 'amount')), 2); ?>
+<section class="panel subpanel">
+    <header class="panel__header"><h3><?= icon('credit-card') ?> Repayment of card purchase <?= e($purchase['transaction_number']) ?></h3>
+        <?php if (in_array($payment['status'], ['approved', 'submitted', 'under_review'], true)): ?>
+            <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/transactions/repayment_parts.php', ['id' => $purchase['id'], 'payment_id' => $id])) ?>"><?= icon('edit') ?> <span>What it paid</span></a>
+        <?php endif; ?></header>
+    <p><a href="<?= e(url('pages/transactions/view.php', ['id' => $purchase['id']])) ?>"><?= e($purchase['merchant_name'] ?: $purchase['transaction_number']) ?></a></p>
+    <div class="table-wrap">
+        <table class="table table--cards table--compact">
+            <thead><tr><th scope="col">The borrower chose to pay</th><th scope="col" class="num">Amount</th></tr></thead>
+            <tbody>
+            <?php foreach ($parts as $part): ?>
+                <tr><td data-label="Charge"><?= e($part['label']) ?></td><td data-label="Amount" class="num"><?= e(format_money($part['amount'])) ?></td></tr>
+            <?php endforeach; ?>
+            <?php if ($rest > 0.004): ?>
+                <tr><td data-label="Charge" class="text-muted"><?= $parts ? 'The rest — oldest unpaid installment first' : 'No row chosen — oldest unpaid installment first' ?></td><td data-label="Amount" class="num"><?= e(format_money($rest)) ?></td></tr>
+            <?php endif; ?>
+            </tbody>
+        </table>
+    </div>
+    <p class="field-help">The borrower chooses where the payment goes. Once confirmed it is applied to the purchase exactly as listed; there is nothing to allocate by hand.</p>
+</section>
+<?php endif; ?>
+
 <div class="detail-layout">
     <section class="panel">
         <header class="panel__header"><h3>Payment details</h3></header>
@@ -156,30 +181,7 @@ require APP_ROOT . '/includes/header.php';
     </div>
 </div>
 
-<?php if ($purchase): ?>
-<?php $parts = borrowed_parts($id); $rest = round((float) $payment['amount'] - array_sum(array_column($parts, 'amount')), 2); ?>
-<section class="panel subpanel">
-    <header class="panel__header"><h3><?= icon('credit-card') ?> Repayment of card purchase <?= e($purchase['transaction_number']) ?></h3>
-        <?php if (in_array($payment['status'], ['approved', 'submitted', 'under_review'], true)): ?>
-            <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/transactions/repayment_parts.php', ['id' => $purchase['id'], 'payment_id' => $id])) ?>"><?= icon('edit') ?> <span>What it paid</span></a>
-        <?php endif; ?></header>
-    <p><a href="<?= e(url('pages/transactions/view.php', ['id' => $purchase['id']])) ?>"><?= e($purchase['merchant_name'] ?: $purchase['transaction_number']) ?></a></p>
-    <div class="table-wrap">
-        <table class="table table--cards table--compact">
-            <thead><tr><th scope="col">The borrower chose to pay</th><th scope="col" class="num">Amount</th></tr></thead>
-            <tbody>
-            <?php foreach ($parts as $part): ?>
-                <tr><td data-label="Charge"><?= e($part['label']) ?></td><td data-label="Amount" class="num"><?= e(format_money($part['amount'])) ?></td></tr>
-            <?php endforeach; ?>
-            <?php if ($rest > 0.004): ?>
-                <tr><td data-label="Charge" class="text-muted"><?= $parts ? 'The rest — oldest unpaid installment first' : 'No row chosen — oldest unpaid installment first' ?></td><td data-label="Amount" class="num"><?= e(format_money($rest)) ?></td></tr>
-            <?php endif; ?>
-            </tbody>
-        </table>
-    </div>
-    <p class="field-help">The borrower chooses where the payment goes. Once confirmed it is applied to the purchase exactly as listed; there is nothing to allocate by hand.</p>
-</section>
-<?php else: ?>
+<?php if (!$purchase): ?>
 <section class="panel subpanel">
     <header class="panel__header"><h3><?= icon('check') ?> What the borrower wants to pay</h3></header>
     <?php if (!$selections): ?>
