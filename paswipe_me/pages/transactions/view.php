@@ -202,20 +202,28 @@ require APP_ROOT . '/includes/header.php';
                         return $split;
                     }
                     $url = url('pages/transactions/repayment.php');
+                    $panel = 'reject-repayment-' . $r['id'];
 
-                    return $split . post_button($url, ['id' => $id, 'action' => 'confirm', 'payment_id' => $r['id']], 'Confirm', 'check', 'btn btn--sm btn--primary',
+                    // Confirm / Reject side by side; the reason for rejecting is asked in a small modal.
+                    return '<div class="row-actions row-actions--buttons">' . $split
+                        . post_button($url, ['id' => $id, 'action' => 'confirm', 'payment_id' => $r['id']], 'Confirm', 'check', 'btn btn--sm btn--primary',
                             'Confirm that you received ' . format_money($r['amount']) . '? It is then taken off what the borrower owes.', false, 'Confirm repayment?')
-                        . '<form method="post" action="' . e($url) . '" class="inline-form">' . csrf_field()
+                        . '<button type="button" class="btn btn--sm btn--outline" data-modal-panel="' . e($panel) . '" data-modal-subtitle="'
+                        . e($r['payment_number'] . ' · ' . format_money($r['amount'])) . '">' . icon('x') . ' <span>Reject</span></button></div>'
+                        . '<form method="post" action="' . e($url) . '" class="inline-panel" id="' . e($panel) . '" hidden novalidate data-validate>' . csrf_field()
                         . '<input type="hidden" name="id" value="' . e($id) . '"><input type="hidden" name="action" value="reject"><input type="hidden" name="payment_id" value="' . e($r['id']) . '">'
-                        . '<input type="text" name="reason" maxlength="1000" placeholder="Reason" aria-label="Reason for rejecting" required> '
-                        . '<button type="submit" class="btn btn--sm btn--outline">' . icon('x') . ' <span>Reject</span></button></form>';
+                        . '<div class="form-group"><label for="' . e($panel) . '-reason">Reason for rejecting <span class="required" aria-hidden="true">*</span></label>'
+                        . '<textarea id="' . e($panel) . '-reason" name="reason" rows="3" maxlength="1000" required placeholder="e.g. The money did not arrive in my account"></textarea>'
+                        . '<p class="field-help">The repayment stays in the history as rejected and the borrower is told why.</p></div>'
+                        . '<div class="inline-panel__actions"><button type="button" class="btn btn--outline" data-toggle-panel="' . e($panel) . '">Cancel</button>'
+                        . '<button type="submit" class="btn btn--danger">' . icon('x') . ' <span class="btn__label">Reject repayment</span></button></div></form>';
                 }) ?>
                 <?php if ($l['outstanding'] > 0.004 && !$isLocked && !$canManage): ?>
                     <p class="no-print"><a class="btn btn--sm btn--primary" href="<?= e(url('pages/staff/receive.php', ['borrower_id' => $txn['borrower_id']])) ?>"><?= icon('wallet') ?> <span>Receive a payment</span></a></p>
                 <?php elseif ($l['outstanding'] > 0.004 && !$isLocked): ?>
                     <details class="no-print">
                         <summary>Record a repayment you received</summary>
-                        <form method="post" action="<?= e(url('pages/transactions/repayment.php')) ?>" class="status-form">
+                        <form method="post" action="<?= e(url('pages/transactions/repayment.php')) ?>" class="repay-record">
                             <?= csrf_field() ?>
                             <input type="hidden" name="id" value="<?= e($id) ?>">
                             <input type="hidden" name="action" value="record">
@@ -225,7 +233,9 @@ require APP_ROOT . '/includes/header.php';
                                 'payment_date'     => ['label' => 'Date received', 'type' => 'date', 'required' => true],
                                 'reference_number' => ['label' => 'Reference', 'type' => 'text', 'max' => 150],
                             ], ['payment_date' => date('Y-m-d')], []) ?>
-                            <button type="submit" class="btn btn--primary" data-loading-text="Saving…"><?= icon('check') ?> <span class="btn__label">Record repayment</span></button>
+                            <div class="inline-panel__actions">
+                                <button type="submit" class="btn btn--primary" data-loading-text="Saving…"><?= icon('check') ?> <span class="btn__label">Record repayment</span></button>
+                            </div>
                         </form>
                     </details>
                 <?php endif; ?>

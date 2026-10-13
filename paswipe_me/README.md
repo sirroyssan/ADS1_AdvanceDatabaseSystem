@@ -1377,6 +1377,10 @@ also has the same **What is this payment for?** table.
 
 **When saving fails.** The payment, its items and the proof are saved in one database transaction, so a failure saves nothing. The form now says which part failed: "The payment was not saved: the proof file could not be recorded", or the usual message for the payment itself. It also gives the database error number. The database's own message is added when the browser runs on the server itself (XAMPP on localhost) or when `APP_DEBUG` is on (`db_error_detail()` in `includes/db_helpers.php`). From another device (a phone on the Wi-Fi) only the number is shown. The full text is always in the PHP error log (XAMPP for macOS: `/Applications/XAMPP/xamppfiles/logs/php_error_log`), on the lines starting with `[PA-KASKAS] Database write failed:` and `[PA-KASKAS] Saving the payment proof failed:`.
 
+## Repayment rows: tidy buttons (`pages/transactions/view.php`)
+
+A reported repayment of a purchase or cash advance shows **What it paid · Confirm · Reject** on one line on the right. The reason for rejecting is asked in a small modal on top (required; the borrower is told why), not in an inline text box. *Record a repayment you received* lays its fields out in a grid with the button on the right.
+
 ## No full-width buttons (`assets/css/dashboard.css`)
 
 Action buttons inside records and modals (Save decision, Approve, Confirm received, Reject, Delete …) keep their normal size and sit on the right in every module. One rule, `.content .btn--block, .modal-form__body .btn--block`, does it. Only the sign-in and register buttons stay full width.

@@ -2886,3 +2886,25 @@ html.has-modal-form {
     align-items: center;
     margin-top: 8px;
 }
+
+/* Repayment rows (purchase / cash advance): What it paid · Confirm · Reject on one tidy line;
+   the reason for rejecting is asked in a small modal. */
+.row-actions--buttons {
+    display: flex;
+    flex-wrap: nowrap;
+    white-space: nowrap;
+    gap: 6px;
+    justify-content: flex-end;
+}
+.row-actions--buttons .inline-form { margin: 0; }
+td.actions:has(.row-actions--buttons) { width: 1%; }   /* the buttons decide the column's width */
+
+/* "Record a repayment you received": fields in a grid, the button on the right. */
+.repay-record {
+    margin-top: 12px;
+}
+.repay-record .inline-panel__actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 4px;
+}
