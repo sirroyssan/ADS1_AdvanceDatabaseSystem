@@ -225,6 +225,32 @@ function cash_advance_sync_borrower(array $advance, ?string $borrowerId, array $
     return 'The borrower\'s cash advance was updated.';
 }
 
+/**
+ * Why the cash advance cannot be converted to installments, or null when it can.
+ * Never once it is paid: fully repaid, or any repayment reported or recorded.
+ */
+function cash_advance_convert_block(array $advance, ?array $share): ?string
+{
+    if (!$share) {
+        return 'Set a borrower on this cash advance first (Edit → Borrower).';
+    }
+    if ($share['plan_id']) {
+        return 'This cash advance is already paid in installments.';
+    }
+    $ledger = (borrowed_owner_purchases(null, $share['id'])[0] ?? [])['ledger'] ?? null;
+    if ($advance['status'] === 'completed' || ($ledger && ($ledger['status'] === 'repaid' || $ledger['outstanding'] <= 0.004))) {
+        return 'This cash advance is already paid, so it cannot be converted to installments.';
+    }
+    if ($advance['status'] !== 'active') {
+        return 'Only an active cash advance can be converted to installments.';
+    }
+    if (cash_advance_share_repayments($share['id']) > 0) {
+        return 'Repayments were already reported or recorded on this cash advance, so it cannot be converted to installments (convert only before any repayment).';
+    }
+
+    return null;
+}
+
 /** Fields of "Convert to installment". */
 function cash_advance_installment_fields(): array
 {
@@ -248,14 +274,9 @@ function cash_advance_convert(array $advance, array $data, array $user): string
     return card_usage_apply([$advance['credit_card_id']], function () use ($advance, $data, $user) {
         db_value('SELECT id FROM cash_advances WHERE id = :id FOR UPDATE', [':id' => $advance['id']]);
         $share = cash_advance_direct_share($advance);
-        if (!$share || $advance['status'] !== 'active') {
-            throw new DomainException('Only an active cash advance with a borrower can be converted.');
-        }
-        if ($share['plan_id']) {
-            throw new DomainException('This cash advance is already paid in installments.');
-        }
-        if (cash_advance_share_repayments($share['id']) > 0) {
-            throw new DomainException('Repayments were already reported or recorded on this cash advance; convert it before any repayment.');
+        $fresh = db_row('SELECT * FROM cash_advances WHERE id = :id', [':id' => $advance['id']]);
+        if ($block = cash_advance_convert_block($fresh, $share)) {
+            throw new DomainException($block);   // never once paid (checked again under the lock)
         }
         // Same calculation as a card purchase's installment plan (add-on monthly interest, fee spread).
         $amount = (float) $share['amount'];

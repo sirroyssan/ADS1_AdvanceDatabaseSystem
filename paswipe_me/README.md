@@ -1412,7 +1412,7 @@ Balance figures → Card purchases → **Recent obligations** → **Recent payme
 - **Convert to installment** (`installment.php`, on the cash advance page): number of months, interest per month (%) and an optional fee.
   - It creates an installment plan on the borrower's transaction, with the same calculation as a purchase's plan (add-on monthly, `installment_plan_create`). No obligation is created.
   - The plan is listed in **Installment Plans**, and each installment is due on the card's due date of its month.
-  - It is allowed only before any repayment. Afterwards the amounts are changed on the plan.
+  - It is never allowed once the cash advance is paid (`cash_advance_convert_block()`): fully repaid, marked completed, or any repayment reported or recorded. The button is hidden and the page gives the reason. Opening the form directly, or a second save, is refused again on the server. After converting, amounts are changed on the plan.
 - **Not a transaction:** the borrower's side is an internal record (`cash_share_sql()` in `includes/borrowed.php`).
   - It is left out of the Transactions list, the Transactions report, the dashboard counts and recent list, the card page, staff activity, and the Installment Plans transaction picker.
   - Wherever it shows (borrower page, portal, payment form, late charges, agreement picker) it reads **"Cash advance CA-…"**.

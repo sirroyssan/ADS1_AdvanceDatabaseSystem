@@ -14,8 +14,8 @@ $currentUser = require_admin();
 $advance = find_or_redirect(cash_advance_find(request_id()), 'pages/cash_advances/index.php', 'Cash advance');
 $back = 'pages/cash_advances/view.php?id=' . $advance['id'];
 $share = cash_advance_direct_share($advance);
-if (!$share || $share['plan_id'] || $advance['status'] !== 'active') {
-    flash('error', $share && $share['plan_id'] ? 'This cash advance is already paid in installments.' : 'Set a borrower on this active cash advance first (Edit → Borrower).');
+if ($block = cash_advance_convert_block($advance, $share)) {
+    flash('error', $block);
     redirect($back);
 }
 

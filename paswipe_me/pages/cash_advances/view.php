@@ -42,7 +42,8 @@ if ($direct) {
     $purchase = borrowed_owner_purchases(null, $direct['id'])[0] ?? null;
     $directLedger = $purchase['ledger'] ?? null;
 }
-$canConvert = $direct && !$direct['plan_id'] && $advance['status'] === 'active' && cash_advance_share_repayments($direct['id']) === 0;
+$convertBlock = $direct ? cash_advance_convert_block($advance, $direct) : null;
+$canConvert = $direct && $convertBlock === null;
 $billedOn = statement_for_date($advance['credit_card_id'], $advance['advance_date']);
 $shares = array_values(array_filter(cash_advance_shares($advance), static fn ($s) => $s['obligation_id']));
 $given = array_sum(array_column($shares, 'amount'));
@@ -138,6 +139,7 @@ require APP_ROOT . '/includes/header.php';
     ]) ?>
     <p class="field-help">Tracked like a card purchase the borrower repays to you (no obligation): they see it under Card Purchases and pay it from the portal.
         <?= $canConvert ? 'If they cannot pay it at once, convert it to monthly installments with interest.' : '' ?></p>
+    <?php if (!$canConvert && !$direct['plan_id'] && $convertBlock): ?><p class="field-help no-print"><?= icon('info') ?> <?= e($convertBlock) ?></p><?php endif; ?>
 </section>
 <?php else: ?>
 <section class="panel subpanel">
