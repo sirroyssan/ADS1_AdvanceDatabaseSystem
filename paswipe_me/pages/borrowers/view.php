@@ -295,10 +295,9 @@ require APP_ROOT . '/includes/header.php';
 <section class="panel subpanel">
     <header class="panel__header">
         <h3>Recent obligations</h3>
-        <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/obligations/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Add</span></a>
     </header>
     <?php if (!$obligations): ?>
-        <p class="empty-inline">No obligations.</p>
+        <p class="empty-inline">No obligations. They are created automatically from cash loan allocations and cash advances.</p>
     <?php else: ?>
         <div class="table-wrap">
             <table class="table table--compact">

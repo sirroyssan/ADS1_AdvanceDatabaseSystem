@@ -25,6 +25,7 @@ if (input_string($_GET, 'print') === '1') {
 <html lang="en">
 <head>
     <meta charset="utf-8">
+    <?= favicon_tag() ?>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Receipt <?= e($receipt['receipt_number']) ?></title>
     <link rel="stylesheet" href="<?= e(asset('assets/css/receipt.css')) ?>">

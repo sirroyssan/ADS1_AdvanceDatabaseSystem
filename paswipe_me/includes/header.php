@@ -45,6 +45,7 @@ $initials = strtoupper(mb_substr(user_display_name($currentUser), 0, 1));
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <?= favicon_tag() ?>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title><?= e($pageTitle) ?> · <?= e(APP_NAME) ?></title>
     <link rel="stylesheet" href="<?= e(asset('assets/css/base.css')) ?>">

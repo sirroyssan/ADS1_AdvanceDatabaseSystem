@@ -123,6 +123,12 @@ function modal_response(string $location): never
 /**
  * Add the asset's modification time so browsers reload changed CSS/JS.
  */
+/** The app's browser-tab icon (a credit card), for every page's <head>. */
+function favicon_tag(): string
+{
+    return '<link rel="icon" type="image/svg+xml" href="' . e(asset('assets/img/favicon.svg')) . '">';
+}
+
 function asset(string $path): string
 {
     $file = APP_ROOT . '/' . ltrim($path, '/');

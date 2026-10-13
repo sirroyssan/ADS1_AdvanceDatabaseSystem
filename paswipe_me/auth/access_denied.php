@@ -23,6 +23,7 @@ $isBorrower = in_array('borrower', $user['roles'], true);
 <html lang="en">
 <head>
     <meta charset="UTF-8">
+    <?= favicon_tag() ?>
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>Access denied · <?= e(APP_NAME) ?></title>
     <link rel="stylesheet" href="<?= e(asset('assets/css/base.css')) ?>">
