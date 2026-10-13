@@ -5,6 +5,8 @@
 -- The application creates this table automatically on first page load
 -- (borrowed_parts_upgrade() in includes/borrowed.php); this file is the same change
 -- for running by hand. Nothing existing is changed or removed.
+-- If your tables use utf8mb4_general_ci (phpMyAdmin's default), change the
+-- COLLATE at the end to utf8mb4_general_ci so the foreign keys match.
 
 CREATE TABLE IF NOT EXISTS borrower_payment_purchase_parts (
     id CHAR(36) NOT NULL PRIMARY KEY,

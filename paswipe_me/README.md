@@ -1379,7 +1379,7 @@ also has the same **What is this payment for?** table.
 
 ## Card purchase repayments go where the borrower chose (`borrowed_allocate()` in `includes/borrowed.php`)
 
-When paying a card purchase, the borrower ticks rows (Late charges, Installment 1 of 12 …) and types an amount for each. Those choices are now saved with the repayment in the new table `borrower_payment_purchase_parts` (additive schema change, `db/upgrade_purchase_parts.sql`, created automatically on first page load, marker `storage/upgrade_purchase_parts.done`). The portal, the owner's own form and staff "Receive payment" all save them. Once the card owner confirms the repayment, each amount is applied exactly there:
+When paying a card purchase, the borrower ticks rows (Late charges, Installment 1 of 12 …) and types an amount for each. Those choices are now saved with the repayment in the new table `borrower_payment_purchase_parts` (additive schema change, `db/upgrade_purchase_parts.sql`, created automatically on first page load, marker `storage/upgrade_purchase_parts.done`; its key columns copy the character set and collation of `borrower_payments.id`, `transactions.id` and `installment_schedules.id`, so it works whatever collation the database was created with. If the table is ever missing, the pages still open and repayments count as "no choice" until it is created). The portal, the owner's own form and staff "Receive payment" all save them. Once the card owner confirms the repayment, each amount is applied exactly there:
 
 - **Late charges:** the amount typed goes to the late charges, and only that amount.
 - **An installment:** the amount goes to that installment, up to what it still owes.

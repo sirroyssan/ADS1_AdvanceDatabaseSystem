@@ -1091,23 +1091,44 @@ function borrowed_parts_upgrade(): void
     if (marker_exists(PURCHASE_PARTS_MARKER)) {
         return;
     }
-    db()->exec(
-        "CREATE TABLE IF NOT EXISTS borrower_payment_purchase_parts (
-            id CHAR(36) NOT NULL PRIMARY KEY,
-            borrower_payment_id CHAR(36) NOT NULL,
-            transaction_id CHAR(36) NOT NULL,
-            part ENUM('penalty', 'installment', 'purchase') NOT NULL,
-            installment_schedule_id CHAR(36) NULL,
-            amount DECIMAL(15,2) NOT NULL,
-            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
-            KEY idx_purchase_part_payment (borrower_payment_id),
-            KEY idx_purchase_part_txn (transaction_id),
-            CONSTRAINT fk_purchase_part_payment FOREIGN KEY (borrower_payment_id) REFERENCES borrower_payments(id) ON DELETE CASCADE,
-            CONSTRAINT fk_purchase_part_txn FOREIGN KEY (transaction_id) REFERENCES transactions(id),
-            CONSTRAINT fk_purchase_part_schedule FOREIGN KEY (installment_schedule_id) REFERENCES installment_schedules(id) ON DELETE SET NULL,
-            CONSTRAINT chk_purchase_part_amount CHECK (amount > 0)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
-    );
+    if (!borrowed_parts_table_exists()) {
+        // Each key column copies the character set and collation of the column it points
+        // to, so the foreign keys fit whatever collation the database was imported with.
+        $like = static function (string $table): string {
+            $c = db_row(
+                "SELECT CHARACTER_SET_NAME AS cs, COLLATION_NAME AS co FROM information_schema.COLUMNS
+                  WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = :t AND COLUMN_NAME = 'id'",
+                [':t' => $table]
+            );
+
+            return $c && $c['cs'] && $c['co'] ? ' CHARACTER SET ' . $c['cs'] . ' COLLATE ' . $c['co'] : '';
+        };
+        $table = db_row(
+            "SELECT t.ENGINE AS engine, t.TABLE_COLLATION AS co, c.CHARACTER_SET_NAME AS cs
+               FROM information_schema.TABLES t JOIN information_schema.COLLATION_CHARACTER_SET_APPLICABILITY c ON c.COLLATION_NAME = t.TABLE_COLLATION
+              WHERE t.TABLE_SCHEMA = DATABASE() AND t.TABLE_NAME = 'borrower_payments'"
+        );
+        $options = $table ? ' ENGINE=' . $table['engine'] . ' DEFAULT CHARSET=' . $table['cs'] . ' COLLATE=' . $table['co'] : ' ENGINE=InnoDB';
+        $payment = $like('borrower_payments');
+        db()->exec(
+            "CREATE TABLE IF NOT EXISTS borrower_payment_purchase_parts (
+                id CHAR(36)$payment NOT NULL PRIMARY KEY,
+                borrower_payment_id CHAR(36)$payment NOT NULL,
+                transaction_id CHAR(36)" . $like('transactions') . " NOT NULL,
+                part ENUM('penalty', 'installment', 'purchase') NOT NULL,
+                installment_schedule_id CHAR(36)" . $like('installment_schedules') . " NULL,
+                amount DECIMAL(15,2) NOT NULL,
+                created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+                KEY idx_purchase_part_payment (borrower_payment_id),
+                KEY idx_purchase_part_txn (transaction_id),
+                CONSTRAINT fk_purchase_part_payment FOREIGN KEY (borrower_payment_id) REFERENCES borrower_payments(id) ON DELETE CASCADE,
+                CONSTRAINT fk_purchase_part_txn FOREIGN KEY (transaction_id) REFERENCES transactions(id),
+                CONSTRAINT fk_purchase_part_schedule FOREIGN KEY (installment_schedule_id) REFERENCES installment_schedules(id) ON DELETE SET NULL,
+                CONSTRAINT chk_purchase_part_amount CHECK (amount > 0)
+            )$options"
+        );
+        borrowed_parts_table_exists(true);
+    }
     // Late charges are no longer paid before the installments: re-split what was already confirmed.
     foreach (db_all('SELECT DISTINCT transaction_id FROM applied_penalties WHERE transaction_id IS NOT NULL') as $row) {
         borrowed_sync_penalty_payments($row['transaction_id']);
@@ -1115,9 +1136,28 @@ function borrowed_parts_upgrade(): void
     marker_write(PURCHASE_PARTS_MARKER);
 }
 
+/**
+ * Whether the parts table is there. Until it is (the upgrade failed - see the
+ * PHP error log), repayments are read as having no choice, so pages still open.
+ */
+function borrowed_parts_table_exists(bool $recheck = false): bool
+{
+    static $exists = null;
+    if ($exists === null || $recheck) {
+        $exists = (int) db_value(
+            "SELECT COUNT(*) FROM information_schema.TABLES WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'borrower_payment_purchase_parts'"
+        ) > 0;
+    }
+
+    return $exists;
+}
+
 /** Save what a repayment is for: [[part, installment_schedule_id, amount], ...]. Replaces earlier choices. */
 function borrowed_parts_save(string $paymentId, string $transactionId, array $parts): void
 {
+    if (!borrowed_parts_table_exists()) {
+        borrowed_parts_upgrade();   // one more try; a failure stops the save (nothing is half-written)
+    }
     db_exec('DELETE FROM borrower_payment_purchase_parts WHERE borrower_payment_id = :p', [':p' => $paymentId]);
     foreach ($parts as $part) {
         if ((float) $part['amount'] <= 0) {
@@ -1134,6 +1174,9 @@ function borrowed_parts_save(string $paymentId, string $transactionId, array $pa
 /** What a repayment is for, readable: "Late charges ₱0.50 · Installment 1 ₱6,514.50" (empty when not chosen). */
 function borrowed_parts_label(string $paymentId): string
 {
+    if (!borrowed_parts_table_exists()) {
+        return '';
+    }
     $labels = [];
     foreach (db_all(
         'SELECT p.part, p.amount, s.installment_number FROM borrower_payment_purchase_parts p
@@ -1174,7 +1217,11 @@ function borrowed_allocate(string $transactionId, array $rows, float $penalties,
     }
     $penaltyPaid = 0.0;
     $pool = 0.0;
-    $payments = db_all(
+    // Until the table is created, every repayment counts as "no choice".
+    $ready = borrowed_parts_table_exists();
+    $payments = !$ready
+        ? db_all("SELECT id, amount, 0 AS chosen FROM borrower_payments WHERE transaction_id = :t AND status = 'approved' ORDER BY payment_date, submitted_at", [':t' => $transactionId])
+        : db_all(
         "SELECT p.id, p.amount, COALESCE(SUM(pp.amount), 0) AS chosen
            FROM borrower_payments p LEFT JOIN borrower_payment_purchase_parts pp ON pp.borrower_payment_id = p.id
           WHERE p.transaction_id = :t AND p.status = 'approved'
@@ -1182,7 +1229,7 @@ function borrowed_allocate(string $transactionId, array $rows, float $penalties,
         [':t' => $transactionId]
     );
     $parts = [];
-    foreach (db_all(
+    foreach (!$ready ? [] : db_all(
         "SELECT pp.borrower_payment_id, pp.part, pp.installment_schedule_id, pp.amount
            FROM borrower_payment_purchase_parts pp JOIN borrower_payments p ON p.id = pp.borrower_payment_id
           WHERE pp.transaction_id = :t AND p.status = 'approved'",
