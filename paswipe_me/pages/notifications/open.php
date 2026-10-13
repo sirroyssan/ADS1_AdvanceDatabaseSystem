@@ -177,6 +177,7 @@ require APP_ROOT . '/includes/header.php';
             <header class="panel__header"><h3><?= icon('receipt') ?> Repayment <?= e($p['payment_number']) ?> · <?= e(format_money($p['amount'])) ?></h3><?= badge($p['status']) ?></header>
             <?= render_details([
                 'Paid on'   => e(format_date($p['payment_date'])),
+                'For'       => show(borrowed_parts_label($p['id'])),
                 'Method'    => show($p['method_name']),
                 'Reference' => show($p['reference_number']),
                 'Notes'     => show_multiline($p['notes']),

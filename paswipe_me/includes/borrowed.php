@@ -409,15 +409,14 @@ function borrowed_ledger(array $t, ?string $today = null): array
     // A waived part is no longer owed: each penalty counts what is paid plus what is still due.
     $penalties = (float) db_value('SELECT COALESCE(SUM(' . PENALTY_CHARGED_SQL . '), 0) FROM applied_penalties WHERE transaction_id = :t', [':t' => $t['id']]);
 
-    // Confirmed repayments cover penalties first, then the charges oldest first (same order as obligations).
-    $penaltyPaid = min($repaid, $penalties);
-    $left = $repaid - $penaltyPaid;
+    // Confirmed repayments go where the borrower chose (late charges, an installment);
+    // money without a choice fills the installments oldest first (borrowed_allocate).
+    [$rowPaid, $penaltyPaid, $left] = borrowed_allocate($t['id'], $rows, $penalties, $termsMissing ? (float) $t['amount'] : 0.0);
     $overdue = 0.0;
     $nextDue = null;
     $unknown = false;
     foreach ($rows as $i => $r) {
-        $paid = min($left, $r['amount']);
-        $left -= $paid;
+        $paid = $rowPaid[$i];
         $rows[$i]['paid'] = $money($paid);
         $rows[$i]['remaining'] = $money($r['amount'] - $paid);
         $rows[$i]['overdue'] = $rows[$i]['remaining'] > 0.004 && $r['due']['date'] !== null && $r['due']['date'] < $today;
@@ -462,7 +461,7 @@ function borrowed_ledger(array $t, ?string $today = null): array
             $dueMonth += $r['remaining'];
         }
     }
-    $principalPaid = $termsMissing ? $money($repaid - $penaltyPaid) : $money($repaid - $penaltyPaid - max(0, $left));
+    $principalPaid = $money($repaid - $penaltyPaid - max(0, $left));
     $remaining = $money($responsible - $principalPaid);
     $penaltyUnpaid = $money($penalties - $penaltyPaid);
     $outstanding = $money($remaining + $penaltyUnpaid);
@@ -586,7 +585,9 @@ const PENALTY_CHARGED_SQL = 'amount - GREATEST(amount - paid_amount - remaining_
 /** Keep paid / remaining of a purchase's penalties in line with its confirmed repayments (penalties first, waived parts excluded). */
 function borrowed_sync_penalty_payments(string $transactionId): void
 {
-    $repaid = (float) db_value("SELECT COALESCE(SUM(amount), 0) FROM borrower_payments WHERE transaction_id = :t AND status = 'approved'", [':t' => $transactionId]);
+    // What the confirmed repayments put on late charges (by the borrower's choices).
+    $t = db_row('SELECT * FROM transactions WHERE id = :t', [':t' => $transactionId]);
+    $repaid = $t ? borrowed_ledger($t)['penalty_paid'] : 0.0;
     foreach (db_all('SELECT id, amount, paid_amount, remaining_amount, ' . PENALTY_CHARGED_SQL . ' AS charged FROM applied_penalties WHERE transaction_id = :t ORDER BY applied_date, created_at', [':t' => $transactionId]) as $p) {
         $charged = (float) $p['charged'];
         $paid = round(min($repaid, $charged), 2);
@@ -619,12 +620,12 @@ function borrowed_repayments(string $transactionId): array
  * received) - counts at once; otherwise reported by the borrower and counted
  * once the owner confirms it. Returns the payment id.
  */
-function borrowed_record_repayment(array $t, array $data, string $userId, bool $confirmed): string
+function borrowed_record_repayment(array $t, array $data, string $userId, bool $confirmed, array $parts = []): string
 {
     $id = new_uuid();
     $number = generate_reference('PAY', 'borrower_payments', 'payment_number');
     $now = date('Y-m-d H:i:s');
-    db_transaction(static function () use ($id, $number, $now, $t, $data, $userId, $confirmed) {
+    db_transaction(static function () use ($id, $number, $now, $t, $data, $userId, $confirmed, $parts) {
         db_insert('borrower_payments', [
             'id' => $id, 'payment_number' => $number, 'borrower_id' => $t['borrower_id'], 'transaction_id' => $t['id'],
             'payment_date' => $data['payment_date'], 'amount' => $data['amount'], 'reference_number' => $data['reference_number'] ?? null,
@@ -636,6 +637,7 @@ function borrowed_record_repayment(array $t, array $data, string $userId, bool $
             'action' => $confirmed ? 'recorded' : 'submitted',
             'reason' => $confirmed ? 'Repayment received, recorded by the card owner' : 'Repayment reported by the borrower', 'performed_by' => $userId,
         ]);
+        borrowed_parts_save($id, $t['id'], $parts);
     });
     if ($confirmed) {
         borrowed_sync_penalty_payments($t['id']);
@@ -960,6 +962,7 @@ function borrowed_render_repayments(array $repayments, ?callable $actions = null
     foreach ($repayments as $r) {
         $html .= '<tr><td data-label="Date">' . e(format_date($r['payment_date'])) . ' <span class="text-muted">' . e($r['payment_number'])
             . ($r['reference_number'] ? ' · ref ' . e($r['reference_number']) : '') . '</span>'
+            . (($for = borrowed_parts_label($r['id'])) !== '' ? '<br><span class="text-muted">For: ' . e($for) . '</span>' : '')
             . ($r['notes'] ? '<br><span class="text-muted">' . e(excerpt($r['notes'], 80)) . '</span>' : '')
             . ($r['status'] === 'rejected' && $r['rejection_reason'] ? '<br><span class="text-danger">' . e($r['rejection_reason']) . '</span>' : '') . '</td>'
             . '<td data-label="Amount" class="num">' . e(format_money($r['amount'])) . '</td>'
@@ -1073,4 +1076,153 @@ function borrowed_notify_plan(array $before, string $planId, string $note = ''):
     if ($after && $after['borrower_id']) {
         notify_borrower_changes($after['borrower_id'], $after['transaction_number'] . ' installments', $before, $after, PLAN_NOTICE_FIELDS, 'borrowed_purchase', $after['txn_id'], $note);
     }
+}
+
+/* ------------------------------------------------------------------
+ * What each repayment of a purchase is for (approved additive schema change:
+ * table borrower_payment_purchase_parts - see db/upgrade_purchase_parts.sql)
+ * ------------------------------------------------------------------ */
+
+const PURCHASE_PARTS_MARKER = 'storage/upgrade_purchase_parts.done';
+
+/** Create the table on first use (same SQL as db/upgrade_purchase_parts.sql). */
+function borrowed_parts_upgrade(): void
+{
+    if (marker_exists(PURCHASE_PARTS_MARKER)) {
+        return;
+    }
+    db()->exec(
+        "CREATE TABLE IF NOT EXISTS borrower_payment_purchase_parts (
+            id CHAR(36) NOT NULL PRIMARY KEY,
+            borrower_payment_id CHAR(36) NOT NULL,
+            transaction_id CHAR(36) NOT NULL,
+            part ENUM('penalty', 'installment', 'purchase') NOT NULL,
+            installment_schedule_id CHAR(36) NULL,
+            amount DECIMAL(15,2) NOT NULL,
+            created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+            KEY idx_purchase_part_payment (borrower_payment_id),
+            KEY idx_purchase_part_txn (transaction_id),
+            CONSTRAINT fk_purchase_part_payment FOREIGN KEY (borrower_payment_id) REFERENCES borrower_payments(id) ON DELETE CASCADE,
+            CONSTRAINT fk_purchase_part_txn FOREIGN KEY (transaction_id) REFERENCES transactions(id),
+            CONSTRAINT fk_purchase_part_schedule FOREIGN KEY (installment_schedule_id) REFERENCES installment_schedules(id) ON DELETE SET NULL,
+            CONSTRAINT chk_purchase_part_amount CHECK (amount > 0)
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+    );
+    // Late charges are no longer paid before the installments: re-split what was already confirmed.
+    foreach (db_all('SELECT DISTINCT transaction_id FROM applied_penalties WHERE transaction_id IS NOT NULL') as $row) {
+        borrowed_sync_penalty_payments($row['transaction_id']);
+    }
+    marker_write(PURCHASE_PARTS_MARKER);
+}
+
+/** Save what a repayment is for: [[part, installment_schedule_id, amount], ...]. Replaces earlier choices. */
+function borrowed_parts_save(string $paymentId, string $transactionId, array $parts): void
+{
+    db_exec('DELETE FROM borrower_payment_purchase_parts WHERE borrower_payment_id = :p', [':p' => $paymentId]);
+    foreach ($parts as $part) {
+        if ((float) $part['amount'] <= 0) {
+            continue;
+        }
+        db_insert('borrower_payment_purchase_parts', [
+            'id' => new_uuid(), 'borrower_payment_id' => $paymentId, 'transaction_id' => $transactionId,
+            'part' => $part['part'], 'installment_schedule_id' => $part['installment_schedule_id'] ?? null,
+            'amount' => number_format((float) $part['amount'], 2, '.', ''),
+        ]);
+    }
+}
+
+/** What a repayment is for, readable: "Late charges ₱0.50 · Installment 1 ₱6,514.50" (empty when not chosen). */
+function borrowed_parts_label(string $paymentId): string
+{
+    $labels = [];
+    foreach (db_all(
+        'SELECT p.part, p.amount, s.installment_number FROM borrower_payment_purchase_parts p
+           LEFT JOIN installment_schedules s ON s.id = p.installment_schedule_id
+          WHERE p.borrower_payment_id = :p ORDER BY p.part = \'penalty\' DESC, s.installment_number',
+        [':p' => $paymentId]
+    ) as $r) {
+        $labels[] = match ($r['part']) {
+            'penalty' => 'Late charges',
+            'installment' => 'Installment ' . $r['installment_number'],
+            default => 'Purchase',
+        } . ' ' . format_money($r['amount']);
+    }
+
+    return implode(' · ', $labels);
+}
+
+/**
+ * Split the confirmed repayments of a purchase over its charges.
+ *
+ *   - Each amount goes where the borrower chose it: late charges, or one
+ *     installment (capped at what that one still owes).
+ *   - Money without a choice (owner-recorded repayments, older repayments,
+ *     or more than the choice could take) fills the installments oldest
+ *     first, then late charges. It is never put on late charges before the
+ *     installments.
+ * $rows: the ledger's charge rows; $noRows: the amount owed when the plan is
+ * not entered yet (terms missing). Returns [paid per row, penalty paid, unused].
+ */
+function borrowed_allocate(string $transactionId, array $rows, float $penalties, float $noRows = 0.0): array
+{
+    $rowPaid = array_fill(0, count($rows), 0.0);
+    $rowIndex = [];
+    foreach ($rows as $i => $r) {
+        if ($r['schedule_id'] !== null) {
+            $rowIndex[$r['schedule_id']] = $i;
+        }
+    }
+    $penaltyPaid = 0.0;
+    $pool = 0.0;
+    $payments = db_all(
+        "SELECT p.id, p.amount, COALESCE(SUM(pp.amount), 0) AS chosen
+           FROM borrower_payments p LEFT JOIN borrower_payment_purchase_parts pp ON pp.borrower_payment_id = p.id
+          WHERE p.transaction_id = :t AND p.status = 'approved'
+          GROUP BY p.id, p.amount, p.payment_date, p.submitted_at ORDER BY p.payment_date, p.submitted_at",
+        [':t' => $transactionId]
+    );
+    $parts = [];
+    foreach (db_all(
+        "SELECT pp.borrower_payment_id, pp.part, pp.installment_schedule_id, pp.amount
+           FROM borrower_payment_purchase_parts pp JOIN borrower_payments p ON p.id = pp.borrower_payment_id
+          WHERE pp.transaction_id = :t AND p.status = 'approved'",
+        [':t' => $transactionId]
+    ) as $pp) {
+        $parts[$pp['borrower_payment_id']][] = $pp;
+    }
+    foreach ($payments as $p) {
+        $pool += max(0, (float) $p['amount'] - (float) $p['chosen']);
+        foreach ($parts[$p['id']] ?? [] as $pp) {
+            $amount = (float) $pp['amount'];
+            $i = match ($pp['part']) {
+                'installment' => $rowIndex[$pp['installment_schedule_id']] ?? null,
+                'purchase' => $rows ? 0 : null,
+                default => null,
+            };
+            if ($pp['part'] === 'penalty') {
+                $take = max(0, min($amount, $penalties - $penaltyPaid));
+                $penaltyPaid += $take;
+            } elseif ($i !== null) {
+                $take = max(0, min($amount, $rows[$i]['amount'] - $rowPaid[$i]));
+                $rowPaid[$i] += $take;
+            } else {
+                $take = 0.0;
+            }
+            $pool += $amount - $take;
+        }
+    }
+    // Money without a choice: installments oldest first, then late charges.
+    foreach ($rows as $i => $r) {
+        $take = max(0, min($pool, $r['amount'] - $rowPaid[$i]));
+        $rowPaid[$i] += $take;
+        $pool -= $take;
+    }
+    if (!$rows && $noRows > 0) {
+        $pool -= min($pool, $noRows);   // plan not entered yet: it pays the purchase
+    }
+    $take = max(0, min($pool, $penalties - $penaltyPaid));
+    $penaltyPaid += $take;
+    $pool -= $take;
+
+    return [array_map(static fn ($v) => round($v, 2), $rowPaid), round($penaltyPaid, 2), round($pool, 2)];
 }

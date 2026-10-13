@@ -1377,6 +1377,18 @@ also has the same **What is this payment for?** table.
 
 **When saving fails.** The payment, its items and the proof are saved in one database transaction, so a failure saves nothing. The form now says which part failed: "The payment was not saved: the proof file could not be recorded", or the usual message for the payment itself. It also gives the database error number. The database's own message is added when the browser runs on the server itself (XAMPP on localhost) or when `APP_DEBUG` is on (`db_error_detail()` in `includes/db_helpers.php`). From another device (a phone on the Wi-Fi) only the number is shown. The full text is always in the PHP error log (XAMPP for macOS: `/Applications/XAMPP/xamppfiles/logs/php_error_log`), on the lines starting with `[PA-KASKAS] Database write failed:` and `[PA-KASKAS] Saving the payment proof failed:`.
 
+## Card purchase repayments go where the borrower chose (`borrowed_allocate()` in `includes/borrowed.php`)
+
+When paying a card purchase, the borrower ticks rows (Late charges, Installment 1 of 12 …) and types an amount for each. Those choices are now saved with the repayment in the new table `borrower_payment_purchase_parts` (additive schema change, `db/upgrade_purchase_parts.sql`, created automatically on first page load, marker `storage/upgrade_purchase_parts.done`). The portal, the owner's own form and staff "Receive payment" all save them. Once the card owner confirms the repayment, each amount is applied exactly there:
+
+- **Late charges:** the amount typed goes to the late charges, and only that amount.
+- **An installment:** the amount goes to that installment, up to what it still owes.
+- **Money without a choice** fills the installments oldest first, then late charges. That is older repayments, repayments recorded without picking rows, or more than a row could take. Late charges are never paid before the installments automatically any more.
+
+The repayment history and the "Repayment to confirm" modal show what each repayment is for ("For: Late charges ₱0.50 · Installment 1 ₱6,514.50").
+
+On upgrade, the paid/remaining amounts of every purchase penalty are re-split once by this rule. Repayments confirmed before this change had no saved choice, so they now count toward the installments first. Penalties they used to cover become unpaid again; the owner can waive them in the purchase's Penalties panel.
+
 ## Agreement terms come from the records (`pages/agreements/agreement_functions.php`)
 
 In Add/Edit agreement, choosing a **Transaction** or an **Obligation** fills the Terms section with what is already recorded for it. Nothing is recalculated:

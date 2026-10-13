@@ -52,7 +52,8 @@ function receive_validate(array $borrower, array $groups, array $input): array
     $purchases = [];
     $selections = [];
     if (!$errors) {
-        [$purchases, $error] = payment_purchase_choices($input, $groups);
+        [$purchases, $error, $parts] = payment_purchase_choices($input, $groups) + [2 => []];
+        $data['_parts'] = $parts;   // what each purchase repayment is for (not a form field)
         if ($error === null && array_filter($groups, static fn ($g) => $g['kind'] === 'obligation')) {
             [$selections, $error] = payment_selections_from_input($input, $borrower['id'], (float) $data['amount']);
         }
@@ -103,7 +104,7 @@ function receive_save(array $borrower, array $user, array $data, array $purchase
             if (!$p) {
                 throw new DomainException('A card purchase was not found for this borrower.');
             }
-            $paymentIds[] = borrowed_record_repayment($p, ['amount' => number_format($amount, 2, '.', '')] + $common, $user['id'], true);
+            $paymentIds[] = borrowed_record_repayment($p, ['amount' => number_format($amount, 2, '.', '')] + $common, $user['id'], true, $data['_parts'][$txnId] ?? []);
         }
 
         if ($selections) {

@@ -59,7 +59,8 @@ function payment_purchase_groups(string $borrowerId, ?string $onlyTransactionId 
         $rows = [];
         $suggest = [];
         if ($l['penalty_unpaid'] > 0.004) {
-            $rows[] = ['key' => "txn:$id:pen", 'label' => 'Late charges', 'due_date' => null, 'owed' => min($open, $l['penalty_unpaid']), 'overdue' => true];
+            $rows[] = ['key' => "txn:$id:pen", 'label' => 'Late charges', 'due_date' => null, 'owed' => min($open, $l['penalty_unpaid']), 'overdue' => true,
+                       'part' => 'penalty', 'schedule_id' => null];
             $suggest[] = "txn:$id:pen";
         }
         foreach ($l['rows'] as $i => $r) {
@@ -68,13 +69,15 @@ function payment_purchase_groups(string $borrowerId, ?string $onlyTransactionId 
             }
             $key = "txn:$id:$i";
             $rows[] = ['key' => $key, 'label' => $l['installments'] > 0 ? 'Installment ' . ($i + 1) . ' of ' . $l['installments'] : 'This purchase',
-                       'due_date' => $r['due']['date'], 'owed' => min($open, $r['remaining']), 'overdue' => $r['overdue']];
+                       'due_date' => $r['due']['date'], 'owed' => min($open, $r['remaining']), 'overdue' => $r['overdue'],
+                       'part' => $r['schedule_id'] ? 'installment' : 'purchase', 'schedule_id' => $r['schedule_id']];
             if ($r['overdue'] || ($l['current'] !== null && $l['current']['n'] === $i + 1)) {
                 $suggest[] = $key;   // due this period
             }
         }
         if ($l['terms_missing']) {
-            $rows[] = ['key' => "txn:$id:all", 'label' => 'This purchase (installment terms not set yet)', 'due_date' => null, 'owed' => $open, 'overdue' => false];
+            $rows[] = ['key' => "txn:$id:all", 'label' => 'This purchase (installment terms not set yet)', 'due_date' => null, 'owed' => $open, 'overdue' => false,
+                       'part' => null, 'schedule_id' => null];
         }
         $groups[] = [
             'kind' => 'purchase', 'id' => $id, 'title' => $p['merchant_name'] ?: ($p['notes'] ? excerpt($p['notes'], 40) : $p['transaction_number']),
@@ -113,6 +116,7 @@ function payment_obligation_groups(string $borrowerId, ?array $onlyIds = null): 
 function payment_purchase_choices(array $input, array $groups): array
 {
     $byPurchase = [];
+    $parts = [];   // what each purchase repayment is for, as the borrower chose it
     foreach ($groups as $g) {
         if ($g['kind'] !== 'purchase') {
             continue;
@@ -130,6 +134,9 @@ function payment_purchase_choices(array $input, array $groups): array
                 return [[], $g['title'] . ' — ' . $r['label'] . ' only has ' . format_money($r['owed']) . ' to pay.'];
             }
             $sum += round((float) $raw, 2);
+            if (!empty($r['part'])) {
+                $parts[$g['id']][] = ['part' => $r['part'], 'installment_schedule_id' => $r['schedule_id'] ?? null, 'amount' => round((float) $raw, 2)];
+            }
         }
         if ($sum > $g['owed'] + 0.004) {
             return [[], 'Only ' . format_money($g['owed']) . ' is left to pay on ' . $g['title'] . '.'];
@@ -139,7 +146,7 @@ function payment_purchase_choices(array $input, array $groups): array
         }
     }
 
-    return [$byPurchase, null];
+    return [$byPurchase, null, $parts];
 }
 
 /**
@@ -233,9 +240,10 @@ function payment_form_handle(array $ctx): array
         }
     }
     $purchases = [];
+    $purchaseParts = [];
     $selections = [];
     if (!$errors) {
-        [$purchases, $error] = payment_purchase_choices($_POST, $groups);
+        [$purchases, $error, $purchaseParts] = payment_purchase_choices($_POST, $groups) + [2 => []];
         if ($error === null && $hasObligations) {
             [$selections, $error] = payment_selections_from_input($_POST, $borrower['id'], (float) $data['amount']);
         }
@@ -281,7 +289,7 @@ function payment_form_handle(array $ctx): array
 
     $step = 'payment';
     try {
-        $saved = db_transaction(static function () use ($ctx, $borrower, $payment, $data, $purchases, $selections, $rest, $stored, $documentId, &$step) {
+        $saved = db_transaction(static function () use ($ctx, $borrower, $payment, $data, $purchases, $purchaseParts, $selections, $rest, $stored, $documentId, &$step) {
             $user = $ctx['user'];
             $ids = [];
             $common = array_intersect_key($data, array_flip(['payment_method_id', 'payment_date', 'reference_number', 'notes']));
@@ -295,13 +303,15 @@ function payment_form_handle(array $ctx): array
                 db_update('borrower_payments', $update, $payment['id']);
                 if (!$payment['transaction_id']) {
                     payment_selections_save($payment['id'], $selections);
+                } else {
+                    borrowed_parts_save($payment['id'], $payment['transaction_id'], $purchaseParts[$payment['transaction_id']] ?? []);
                 }
                 $ids[] = $payment['id'];
             } else {
                 // Each card purchase gets its own repayment, confirmed by the card owner.
                 foreach ($purchases as $txnId => $amount) {
                     $p = db_row(borrowed_select_sql() . ' WHERE t.id = :t', [':t' => $txnId]);
-                    $ids[] = borrowed_record_repayment($p, ['amount' => number_format($amount, 2, '.', '')] + $common, $user['id'], false);
+                    $ids[] = borrowed_record_repayment($p, ['amount' => number_format($amount, 2, '.', '')] + $common, $user['id'], false, $purchaseParts[$txnId] ?? []);
                 }
                 // The rest: one payment with the obligation choices (also any amount the owner posts).
                 if ($selections || $rest > 0.004) {

@@ -307,6 +307,7 @@ function penalty_run_if_due(): void
         statement_schema_upgrade();
         multiuser_upgrade();
         borrowed_schema_upgrade();
+        borrowed_parts_upgrade();
         installments_schema_upgrade();
         staff_schema_upgrade();
         obligation_rate_upgrade();

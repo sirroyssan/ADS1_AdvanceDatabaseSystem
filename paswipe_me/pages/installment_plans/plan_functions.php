@@ -135,8 +135,9 @@ function plan_correct_amounts(array $plan, array $data): ?string
         $used = (int) db_value(
             'SELECT (SELECT COUNT(*) FROM borrower_payment_allocations WHERE installment_schedule_id = :a)
                   + (SELECT COUNT(*) FROM borrower_payment_selections WHERE installment_schedule_id = :b)
-                  + (SELECT COUNT(*) FROM applied_penalties WHERE installment_schedule_id = :c)',
-            [':a' => $row['id'], ':b' => $row['id'], ':c' => $row['id']]
+                  + (SELECT COUNT(*) FROM applied_penalties WHERE installment_schedule_id = :c)
+                  + (SELECT COUNT(*) FROM borrower_payment_purchase_parts WHERE installment_schedule_id = :d)',
+            [':a' => $row['id'], ':b' => $row['id'], ':c' => $row['id'], ':d' => $row['id']]
         );
         if ($used > 0) {
             return 'Installment #' . $row['installment_number'] . ' has payments or penalties recorded on it, so the plan cannot have fewer than '

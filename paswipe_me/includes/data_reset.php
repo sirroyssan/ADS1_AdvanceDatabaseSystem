@@ -30,7 +30,7 @@ defined('APP_ROOT') or exit('No direct access.');
 /** Delete order: every table comes after the tables that reference it. */
 const DATA_RESET_ORDER = [
     'payment_verification_logs', 'payment_verifications', 'payment_attachments',
-    'borrower_payment_allocations', 'borrower_payment_selections', 'applied_penalties', 'notification_logs', 'notifications',
+    'borrower_payment_allocations', 'borrower_payment_selections', 'borrower_payment_purchase_parts', 'applied_penalties', 'notification_logs', 'notifications',
     'demand_letters', 'agreement_signatories', 'agreement_documents', 'agreements',
     'borrower_payments', 'borrower_obligations',
     'cash_loan_schedules', 'cash_loan_allocations', 'cash_loans',
@@ -124,6 +124,9 @@ function data_reset_scope(string $ownerId): array
     );
     $s['borrower_payment_selections'] = data_reset_ids(
         "SELECT id FROM borrower_payment_selections WHERE borrower_payment_id IN ($p) OR obligation_id IN ($o) OR installment_schedule_id IN ($sch)"
+    );
+    $s['borrower_payment_purchase_parts'] = data_reset_ids(
+        "SELECT id FROM borrower_payment_purchase_parts WHERE borrower_payment_id IN ($p) OR transaction_id IN ($t) OR installment_schedule_id IN ($sch)"
     );
     $s['payment_verifications'] = data_reset_ids("SELECT id FROM payment_verifications WHERE borrower_payment_id IN ($p)");
     $s['payment_verification_logs'] = data_reset_ids("SELECT id FROM payment_verification_logs WHERE borrower_payment_id IN ($p)");
