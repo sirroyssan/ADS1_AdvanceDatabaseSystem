@@ -25,6 +25,7 @@ const PENALTY_BASIS_OPTIONS = [
     'overdue_amount'     => 'Overdue amount',
     'total_amount_due'   => 'Total amount due',
     'original_amount'    => 'Original amount',
+    'soa_amount_due'     => 'SOA total amount due (recorded statement)',
 ];
 const PENALTY_FREQUENCY_OPTIONS = [
     'monthly' => 'Every month while overdue',
@@ -50,7 +51,7 @@ function penalty_rule_fields(?array $current = null): array
         bank_canonical($current['applies_to_issuer'] ?? null)) + [
         'calculation_type'  => ['label' => 'Calculation type', 'type' => 'select', 'options' => penalty_calculation_types($current['calculation_type'] ?? null), 'required' => true, 'empty_label' => 'Select type'],
         'basis'             => ['label' => 'Basis', 'type' => 'select', 'options' => penalty_keep_option(PENALTY_BASIS_OPTIONS, $current['basis'] ?? null), 'required' => true, 'initial' => 'outstanding_amount',
-                                'help' => 'What a percentage is computed from. For an installment purchase it is the overdue installment.'],
+                                'help' => 'What a percentage is computed from. For an installment purchase it is the overdue installment. "SOA total amount due": the Total Amount Due of the recorded SOA - charged once per SOA, only after that SOA is recorded in Statements (a month without its SOA waits).'],
         'rate'              => ['label' => 'Rate (%)', 'type' => 'decimal', 'scale' => 4, 'digits' => 10, 'min' => 0, 'placeholder' => '0.0000'],
         'fixed_amount'      => ['label' => 'Fixed amount', 'type' => 'decimal', 'min' => 0],
         'maximum_charge'    => ['label' => 'Maximum charge', 'type' => 'decimal', 'min' => 0, 'help' => 'Optional cap per application.'],

@@ -54,7 +54,7 @@ require APP_ROOT . '/includes/header.php';
             'Bank'             => $rule['applies_to_issuer'] ? e($rule['applies_to_issuer']) : '<span class="text-muted">None — never charged automatically</span>',
             'Charges from'     => e(format_date(max((string) $rule['effective_from'], substr($rule['updated_at'], 0, 10)))) . ' <span class="text-muted">(effective date or last change, whichever is later)</span>',
             'Calculation type' => e(humanize($rule['calculation_type'])),
-            'Basis'            => e($rule['basis']),
+            'Basis'            => e(PENALTY_BASIS_OPTIONS[$rule['basis']] ?? $rule['basis']),
             'Rate (%)'         => show($rule['rate']),
             'Fixed amount'     => show_money($rule['fixed_amount']),
             'Maximum charge'   => show_money($rule['maximum_charge']),

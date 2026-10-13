@@ -486,16 +486,25 @@ function borrowed_ledger(array $t, ?string $today = null): array
         default => 'pending',
     };
     $review = null;
-    if ($status === 'overdue' && !borrowed_rules_for_card($t['credit_card_id'])) {
-        $card = db_row('SELECT issuer FROM credit_cards WHERE id = :c', [':c' => $t['credit_card_id']]);
-        $review = 'Overdue, but no active penalty rule is set for ' . ($card['issuer'] ?? 'this bank') . ' - no penalty was charged. Review it, or add the bank\'s rule in Penalty Rules.';
+    $soaNote = null;
+    if ($status === 'overdue') {
+        $cardRules = borrowed_rules_for_card($t['credit_card_id']);
+        if (!$cardRules) {
+            $card = db_row('SELECT issuer FROM credit_cards WHERE id = :c', [':c' => $t['credit_card_id']]);
+            $review = 'Overdue, but no active penalty rule is set for ' . ($card['issuer'] ?? 'this bank') . ' - no penalty was charged. Review it, or add the bank\'s rule in Penalty Rules.';
+        } elseif (array_filter($cardRules, 'penalty_is_soa_basis')
+            && ($months = borrowed_soa_missing($t, ['rows' => $rows]))) {
+            // Not a missing rule: the finance charge waits for the SOA.
+            $list = count($months) > 3 ? implode(', ', array_slice($months, 0, 3)) . ' and ' . (count($months) - 3) . ' more' : implode(', ', $months);
+            $soaNote = 'Record the SOA for ' . $list . ' (Statements) - the finance charge is computed from its Total Amount Due and is added once the SOA is recorded.';
+        }
     }
 
     return [
         'mode' => 'transaction', 'obligation' => null, 'amount' => (float) $t['amount'], 'responsible' => $responsible,
         'repaid' => $money($repaid), 'reported' => $money((float) $pay['reported']), 'remaining' => $remaining,
         'penalties' => $money($penalties), 'penalty_paid' => $money($penaltyPaid), 'penalty_unpaid' => $penaltyUnpaid, 'outstanding' => $outstanding,
-        'rows' => $rows, 'next_due' => $nextDue, 'status' => $status, 'overdue_amount' => $money($overdue), 'review' => $review, 'unknown_due' => $unknown || $termsMissing,
+        'rows' => $rows, 'next_due' => $nextDue, 'status' => $status, 'overdue_amount' => $money($overdue), 'review' => $review, 'soa_note' => $soaNote, 'unknown_due' => $unknown || $termsMissing,
         'due_now' => $termsMissing ? 0.0 : $money(min($dueNow + $penaltyUnpaid, $outstanding)),
         'due_month' => $termsMissing ? 0.0 : $money(min($dueMonth + $penaltyUnpaid, $outstanding)), 'current' => $current === null ? null : $rows[$current] + ['n' => $current + 1],
         'installments' => $plan ? count($rows) : 0, 'monthly' => $plan ? (float) $plan['installment_amount'] : null, 'terms_missing' => $termsMissing,
@@ -528,8 +537,19 @@ function borrowed_penalty_run(array $t, ?string $today = null): int
         foreach (db_all('SELECT penalty_rule_id, installment_schedule_id, applied_date FROM applied_penalties WHERE transaction_id = :t', [':t' => $t['id']]) as $p) {
             $existing[penalty_key($t['id'], $p['penalty_rule_id'], $p['installment_schedule_id'], $p['applied_date'])] = true;
         }
+        // A penalty the owner deleted is never charged again (as for obligations).
+        foreach (db_all(
+            "SELECT JSON_UNQUOTE(JSON_EXTRACT(old_values, '$.penalty_key')) AS k FROM activity_logs WHERE action = 'delete_penalty' AND entity_type = 'transaction' AND entity_id = :t",
+            [':t' => $t['id']]
+        ) as $deleted) {
+            $existing[$deleted['k']] = true;
+        }
         $created = 0;
         foreach ($rules as $rule) {
+            if (penalty_is_soa_basis($rule)) {
+                $created += borrowed_soa_penalties($t, $ledger, $rule, $today, $existing);
+                continue;
+            }
             foreach ($ledger['rows'] as $row) {
                 if (!$row['overdue']) {
                     continue;
@@ -571,6 +591,119 @@ function borrowed_penalty_run(array $t, ?string $today = null): int
     }
 
     return $created;
+}
+
+/**
+ * A rule with basis "SOA total amount due": the bank's finance charge on the
+ * statement. For each recorded SOA of the card whose due date passed (plus
+ * the grace days) while this purchase still had an unpaid part due on or
+ * before it, the borrower is charged rate % of that SOA's Total Amount Due
+ * (or the fixed amount), once per SOA - on the day after the SOA's due date
+ * and grace period. A SOA not recorded yet charges nothing; once it is
+ * recorded, its charge is added (dated as above, never before the rule took
+ * effect). One charge per SOA per borrower, even with several purchases on
+ * it, and never one the owner deleted. Returns the number of new charges.
+ */
+function borrowed_soa_penalties(array $t, array $ledger, array $rule, string $today, array &$existing): int
+{
+    $unpaid = array_values(array_filter($ledger['rows'], static fn ($r) => $r['remaining'] > 0.004 && $r['due']['date'] !== null));
+    if (!$unpaid) {
+        return 0;
+    }
+    $firstDue = min(array_map(static fn ($r) => $r['due']['date'], $unpaid));
+    $grace = (int) $rule['grace_period_days'];
+    $from = $rule['charges_from'] ?? $rule['effective_from'] ?? null;
+    $once = strtolower((string) $rule['frequency']) === 'once';
+
+    // The same SOA charged through another purchase of this borrower on this card (or deleted there).
+    $taken = [];
+    foreach (db_all(
+        'SELECT ap.applied_date FROM applied_penalties ap JOIN transactions x ON x.id = ap.transaction_id
+          WHERE ap.penalty_rule_id = :r AND x.borrower_id = :b AND x.credit_card_id = :c',
+        [':r' => $rule['id'], ':b' => $t['borrower_id'], ':c' => $t['credit_card_id']]
+    ) as $p) {
+        $taken[$p['applied_date']] = true;
+    }
+    foreach (db_all(
+        "SELECT JSON_UNQUOTE(JSON_EXTRACT(l.old_values, '$.applied_date')) AS d FROM activity_logs l JOIN transactions x ON x.id = l.entity_id
+          WHERE l.action = 'delete_penalty' AND l.entity_type = 'transaction' AND x.borrower_id = :b AND x.credit_card_id = :c
+            AND JSON_UNQUOTE(JSON_EXTRACT(l.old_values, '$.penalty_rule_id')) = :r",
+        [':r' => $rule['id'], ':b' => $t['borrower_id'], ':c' => $t['credit_card_id']]
+    ) as $d) {
+        $taken[$d['d']] = true;
+    }
+
+    $created = 0;
+    foreach (db_all(
+        'SELECT id, statement_number, due_date, total_amount_due FROM credit_card_statements
+          WHERE credit_card_id = :c AND soa_recorded_at IS NOT NULL AND due_date >= :f ORDER BY due_date',
+        [':c' => $t['credit_card_id'], ':f' => $firstDue]
+    ) as $soa) {
+        $date = (new DateTimeImmutable($soa['due_date']))->modify('+' . ($grace + 1) . ' days')->format('Y-m-d');
+        if ($date > $today || ($rule['effective_until'] && $date > $rule['effective_until'])) {
+            break;
+        }
+        if ($from !== null && $date < $from) {
+            continue;   // before the rule (or its latest change) took effect: never back-filled
+        }
+        // What of this purchase was still unpaid at that SOA: the oldest unpaid part due by then.
+        $row = null;
+        foreach ($unpaid as $r) {
+            if ($r['due']['date'] <= $soa['due_date']) {
+                $row = $r;
+                break;
+            }
+        }
+        if ($row === null) {
+            continue;
+        }
+        $key = penalty_key($t['id'], $rule['id'], $row['schedule_id'], $date);
+        $base = round((float) $soa['total_amount_due'], 2);
+        $amount = round(penalty_rule_amount($rule, $base), 2);
+        if (isset($existing[$key]) || isset($taken[$date]) || $amount <= 0) {
+            if ($once && (isset($existing[$key]) || isset($taken[$date]))) {
+                break;
+            }
+            continue;
+        }
+        db_insert('applied_penalties', [
+            'id' => new_uuid(), 'obligation_id' => null, 'transaction_id' => $t['id'], 'installment_schedule_id' => $row['schedule_id'],
+            'penalty_rule_id' => $rule['id'], 'applied_date' => $date,
+            'overdue_days' => max(0, (int) ((strtotime($date) - strtotime($row['due']['date'])) / 86400)),
+            'calculation_base' => number_format($base, 2, '.', ''), 'amount' => number_format($amount, 2, '.', ''),
+            'paid_amount' => '0.00', 'remaining_amount' => number_format($amount, 2, '.', ''),
+            'notes' => $rule['name'] . ': ' . penalty_rule_summary($rule) . ' - SOA ' . statement_month_label($soa['due_date'])
+                . ($soa['statement_number'] ? ' (' . $soa['statement_number'] . ')' : '') . ' total amount due ' . format_money($base)
+                . ', due ' . format_date($soa['due_date']) . ', not repaid (' . $row['label'] . ').',
+        ]);
+        $existing[$key] = $taken[$date] = true;
+        $created++;
+        if ($once) {
+            break;
+        }
+    }
+
+    return $created;
+}
+
+/**
+ * Overdue parts whose SOA is not recorded yet, for a rule based on the SOA:
+ * the month labels to record (nothing is charged for them until then).
+ */
+function borrowed_soa_missing(array $t, array $ledger): array
+{
+    $missing = [];
+    foreach ($ledger['rows'] as $r) {
+        if (!$r['overdue']) {
+            continue;
+        }
+        $recorded = $r['due']['statement_id'] && db_value('SELECT soa_recorded_at FROM credit_card_statements WHERE id = :s', [':s' => $r['due']['statement_id']]);
+        if (!$recorded) {
+            $missing[$r['due']['statement'] ?? '?'] = true;
+        }
+    }
+
+    return array_keys($missing);
 }
 
 /** Daily: penalties of every overdue borrowed purchase (all owners). */
@@ -1020,6 +1153,9 @@ function borrowed_render_ledger(array $row, array $l, bool $owner = false): stri
     }
     if ($l['review']) {
         $html .= '<div class="alert alert--warning">' . icon('alert') . '<span>' . e($l['review']) . '</span></div>';
+    }
+    if ($owner && !empty($l['soa_note'])) {
+        $html .= '<div class="alert alert--info">' . icon('alert') . '<span>' . e($l['soa_note']) . '</span></div>';
     }
     if (count($l['rows']) > 1) {
         $html .= '<div class="table-wrap"><table class="table table--cards table--compact"><thead><tr><th scope="col">Charge</th><th scope="col" class="num">Amount</th>'

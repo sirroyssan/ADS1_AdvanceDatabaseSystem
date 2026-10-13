@@ -97,7 +97,7 @@ function penalty_rules_for_obligation(array $o): array
 function penalty_rule_summary(array $rule): string
 {
     $how = $rule['calculation_type'] === 'percentage'
-        ? rtrim(rtrim(number_format((float) $rule['rate'], 4), '0'), '.') . '% of ' . humanize($rule['basis'])
+        ? rtrim(rtrim(number_format((float) $rule['rate'], 4), '0'), '.') . '% of ' . (penalty_is_soa_basis($rule) ? 'the SOA total amount due' : humanize($rule['basis']))
         : format_money($rule['fixed_amount']);
     $frequency = strtolower((string) $rule['frequency']) === 'once' ? 'once' : 'every month';
 
@@ -152,6 +152,12 @@ function penalty_base(string $basis, float $outstanding, float $totalDue, float 
         str_contains($basis, 'total')     => $totalDue,
         default                           => $outstanding, // outstanding_amount, overdue_amount, remaining…
     };
+}
+
+/** The rule's basis is the recorded SOA's Total Amount Due (card purchases only). */
+function penalty_is_soa_basis(array $rule): bool
+{
+    return strtolower((string) $rule['basis']) === 'soa_amount_due';
 }
 
 function penalty_key(string $obligationId, string $ruleId, ?string $scheduleId, string $date): string
@@ -231,7 +237,8 @@ function penalty_run_obligation(array $o, ?string $today = null): int
         return 0;
     }
 
-    $rules = penalty_rules_for_obligation($o);
+    // A rule on the SOA's Total Amount Due belongs to card purchases (a statement), not to obligations.
+    $rules = array_values(array_filter(penalty_rules_for_obligation($o), static fn ($r) => !penalty_is_soa_basis($r)));
     $targets = penalty_targets($o, $today);
     if (!$rules || !$targets) {
         return 0;

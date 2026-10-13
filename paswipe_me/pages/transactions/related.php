@@ -107,6 +107,8 @@ try {
                     flash('info', 'No penalty was charged: there is no active penalty rule for ' . $bank . '. In Penalty Rules, set the rule\'s Bank to ' . $bank . ' and make it active.');
                 } elseif ($purchase['ledger']['status'] !== 'overdue') {
                     flash('info', 'No penalty was charged: nothing on this purchase is past its repay-by date.');
+                } elseif (!empty($purchase['ledger']['soa_note'])) {
+                    flash('info', 'No new penalty yet. ' . $purchase['ledger']['soa_note']);
                 } else {
                     flash('info', 'No new penalty is due: every overdue month was already charged (months before a rule took effect or was last changed are never back-filled).');
                 }

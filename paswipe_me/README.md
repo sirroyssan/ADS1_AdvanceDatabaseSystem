@@ -1403,6 +1403,23 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/paswipe_me/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Penalty basis "SOA total amount due" (bank finance charge on the statement)
+
+A penalty rule can now use **Basis → SOA total amount due (recorded statement)**, for example Chinabank Finance Charge, 3.75%. No schema change: the value is stored in the existing `penalty_rules.basis` column.
+
+- **Computed from the SOA:**
+  - The penalty is rate % × the **Total Amount Due of the SOA as recorded** in Statements, or the fixed amount if the rule is a fixed charge. The Maximum charge still caps it.
+  - It applies to the borrower's card purchases and installments, and to their side of a cash advance.
+  - The SOA's whole Total Amount Due is used, as decided.
+- **When it is charged:** for each recorded SOA of the card, if the borrower's purchase still has an unpaid part due on or before that SOA's due date, the charge is added the day after the SOA's due date plus the grace days. "Once" charges only the first such SOA; "Every month" charges each later SOA too.
+- **No SOA, no charge:**
+  - A month whose SOA is not recorded charges nothing.
+  - The purchase shows a notice to the owner: "Record the SOA for October 2026 (Statements)…". *Check penalties* says the same.
+  - Once the SOA is recorded, the missed charge is added, dated as above. It is never dated before the rule took effect or was last changed (unchanged rule).
+- **Once per SOA per borrower:** if the borrower has several purchases on the same SOA, the charge is added once, on the oldest unpaid purchase. Each charge's note names the SOA, its Total Amount Due and its due date.
+- **Deleted penalties stay deleted:** a penalty the owner deleted on a card purchase is no longer re-created by the next automatic run. This applies to all rules, as it already did for obligations.
+- Obligations (cash loans) are not statements, so SOA-based rules are not applied to them.
+
 ## Sidebar keeps its scroll position
 
 - Choosing a module lower in the sidebar no longer sends the menu back to the top on the new page. A small script in `includes/sidebar.php` saves the menu's scroll position (per browser tab, `sessionStorage`) and puts it back before the page is drawn, so nothing jumps. It applies it again once the page has fully loaded.
