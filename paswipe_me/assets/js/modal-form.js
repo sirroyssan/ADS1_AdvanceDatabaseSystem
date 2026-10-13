@@ -12,52 +12,65 @@
  *  - saved                                         -> modal closes, the page content is
  *                                                     refreshed in place and the success
  *                                                     message is shown
- * Without JavaScript the links still open the full create pages.
+ *
+ * Modals stack: a modal link or panel button inside an open modal opens a new
+ * modal on top and the one below stays open (e.g. "Apply penalty" from an
+ * obligation). Closing the top one returns to the one below; saving in it
+ * reloads the one below (and the page behind) so the change shows at once.
+ * Without JavaScript the links still open the full pages.
  */
 (function () {
     'use strict';
 
     var HEADERS = { 'X-Modal-Form': '1' };
     var CLOSE_ICON = '<svg class="icon" viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18M6 6l12 12"/></svg>';
+    var BASE_Z = 150;       // under the sweet dialogs (200); each layer sits 5 above the one below
 
-    var modal = null;
-    var titleEl;
-    var subtitleEl;
-    var body;
-    var trigger = null;     // element that opened the modal (focus returns there)
-    var panel = null;       // inline panel shown in the modal, and where it came from
-    var panelHome = null;
-    var dirty = false;
-    var busy = false;
+    var stack = [];         // open modals, the top one last
+    var counter = 0;
 
-    function build() {
-        if (modal) return;
-        modal = document.createElement('div');
-        modal.className = 'modal-form no-print';
-        modal.hidden = true;
-        modal.innerHTML =
+    function top() {
+        return stack.length ? stack[stack.length - 1] : null;
+    }
+
+    /* ------------------------------------------------------------------
+     * One modal layer
+     * ------------------------------------------------------------------ */
+    function Layer() {
+        var id = 'modal-form-title-' + (++counter);
+        this.el = document.createElement('div');
+        this.el.className = 'modal-form no-print';
+        this.el.hidden = true;
+        this.el.innerHTML =
             '<div class="modal-form__backdrop" data-modal-close></div>' +
-            '<div class="modal-form__dialog" role="dialog" aria-modal="true" aria-labelledby="modal-form-title">' +
+            '<div class="modal-form__dialog" role="dialog" aria-modal="true" aria-labelledby="' + id + '">' +
             '  <header class="modal-form__header">' +
-            '    <div><h2 class="modal-form__title" id="modal-form-title"></h2><p class="modal-form__subtitle"></p></div>' +
+            '    <div><h2 class="modal-form__title" id="' + id + '"></h2><p class="modal-form__subtitle"></p></div>' +
             '    <button type="button" class="icon-button modal-form__close" data-modal-close aria-label="Close">' + CLOSE_ICON + '</button>' +
             '  </header>' +
             '  <div class="modal-form__body"></div>' +
             '</div>';
-        document.body.appendChild(modal);
-        titleEl = modal.querySelector('.modal-form__title');
-        subtitleEl = modal.querySelector('.modal-form__subtitle');
-        body = modal.querySelector('.modal-form__body');
+        document.body.appendChild(this.el);
+        this.titleEl = this.el.querySelector('.modal-form__title');
+        this.subtitleEl = this.el.querySelector('.modal-form__subtitle');
+        this.body = this.el.querySelector('.modal-form__body');
+        this.trigger = null;     // element that opened the modal (focus returns there)
+        this.panel = null;       // inline panel shown in the modal, and where it came from
+        this.panelHome = null;
+        this.url = null;         // page loaded into the modal (reloaded after a modal above saves)
+        this.dirty = false;
+        this.busy = false;
 
+        var layer = this;
         // Close: X, backdrop, Cancel links / buttons inside the form.
-        modal.addEventListener('click', function (event) {
+        this.el.addEventListener('click', function (event) {
             var target = event.target;
             // A panel button inside a view (e.g. "Override amount") shows / hides its panel in place;
             // only the Cancel of a panel opened as the modal itself closes the modal.
             var toggle = target.closest('[data-toggle-panel]');
-            if (toggle && modal.contains(toggle)) {
-                var inline = body.querySelector('#' + CSS.escape(toggle.getAttribute('data-toggle-panel')));
-                if (inline && inline !== panel) {
+            if (toggle && layer.el.contains(toggle)) {
+                var inline = layer.body.querySelector('#' + CSS.escape(toggle.getAttribute('data-toggle-panel')));
+                if (inline && inline !== layer.panel) {
                     event.preventDefault();
                     event.stopPropagation();
                     inline.hidden = !inline.hidden;
@@ -71,73 +84,47 @@
                 }
             }
             var cancel = target.closest('[data-modal-close], .form-actions a, [data-toggle-panel]');
-            if (!cancel || !modal.contains(cancel)) return;
+            if (!cancel || !layer.el.contains(cancel)) return;
             event.preventDefault();
             event.stopPropagation();
-            close(false);
+            layer.close(false);
         }, true);
 
         // Anything typed counts as unsaved data.
-        body.addEventListener('input', function () { dirty = true; });
-        body.addEventListener('change', function () { dirty = true; });
-
-        body.addEventListener('submit', onSubmit);
-
-        document.addEventListener('keydown', function (event) {
-            if (modal.hidden || document.querySelector('.sweet')) return;
-            if (event.key === 'Escape') {
-                event.preventDefault();
-                close(false);
-            } else if (event.key === 'Tab') {
-                trapFocus(event);
-            }
-        });
+        this.body.addEventListener('input', function () { layer.dirty = true; });
+        this.body.addEventListener('change', function () { layer.dirty = true; });
+        this.body.addEventListener('submit', function (event) { onSubmit(layer, event); });
     }
 
-    function trapFocus(event) {
-        var items = Array.prototype.filter.call(
-            modal.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'),
-            function (el) { return el.offsetParent !== null; }
-        );
-        if (!items.length) return;
-        var first = items[0];
-        var last = items[items.length - 1];
-        if (event.shiftKey && document.activeElement === first) {
-            event.preventDefault();
-            last.focus();
-        } else if (!event.shiftKey && document.activeElement === last) {
-            event.preventDefault();
-            first.focus();
-        }
-    }
-
-    function show(title, subtitle) {
-        build();
-        titleEl.textContent = title || 'Add new';
-        subtitleEl.textContent = subtitle || '';
-        subtitleEl.hidden = !subtitle;
-        dirty = false;
-        busy = false;
-        modal.hidden = false;
+    Layer.prototype.show = function (title, subtitle) {
+        this.titleEl.textContent = title || 'Add new';
+        this.subtitleEl.textContent = subtitle || '';
+        this.subtitleEl.hidden = !subtitle;
+        this.dirty = false;
+        this.busy = false;
+        this.el.style.zIndex = String(BASE_Z + (stack.length - 1) * 5);
+        this.el.hidden = false;
         document.documentElement.classList.add('has-modal-form');
-        requestAnimationFrame(function () { modal.classList.add('is-open'); });
-    }
+        var el = this.el;
+        requestAnimationFrame(function () { el.classList.add('is-open'); });
+    };
 
-    function loading() {
-        body.innerHTML = '<p class="modal-form__loading"><span class="spinner" aria-hidden="true"></span> Loading the form…</p>';
-    }
+    Layer.prototype.loading = function () {
+        this.body.innerHTML = '<p class="modal-form__loading"><span class="spinner" aria-hidden="true"></span> Loading the form…</p>';
+    };
 
-    function focusFirst() {
-        var field = body.querySelector('.is-invalid, [aria-invalid="true"]') ||
-            body.querySelector('input:not([type=hidden]):not([disabled]):not([readonly]), select:not([disabled]), textarea:not([disabled])');
+    Layer.prototype.focusFirst = function () {
+        var field = this.body.querySelector('.is-invalid, [aria-invalid="true"]') ||
+            this.body.querySelector('input:not([type=hidden]):not([disabled]):not([readonly]), select:not([disabled]), textarea:not([disabled])');
         if (field) field.focus();
-        else modal.querySelector('.modal-form__close').focus();
-    }
+        else this.el.querySelector('.modal-form__close').focus();
+    };
 
-    function close(force) {
-        if (!modal || modal.hidden) return;
-        if (busy) return;
-        if (!force && dirty && window.Sweet) {
+    Layer.prototype.close = function (force) {
+        if (this.el.hidden || this.busy) return;
+        if (top() !== this) return;   // only the top modal closes
+        var layer = this;
+        if (!force && this.dirty && window.Sweet) {
             window.Sweet.confirm({
                 type: 'warning',
                 title: 'Discard what you entered?',
@@ -145,42 +132,45 @@
                 confirmText: 'Discard',
                 cancelText: 'Keep editing'
             }).then(function (discard) {
-                if (discard) close(true);
+                if (discard) layer.close(true);
             });
             return;
         }
 
-        if (panel) {
-            var form = panel.matches('form') ? panel : panel.querySelector('form');
-            if (form && dirty) form.reset();
-            panel.hidden = true;
-            if (panelHome && panelHome.parentNode) {
-                panelHome.parentNode.insertBefore(panel, panelHome);
-                panelHome.remove();
+        if (this.panel) {
+            var form = this.panel.matches('form') ? this.panel : this.panel.querySelector('form');
+            if (form && this.dirty) form.reset();
+            this.panel.hidden = true;
+            if (this.panelHome && this.panelHome.parentNode) {
+                this.panelHome.parentNode.insertBefore(this.panel, this.panelHome);
+                this.panelHome.remove();
             }
-            panel = null;
-            panelHome = null;
+            this.panel = null;
+            this.panelHome = null;
         }
 
-        modal.classList.remove('is-open');
-        modal.hidden = true;
-        body.innerHTML = '';
-        dirty = false;
-        document.documentElement.classList.remove('has-modal-form');
-        if (trigger && document.body.contains(trigger)) trigger.focus();
-        trigger = null;
-    }
+        stack.pop();
+        this.el.remove();
+        if (!stack.length) document.documentElement.classList.remove('has-modal-form');
+        if (this.trigger && document.body.contains(this.trigger)) this.trigger.focus();
+        else if (top()) top().focusFirst();
+    };
 
-    function showError(message) {
-        var old = body.querySelector('.modal-form__error');
+    Layer.prototype.showError = function (message) {
+        var old = this.body.querySelector('.modal-form__error');
         if (old) old.remove();
         var alert = document.createElement('div');
         alert.className = 'alert alert--error modal-form__error';
         alert.setAttribute('role', 'alert');
         alert.textContent = message;
-        body.insertBefore(alert, body.firstChild);
-        body.scrollTop = 0;
-    }
+        this.body.insertBefore(alert, this.body.firstChild);
+        this.body.scrollTop = 0;
+    };
+
+    Layer.prototype.failed = function () {
+        this.busy = false;
+        this.showError('Could not reach the server. Check your connection and try again.');
+    };
 
     /* ------------------------------------------------------------------
      * Page content -> modal
@@ -211,15 +201,16 @@
         }, Promise.resolve());
     }
 
-    function renderPage(doc) {
+    Layer.prototype.render = function (doc) {
         var main = doc.querySelector('main');
         if (!main) return false;
+        var body = this.body;
 
         var heading = main.querySelector('.page-header__title');
         var subtitle = main.querySelector('.page-header__subtitle');
-        if (heading) titleEl.textContent = heading.textContent.trim();
-        subtitleEl.textContent = subtitle ? subtitle.textContent.trim() : '';
-        subtitleEl.hidden = !subtitle;
+        if (heading) this.titleEl.textContent = heading.textContent.trim();
+        this.subtitleEl.textContent = subtitle ? subtitle.textContent.trim() : '';
+        this.subtitleEl.hidden = !subtitle;
 
         body.innerHTML = '';
         // A record's own actions (Edit, Pay, …) stay available at the top of a view modal;
@@ -247,69 +238,106 @@
             body.appendChild(document.importNode(node, true));
         });
         return true;
-    }
+    };
 
-    function fill(html) {
+    Layer.prototype.fill = function (html, keepScroll) {
+        var layer = this;
         var doc = parse(html);
-        if (!renderPage(doc)) {
-            showError('The form could not be loaded. Please try again.');
+        var scroll = this.body.scrollTop;
+        if (!this.render(doc)) {
+            this.showError('The form could not be loaded. Please try again.');
             return Promise.resolve();
         }
         return loadScripts(doc).then(function () {
-            if (window.App) window.App.init(body);
-            focusFirst();
+            if (window.App) window.App.init(layer.body);
+            if (keepScroll) layer.body.scrollTop = scroll;
+            else layer.focusFirst();
         });
-    }
+    };
 
-    function failed() {
-        busy = false;
-        showError('Could not reach the server. Check your connection and try again.');
-    }
+    // Reload the page shown in this modal (after a modal above it saved something).
+    Layer.prototype.reload = function () {
+        if (!this.url || this.panel) return;
+        var layer = this;
+        fetch(this.url, { headers: HEADERS, credentials: 'same-origin' }).then(function (response) {
+            var type = response.headers.get('Content-Type') || '';
+            if (type.indexOf('application/json') !== -1) {
+                // The record is gone (e.g. deleted): close its modal.
+                if (layer === top()) {
+                    layer.busy = false;
+                    layer.close(true);
+                }
+                return null;
+            }
+            return response.text();
+        }).then(function (html) {
+            if (html) {
+                layer.dirty = false;
+                return layer.fill(html, true);
+            }
+        }).catch(function () { /* keep what is shown */ });
+    };
 
     /* ------------------------------------------------------------------
      * Opening
      * ------------------------------------------------------------------ */
+    function push() {
+        var layer = new Layer();
+        stack.push(layer);
+        return layer;
+    }
+
     function openUrl(url, from) {
-        trigger = from;
-        show(from ? from.textContent.trim() : '', '');
-        loading();
-        busy = true;
+        var layer = push();
+        layer.trigger = from;
+        layer.url = url;
+        layer.show(from ? from.textContent.trim() : '', '');
+        layer.loading();
+        layer.busy = true;
         fetch(url, { headers: HEADERS, credentials: 'same-origin' }).then(function (response) {
-            busy = false;
+            layer.busy = false;
             var type = response.headers.get('Content-Type') || '';
             if (type.indexOf('application/json') !== -1) {
                 // The page sent the user elsewhere instead of showing a form.
                 return response.json().then(function (data) {
-                    close(true);
+                    layer.close(true);
                     if (!data.ok && window.Sweet) {
                         window.Sweet.alert({ type: 'error', title: 'Cannot open the form', messages: [data.error], confirmText: 'OK' });
+                    } else if (stack.length) {
+                        // Opened from another modal: show its message there instead of leaving the page.
+                        refreshAll();
                     } else {
                         location.href = data.redirect;
                     }
                 });
             }
-            return response.text().then(fill);
-        }).catch(failed);
+            return response.text().then(function (html) { return layer.fill(html); });
+        }).catch(function () { layer.failed(); });
     }
 
     function openPanel(button) {
-        var target = document.getElementById(button.getAttribute('data-modal-panel'));
+        var target = (button.closest('.modal-form__body') || document).querySelector('#' + CSS.escape(button.getAttribute('data-modal-panel')))
+            || document.getElementById(button.getAttribute('data-modal-panel'));
         if (!target) return;
-        trigger = button;
+        var layer = push();
+        layer.trigger = button;
         var label = button.querySelector('span');
-        show((label || button).textContent.trim(), button.getAttribute('data-modal-subtitle') || '');
-        body.innerHTML = '';
-        panelHome = document.createComment('modal panel');
-        target.parentNode.insertBefore(panelHome, target);
-        panel = target;
-        body.appendChild(target);
+        layer.show((label || button).textContent.trim(), button.getAttribute('data-modal-subtitle') || '');
+        layer.body.innerHTML = '';
+        layer.panelHome = document.createComment('modal panel');
+        target.parentNode.insertBefore(layer.panelHome, target);
+        layer.panel = target;
+        layer.body.appendChild(target);
         target.hidden = false;
-        if (window.App) window.App.init(body);
-        focusFirst();
+        if (window.App) window.App.init(layer.body);
+        layer.focusFirst();
     }
 
     document.addEventListener('click', function (event) {
         if (event.defaultPrevented || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey || event.altKey) return;
+        // While a modal is open only its own links open a modal (on top of it).
+        var current = top();
+        if (current && !current.el.contains(event.target)) return;
         var link = event.target.closest('a[data-modal-form]');
         if (link && link.getAttribute('target')) link = null;
         if (link) {
@@ -324,12 +352,40 @@
         }
     });
 
+    document.addEventListener('keydown', function (event) {
+        var current = top();
+        if (!current || document.querySelector('.sweet')) return;
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            current.close(false);
+        } else if (event.key === 'Tab') {
+            trapFocus(current, event);
+        }
+    });
+
+    function trapFocus(layer, event) {
+        var items = Array.prototype.filter.call(
+            layer.el.querySelectorAll('a[href], button:not([disabled]), input:not([disabled]):not([type=hidden]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])'),
+            function (el) { return el.offsetParent !== null; }
+        );
+        if (!items.length) return;
+        var first = items[0];
+        var last = items[items.length - 1];
+        if (event.shiftKey && document.activeElement === first) {
+            event.preventDefault();
+            last.focus();
+        } else if (!event.shiftKey && document.activeElement === last) {
+            event.preventDefault();
+            first.focus();
+        }
+    }
+
     /* ------------------------------------------------------------------
      * Saving
      * ------------------------------------------------------------------ */
-    function onSubmit(event) {
+    function onSubmit(layer, event) {
         var form = event.target;
-        if (event.defaultPrevented || busy) {
+        if (event.defaultPrevented || layer.busy) {
             event.preventDefault();
             return;
         }
@@ -344,12 +400,13 @@
             // e.g. "Fill from template": reload the form with those choices.
             var url = new URL(action, location.href);
             url.search = new URLSearchParams(new FormData(form)).toString();
-            loading();
-            busy = true;
+            layer.loading();
+            layer.busy = true;
+            layer.url = url.toString();
             fetch(url.toString(), { headers: HEADERS, credentials: 'same-origin' })
-                .then(function (response) { busy = false; return response.text(); })
-                .then(fill)
-                .catch(failed);
+                .then(function (response) { layer.busy = false; return response.text(); })
+                .then(function (html) { return layer.fill(html); })
+                .catch(function () { layer.failed(); });
             return;
         }
 
@@ -357,44 +414,47 @@
             var data = new FormData(form);
             if (event.submitter && event.submitter.name) data.append(event.submitter.name, event.submitter.value);
             if (submitter && window.App && window.App.setLoading) window.App.setLoading(submitter);
-            busy = true;
+            layer.busy = true;
 
             fetch(action, { method: 'POST', body: data, headers: HEADERS, credentials: 'same-origin' }).then(function (response) {
-                busy = false;
+                layer.busy = false;
                 var type = response.headers.get('Content-Type') || '';
                 if (type.indexOf('application/json') !== -1) {
                     return response.json().then(function (result) {
                         if (submitter && window.App) window.App.resetLoading(submitter);
                         if (!result.ok) {
-                            showError(result.error || 'The record was not saved. Please check the form.');
+                            layer.showError(result.error || 'The record was not saved. Please check the form.');
                             return;
                         }
                         if (/\/auth\//.test(result.redirect)) {
                             location.href = result.redirect;   // signed out meanwhile
                             return;
                         }
-                        dirty = false;
-                        close(true);
-                        refreshPage();
+                        layer.dirty = false;
+                        // An action inside a record shown in the modal (a button, an in-place panel)
+                        // keeps that record open and reloads it; a record form closes its modal.
+                        var keepOpen = !layer.panel && layer.url && (form.classList.contains('inline-form') || !!form.closest('.inline-panel'));
+                        if (!keepOpen && layer === top()) layer.close(true);
+                        refreshAll();
                     });
                 }
                 // The form came back (validation errors): show it again, keep what was typed.
                 return response.text().then(function (html) {
                     if (!response.ok && html.indexOf('<main') === -1) {
                         if (submitter && window.App) window.App.resetLoading(submitter);
-                        showError('The record was not saved (error ' + response.status + '). Please try again.');
+                        layer.showError('The record was not saved (error ' + response.status + '). Please try again.');
                         return;
                     }
-                    if (panel) {
+                    if (layer.panel) {
                         if (submitter && window.App) window.App.resetLoading(submitter);
-                        showError('The record was not saved. Please check the form.');
+                        layer.showError('The record was not saved. Please check the form.');
                         return;
                     }
-                    return fill(html);
+                    return layer.fill(html);
                 });
             }).catch(function () {
                 if (submitter && window.App) window.App.resetLoading(submitter);
-                failed();
+                layer.failed();
             });
         };
 
@@ -411,6 +471,13 @@
         send();
     }
 
+    // After a save: reload the modal now on top (if any) and the page content behind it.
+    function refreshAll() {
+        var current = top();
+        if (current) current.reload();
+        refreshPage();
+    }
+
     // Reload only the page content (list, totals, related tables) in place.
     function refreshPage() {
         fetch(location.href, { credentials: 'same-origin' }).then(function (response) {
@@ -419,14 +486,14 @@
             var fresh = parse(html).querySelector('main');
             var main = document.querySelector('main');
             if (!fresh || !main) {
-                location.reload();
+                if (!stack.length) location.reload();
                 return;
             }
             main.innerHTML = fresh.innerHTML;
             if (window.App) window.App.init(main);
             if (window.Sweet && window.Sweet.showFlashes) window.Sweet.showFlashes(main);
         }).catch(function () {
-            location.reload();
+            if (!stack.length) location.reload();
         });
     }
 })();

@@ -1377,6 +1377,13 @@ also has the same **What is this payment for?** table.
 
 **When saving fails.** The payment, its items and the proof are saved in one database transaction, so a failure saves nothing. The form now says which part failed: "The payment was not saved: the proof file could not be recorded", or the usual message for the payment itself. It also gives the database error number. The database's own message is added when the browser runs on the server itself (XAMPP on localhost) or when `APP_DEBUG` is on (`db_error_detail()` in `includes/db_helpers.php`). From another device (a phone on the Wi-Fi) only the number is shown. The full text is always in the PHP error log (XAMPP for macOS: `/Applications/XAMPP/xamppfiles/logs/php_error_log`), on the lines starting with `[PA-KASKAS] Database write failed:` and `[PA-KASKAS] Saving the payment proof failed:`.
 
+## Modals stack (`assets/js/modal-form.js`)
+
+- **Opening from a modal:** a modal link or button inside an open modal opens a **new modal on top**, and the one underneath stays open. Examples: *Apply penalty* or *Edit* from an obligation, *What it paid* from a payment.
+- **Closing:** Cancel, ✕ or Escape closes only the top modal.
+- **Saving in the top modal:** it closes, the modal underneath reloads (the new penalty or the change shows at once), and the page behind refreshes too. You can add another penalty right away.
+- **Buttons inside a record shown in a modal** (e.g. *Check penalties now*, in-place panels): they keep that record open and reload it. A record form (Add / Edit) closes its own modal. If the record no longer exists after an action, its modal closes.
+
 ## Borrower page layout (`pages/borrowers/view.php`)
 
 Balance figures → Card purchases → **Recent obligations** → **Recent payments** → Record details, sign-in account and payment methods → Addresses → Contacts. What the borrower owes and paid comes first, so it's easy to analyze.
