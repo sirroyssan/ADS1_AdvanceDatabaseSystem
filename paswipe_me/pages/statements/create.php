@@ -32,6 +32,8 @@ $action = url('pages/statements/create.php', array_filter(['credit_card_id' => $
 if (is_post()) {
     require_csrf($action);
     [$data, $errors] = statement_validate($fields, $_POST, null, $card['id'] ?? null);
+    statement_confirm_cutoff_field($fields, $errors);
+    unset($data['confirm_cutoff']);
 
     if (!$errors) {
         try {

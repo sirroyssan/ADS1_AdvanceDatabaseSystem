@@ -25,6 +25,8 @@ $errors = [];
 if (is_post()) {
     require_csrf('pages/statements/edit.php?id=' . $statement['id']);
     [$data, $errors] = statement_validate($fields, $_POST, $statement['id'], $statement['credit_card_id']);
+    statement_confirm_cutoff_field($fields, $errors);
+    unset($data['confirm_cutoff']);
 
     if (!$errors) {
         try {

@@ -50,7 +50,11 @@ function statement_validate(array $fields, array $input, ?string $id = null, ?st
     }
     if (!isset($errors['cutoff_date']) && $cardId && $data['cutoff_date']) {
         $card = db_row('SELECT * FROM credit_cards c WHERE c.id = :c AND ' . owner_scope('credit_cards', 'c'), [':c' => $cardId]);
-        if ($card) {
+        // A cutoff far from the card's cutoff day leaves odd periods: asked once, then saved when confirmed.
+        if ($card && ($warning = statement_cutoff_mismatch($card, $data['cutoff_date'])) !== null && ($input['confirm_cutoff'] ?? '') !== '1') {
+            $errors['cutoff_date'] = $warning;
+        }
+        if ($card && !isset($errors['cutoff_date'])) {
             // One SOA per card and billing period.
             $ctx = card_period_context($card);
             $ctx['soas'] = array_values(array_filter($ctx['soas'], static fn ($s) => $s['id'] !== $id));
@@ -69,6 +73,45 @@ function statement_validate(array $fields, array $input, ?string $id = null, ?st
     }
 
     return [$data, $errors];
+}
+
+/** Days a recorded SOA's cutoff may differ from the card's cutoff day (weekends, holidays) without a question. */
+const STATEMENT_CUTOFF_TOLERANCE_DAYS = 3;
+
+/**
+ * Why a cutoff date looks wrong for the card, or null: more than a few days
+ * from the card's cutoff day (the nearest one before or after it).
+ */
+function statement_cutoff_mismatch(array $card, string $cutoff): ?string
+{
+    $day = (int) $card['billing_cycle_day'];
+    if ($day < 1) {
+        return null;
+    }
+    $nearest = null;
+    $gap = PHP_INT_MAX;
+    foreach ([cutoff_on_or_after($day, $cutoff), cutoff_before($day, $cutoff)] as $regular) {
+        $d = (int) abs((strtotime($regular) - strtotime($cutoff)) / 86400);
+        if ($d < $gap) {
+            [$gap, $nearest] = [$d, $regular];
+        }
+    }
+    if ($gap <= STATEMENT_CUTOFF_TOLERANCE_DAYS) {
+        return null;
+    }
+
+    return $card['card_nickname'] . ' closes on the ' . ordinal($day) . ' of the month, but this SOA ends ' . format_date($cutoff)
+        . ' (' . $gap . ' days ' . ($cutoff < $nearest ? 'before' : 'after') . ' ' . format_date($nearest) . '). A date like that leaves a short extra period. '
+        . 'Check the cutoff printed on the SOA. If it is right, tick "The bank\'s SOA really closes on this date" below and save again; '
+        . 'if the bank changed the cutoff day for good, change the card\'s Statement cutoff day instead.';
+}
+
+/** The confirmation box shown under the form when the cutoff date was questioned. */
+function statement_confirm_cutoff_field(array &$fields, array $errors): void
+{
+    if (isset($errors['cutoff_date']) && str_contains($errors['cutoff_date'], 'really closes on this date')) {
+        $fields['confirm_cutoff'] = ['label' => 'Cutoff date', 'type' => 'bool', 'switch_label' => 'The bank\'s SOA really closes on this date'];
+    }
 }
 
 function statement_find(string $id): ?array

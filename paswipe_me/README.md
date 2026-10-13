@@ -1153,6 +1153,11 @@ reminder or penalty is sent, and the card owner sees a link to add the plan.
 - **Server side:** it removes the commas before checking and saving, so nothing changes in the database.
 - **Too many decimals:** a value with more decimals than allowed is left as typed, so the form's error shows instead of a silent rounding.
 
+**SOA dates that differ from the card's cutoff day** (`includes/statement_engine.php`, `pages/statements/`):
+- **Short gaps join a period:** if a recorded SOA starts or ends away from the card's cutoff day, the few days left between it and the card's regular cutoff (10 days or fewer, `PERIOD_SHORT_GAP_DAYS`) no longer show as a separate period that asks for its own SOA. They join the neighbouring period. For example, with a card closing on the 21st and an SOA of Aug 22 – Sep 14, the next period is Sep 15 – Oct 21 instead of Sep 15 – 21 plus Sep 22 – Oct 21. Installments billed per period follow.
+- **Gaps between two recorded SOAs stay:** both sides are the bank's dates, so those days remain a period of their own.
+- **Cutoff check:** recording or editing an SOA whose cutoff is more than 3 days from the card's cutoff day (`STATEMENT_CUTOFF_TOLERANCE_DAYS`) is questioned once, with the card's cutoff day and the nearest regular cutoff. Tick *The bank's SOA really closes on this date* to save it anyway, or correct the date, or change the card's cutoff day if the bank changed it for good.
+
 **Penalties on card purchases assigned to a borrower** (installment or straight; transaction page, *Penalties* panel):
 - **Same panel as an obligation:** the penalty rules of the card's bank, **Check penalties now** (charges what is due under the rules), **Apply penalty** (by hand, from a rule; the amount is computed from the rule or typed), and waive/delete with a required reason. Owners and admins only; staff see the list.
 - **Repayments:** confirmed repayments pay penalties first (oldest first), then the installments.

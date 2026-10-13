@@ -277,12 +277,61 @@ function card_period_context(array $card): array
     return ['card' => $card, 'soas' => $soas, 'cycles' => $cycles];
 }
 
-/** The billing period containing $date: ['start', 'end', 'statement_id'|null]. */
+/**
+ * A leftover of this many days or fewer between a recorded SOA and the card's
+ * regular cutoff is not a statement of its own: it joins the neighbouring
+ * period. (It appears when an SOA's dates differ from the card's cutoff day.)
+ */
+const PERIOD_SHORT_GAP_DAYS = 10;
+
+/** The billing period containing $date: ['start', 'end', 'statement_id'|null, 'recorded']. */
 function card_period_containing(array $ctx, string $date): array
+{
+    $p = card_period_piece($ctx, $date);
+    if ($p['statement_id'] !== null) {
+        return $p;
+    }
+    $short = static fn (array $x): bool => $x['statement_id'] === null
+        && (strtotime($x['end']) - strtotime($x['start'])) / 86400 + 1 <= PERIOD_SHORT_GAP_DAYS;
+
+    if ($short($p) && !($p['after_soa'] && $p['before_soa'])) {
+        // A short leftover itself: it belongs with the regular period on its open side.
+        if ($p['after_soa']) {
+            $next = card_period_piece($ctx, date_add_days($p['end'], 1));
+            if ($next['statement_id'] === null) {
+                $p['end'] = $next['end'];
+            }
+        } elseif ($p['before_soa']) {
+            $prev = card_period_piece($ctx, date_add_days($p['start'], -1));
+            if ($prev['statement_id'] === null) {
+                $p['start'] = $prev['start'];
+            }
+        }
+    } else {
+        // A regular period takes in a short leftover next to it.
+        $prev = card_period_piece($ctx, date_add_days($p['start'], -1));
+        if ($short($prev) && $prev['after_soa'] && !$prev['before_soa']) {
+            $p['start'] = $prev['start'];
+        }
+        $next = card_period_piece($ctx, date_add_days($p['end'], 1));
+        if ($short($next) && $next['before_soa'] && !$next['after_soa']) {
+            $p['end'] = $next['end'];
+        }
+    }
+
+    return ['start' => $p['start'], 'end' => $p['end'], 'statement_id' => null, 'recorded' => false];
+}
+
+/**
+ * The plain period piece containing $date: a recorded SOA, or the card's
+ * regular cycle cut where a recorded SOA begins or ends (after_soa /
+ * before_soa tell which side was cut).
+ */
+function card_period_piece(array $ctx, string $date): array
 {
     foreach ($ctx['soas'] as $s) {
         if ($date >= $s['start'] && $date <= $s['end']) {
-            return ['start' => $s['start'], 'end' => $s['end'], 'statement_id' => $s['id'], 'recorded' => $s['recorded']];
+            return ['start' => $s['start'], 'end' => $s['end'], 'statement_id' => $s['id'], 'recorded' => $s['recorded'], 'after_soa' => false, 'before_soa' => false];
         }
     }
     $start = null;
@@ -303,16 +352,20 @@ function card_period_containing(array $ctx, string $date): array
         }
     }
     // Never overlap a recorded SOA.
+    $after = false;
+    $before = false;
     foreach ($ctx['soas'] as $s) {
         if ($s['end'] < $date && $s['end'] >= $start) {
             $start = date_add_days($s['end'], 1);
+            $after = true;
         }
         if ($s['start'] > $date && $s['start'] <= $end) {
             $end = date_add_days($s['start'], -1);
+            $before = true;
         }
     }
 
-    return ['start' => $start, 'end' => $end, 'statement_id' => null, 'recorded' => false];
+    return ['start' => $start, 'end' => $end, 'statement_id' => null, 'recorded' => false, 'after_soa' => $after, 'before_soa' => $before];
 }
 
 /** Earliest record date of a card (for how far back periods go). */
