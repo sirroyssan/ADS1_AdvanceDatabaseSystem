@@ -1403,6 +1403,12 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/paswipe_me/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Receive Payment layout
+
+- The **Borrower** box stretches across the panel and **Show balance** sits on the same line, the same height, bottoms aligned.
+- The five totals (Outstanding, Late charges, Total owed, Due this period, Overdue) and the payment form use the full width of the page, with no empty space on the right.
+- These styles apply to this page only: `.receive-pick`, `.figure-grid--fill` and `.form-card--full` in `assets/css/dashboard.css`.
+
 ## Payments are approved or rejected, never edited (one decision layout everywhere)
 
 The process: the borrower submits a payment in their portal, and the owner or admin approves or rejects it. Money handed over in person is recorded only through **Receive Payment** (staff, owner or admin), which issues a receipt. Nobody on the owner's side changes the amount a borrower submitted.

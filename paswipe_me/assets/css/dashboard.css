@@ -2951,3 +2951,27 @@ td .decision-bar,
     border: 0;
     flex-wrap: nowrap;
 }
+
+/* Receive Payment: the borrower box and Show balance on one line (bottoms aligned),
+   the box taking the free width; totals and the form use the page's full width. */
+.receive-pick {
+    align-items: flex-end;
+}
+.receive-pick .form-group {
+    flex: 1 1 320px;
+    margin: 0;
+}
+.receive-pick .form-group select,
+.receive-pick > .btn {
+    height: 44px;
+    min-height: 44px;
+}
+.receive-pick .form-group select {
+    width: 100%;
+}
+.figure-grid--fill {
+    grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+.form-card--full {
+    max-width: none;
+}

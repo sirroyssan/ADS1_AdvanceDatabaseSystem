@@ -86,7 +86,7 @@ require APP_ROOT . '/includes/header.php';
     </div>
 </section>
 
-<form method="get" action="<?= e(url('pages/staff/receive.php')) ?>" class="toolbar no-print" aria-label="Choose borrower">
+<form method="get" action="<?= e(url('pages/staff/receive.php')) ?>" class="toolbar receive-pick no-print" aria-label="Choose borrower">
     <div class="form-group">
         <label for="f_borrower">Borrower</label>
         <select id="f_borrower" name="borrower_id" required>
@@ -142,7 +142,7 @@ require APP_ROOT . '/includes/header.php';
         </form>
     </section>
 <?php else: ?>
-    <section class="figure-grid">
+    <section class="figure-grid figure-grid--fill">
         <div class="figure"><p class="figure__label">Outstanding</p><p class="figure__value"><?= e(format_money($totals['outstanding'])) ?></p></div>
         <div class="figure"><p class="figure__label">Late charges</p><p class="figure__value<?= $totals['penalties'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($totals['penalties'])) ?></p></div>
         <div class="figure figure--total"><p class="figure__label">Total owed</p><p class="figure__value"><?= e(format_money($totals['total'])) ?></p></div>
@@ -153,7 +153,7 @@ require APP_ROOT . '/includes/header.php';
     <?php if (!$groups): ?>
         <div class="alert alert--info"><?= icon('info') ?><span><?= e(borrower_name($borrower)) ?> has nothing to pay right now.</span></div>
     <?php else: ?>
-        <form method="post" action="<?= e(url('pages/staff/receive.php', ['borrower_id' => $borrower['id']])) ?>" class="form-card form-card--wide" novalidate data-validate>
+        <form method="post" action="<?= e(url('pages/staff/receive.php', ['borrower_id' => $borrower['id']])) ?>" class="form-card form-card--full" novalidate data-validate>
             <?= csrf_field() ?>
             <input type="hidden" name="step" value="review">
             <?php if ($errors): ?>
