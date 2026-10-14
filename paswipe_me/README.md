@@ -1407,7 +1407,7 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 
 - The obligation page now has a **Bank / card** row (e.g. *UnionBank — Unionbank •••• 9638*) linking to the card. It comes from the obligation's card purchase or cash loan, whichever it belongs to.
 - An obligation not tied to a purchase or cash loan shows "Not linked to a card".
-- **Borrower portal:** the obligation details (*What I Owe → open an item*) show a **Bank** row with the bank's name only (e.g. *BDO*), as plain text. Borrowers cannot open the card and never see its nickname or last four digits.
+- **Borrower portal:** the obligation details (*What I Owe → open an item*) show a **Bank** row with the bank's name only (e.g. *BDO*), as plain text. Borrowers cannot open the card and never see its nickname or last four digits. The **What I Owe** list shows the same bank name on each item's grey line (e.g. *OBL-20261011-0004 · Jun 23, 2026 · BDO*). Card purchases already showed their bank in the item name.
 - Nothing is stored: `obligation_find()` reads the card through the existing links.
 
 ## Receive Payment layout

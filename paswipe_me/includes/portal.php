@@ -251,10 +251,15 @@ function portal_all_items(string $borrowerId, bool $openOnly = true): array
     $today = date('Y-m-d');
     $items = [];
     $obligations = db_all(
-        "SELECT o.*, COALESCE(pen.penalties_unpaid, 0) AS penalties_unpaid, COALESCE(pen.penalties_paid, 0) AS penalties_paid, t.payment_type, t.transaction_number, t.notes AS txn_notes, m.merchant_name
+        "SELECT o.*, COALESCE(pen.penalties_unpaid, 0) AS penalties_unpaid, COALESCE(pen.penalties_paid, 0) AS penalties_paid, t.payment_type, t.transaction_number, t.notes AS txn_notes, m.merchant_name,
+                cc.issuer AS bank_name
            FROM borrower_obligations o " . penalty_totals_join() . "
            LEFT JOIN transactions t ON t.id = o.transaction_id
            LEFT JOIN merchants m ON m.id = t.merchant_id
+           LEFT JOIN cash_loan_allocations ca ON ca.id = o.cash_loan_allocation_id
+           LEFT JOIN cash_loans cl ON cl.id = ca.cash_loan_id
+           -- The bank it was processed with (its name only).
+           LEFT JOIN credit_cards cc ON cc.id = COALESCE(t.credit_card_id, cl.credit_card_id)
           WHERE o.borrower_id = :b AND o.status NOT IN ('cancelled', 'written_off')",
         [':b' => $borrowerId]
     );
@@ -276,7 +281,7 @@ function portal_all_items(string $borrowerId, bool $openOnly = true): array
                 default => 'Amount owed',
             },
             'ref' => $o['obligation_number'], 'title' => $o['description'] ?: ($o['merchant_name'] ?: ($o['transaction_number'] ?: ($o['notes'] ? excerpt($o['notes'], 50) : 'Amount owed'))),
-            'date' => $o['obligation_date'], 'link' => url('portal/obligation.php', ['id' => $o['id']]),
+            'date' => $o['obligation_date'], 'link' => url('portal/obligation.php', ['id' => $o['id']]), 'bank' => $o['bank_name'],
             // Paid: everything paid on the item, late charges included (as for card purchases).
             'amount' => (float) $o['total_amount_due'], 'paid' => round((float) $o['total_paid'] + (float) $o['penalties_paid'], 2), 'outstanding' => $outstanding, 'penalties' => $penalties,
             'total' => round($outstanding + $penalties, 2), 'due_now' => $outstanding + $penalties > 0.004 ? $due['due_now'] : 0.0,

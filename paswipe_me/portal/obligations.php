@@ -79,7 +79,7 @@ require APP_ROOT . '/includes/header.php';
                         <td class="col-num" data-label="#"><?= e($n + 1) ?></td>
                         <td data-label="Type"><?= e($i['type']) ?></td>
                         <td data-label="Item"><a data-modal-form class="table-link" href="<?= e($i['link']) ?>"><?= e(excerpt($i['title'], 45)) ?></a>
-                            <br><span class="text-muted nowrap"><?= e($i['ref']) ?></span><?= $i['date'] ? ' <span class="text-muted nowrap">· ' . e(format_date($i['date'])) . '</span>' : '' ?></td>
+                            <br><span class="text-muted nowrap"><?= e($i['ref']) ?></span><?= $i['date'] ? ' <span class="text-muted nowrap">· ' . e(format_date($i['date'])) . '</span>' : '' ?><?= !empty($i['bank']) ? ' <span class="text-muted nowrap">· ' . e($i['bank']) . '</span>' : '' ?></td>
                         <td data-label="Date"><?= $i['date'] ? e(format_date($i['date'])) : '—' ?></td>
                         <td data-label="Amount" class="num"><?= e(format_money($i['amount'])) ?></td>
                         <td data-label="Paid" class="num"><?= e(format_money($i['paid'])) ?></td>
