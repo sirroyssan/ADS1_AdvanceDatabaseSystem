@@ -11,12 +11,14 @@ $bid = $borrower['id'];
 
 $o = portal_find(
     "SELECT o.*, t.transaction_number, t.transaction_date, t.payment_type, t.amount AS transaction_amount, m.merchant_name,
-            cl.loan_reference
+            cl.loan_reference, cc.issuer AS bank_name
        FROM borrower_obligations o
        LEFT JOIN transactions t ON t.id = o.transaction_id
        LEFT JOIN merchants m ON m.id = t.merchant_id
        LEFT JOIN cash_loan_allocations a ON a.id = o.cash_loan_allocation_id
        LEFT JOIN cash_loans cl ON cl.id = a.cash_loan_id
+       -- The bank it was processed with (name only: the owner's card details stay private).
+       LEFT JOIN credit_cards cc ON cc.id = COALESCE(t.credit_card_id, cl.credit_card_id)
       WHERE o.id = :id AND o.borrower_id = :b AND o.status <> 'cancelled'",
     input_string($_GET, 'id'), $bid, 'portal/obligations.php', 'Item'
 );
@@ -93,6 +95,7 @@ require APP_ROOT . '/includes/header.php';
             'For'             => $o['transaction_number']
                 ? e(($o['payment_type'] === 'cash_advance' ? 'Cash advance ' : 'Purchase ') . $o['transaction_number']) . ($o['merchant_name'] ? ' · ' . e($o['merchant_name']) : '') . ' · ' . e(format_date($o['transaction_date']))
                 : ($o['loan_reference'] ? e('Share of cash loan ' . $o['loan_reference']) : '<span class="text-muted">—</span>'),
+            'Bank'            => $o['bank_name'] ? e($o['bank_name']) : '<span class="text-muted">—</span>',
             'Original amount' => e(format_money($o['original_amount'])),
             'Agreed interest' => e(format_money($o['agreed_interest'])),
             'Agreed fees'     => e(format_money($o['agreed_fees'])),
