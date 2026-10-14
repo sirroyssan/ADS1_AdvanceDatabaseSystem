@@ -259,7 +259,9 @@ function schedule_shift_dates(string $table, string $parentColumn, string $paren
 function schedule_move_obligations(array $obligationIds, ?string $oldEnd, ?string $newEnd): void
 {
     foreach ($obligationIds as $oid) {
-        if ($newEnd && $oldEnd && db_value('SELECT due_date FROM borrower_obligations WHERE id = :id', [':id' => $oid]) === $oldEnd) {
+        // Due on the old last installment, or no due date yet (the schedule did not exist): the new last one.
+        $current = db_value('SELECT due_date FROM borrower_obligations WHERE id = :id', [':id' => $oid]);
+        if ($newEnd && ($current === null || ($oldEnd && $current === $oldEnd))) {
             db_update('borrower_obligations', ['due_date' => $newEnd], $oid);
         }
         schedule_sync_obligation($oid);

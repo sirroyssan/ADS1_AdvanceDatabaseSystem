@@ -1403,6 +1403,22 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/paswipe_me/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Fix: cash loan saved without a first due date (no schedule, wrong interest)
+
+- **Problem:** a cash loan dated 05/05/2025 (₱125,000, ₱100,000 allocated to a borrower) was saved without a **First due date**.
+  - Its repayment schedule is built only from that date, so it never got one.
+  - The borrower's obligation had no due date, and an agreed rate of 1.25% a month was counted for **1 month** (₱1,250) instead of 24 (₱30,000).
+  - When a first due date was added later, the obligation still kept its empty due date: only obligations due on the old last installment were moved.
+- **Fix:**
+  - **First due date filled in:** when it is left empty, it comes from the card's payment due date for the statement the loan starts on (the recorded SOA's due date, else the card's due-date rule). For example, a loan on May 5 with a cut-off on the 20th and due on the 10th gives a first due of Jun 10, 2025 and a last due of May 10, 2027.
+  - **Unknown due date:** when the card has no due-date rule, the form asks for the first due date instead of saving a loan that cannot be scheduled. The loan page also warns when a loan has no schedule.
+  - **Obligations with no due date** now get the loan's last installment date once the schedule exists (`schedule_move_obligations`).
+  - **One-time repair** (`cash_loan_first_due_repair()`, marker `storage/upgrade_cash_loan_first_due.done`):
+    - Loans already saved without a first due date get one from the card, where it is known.
+    - Their schedule is built, and their borrowers' obligations get their due date and the full months of interest (e.g. 1.25% × 24 = ₱30,000).
+    - Loans whose card has no due-date rule are left for you to complete with Edit.
+- No schema change.
+
 ## Modals: rounded corners and room above Save
 
 - Every modal keeps its rounded corners at the bottom too. The white Save / Cancel bar used to paint square corners over them; the dialog now clips its content (`overflow: hidden`).

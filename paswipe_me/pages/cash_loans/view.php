@@ -220,7 +220,7 @@ require APP_ROOT . '/includes/header.php';
         <?= render_schedule_shift_form($related, $id, $schedule[0]['due_date'], $loan['payment_frequency'], count($schedule)) ?>
     <?php endif; ?>
     <?php if (!$schedule && !$canGenerate): ?>
-        <p class="field-help">Enter the term (months), first due date and total repayment on the loan to generate its schedule.</p>
+        <div class="alert alert--warning"><?= icon('alert') ?><span>No repayment schedule yet: <strong>edit the loan and enter the first due date</strong> (and the term and total repayment). Until then the borrowers' shares have no due date and a monthly interest rate counts only one month.</span></div>
     <?php endif; ?>
     <?= render_schedule_table($schedule, '', [], false) ?>
 </section>

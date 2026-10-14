@@ -344,6 +344,8 @@ function penalty_run_if_due(): void
         staff_schema_upgrade();
         obligation_rate_upgrade();
         schedule_sync_upgrade();
+        require_once APP_ROOT . '/pages/cash_loans/cash_loan_functions.php';
+        cash_loan_first_due_repair();   // loans saved without a first due date
         obligation_refresh_overdue();
         schedule_refresh_statuses();
     } catch (PDOException $e) {

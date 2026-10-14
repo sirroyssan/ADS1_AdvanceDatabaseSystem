@@ -59,6 +59,16 @@ function cash_loan_validate(array $fields, array $input, ?string $id = null): ar
         $data['total_repayment'] = number_format(round($principal + $principal * (float) $data['interest_rate'] / 100 * (int) $data['term_months'], 2), 2, '.', '');
     }
 
+    // No first due date: the card's payment due date for the statement the loan starts on
+    // (its recorded SOA, else the card's billing rule). Without it nothing can be scheduled,
+    // so the borrowers' due dates and monthly interest would be wrong: ask for it instead.
+    if (!$errors && (int) $data['term_months'] > 0 && !$data['first_due_date']) {
+        $data['first_due_date'] = cash_loan_default_first_due($data['credit_card_id'] ?? null, $data['start_date'] ?: date('Y-m-d'));
+        if ($data['first_due_date'] === null) {
+            $errors['first_due_date'] = 'Enter the first due date (when the first monthly payment to the bank is due). The repayment schedule and your borrowers\' due dates are built from it.';
+        }
+    }
+
     // The last installment follows from the first due date and the term.
     if (!isset($errors['term_months']) && !isset($errors['first_due_date']) && $data['term_months'] && $data['first_due_date']) {
         $data['end_date'] = schedule_due_date($data['first_due_date'], (int) $data['term_months'] - 1, $data['payment_frequency'] ?: 'monthly');
@@ -72,6 +82,68 @@ function cash_loan_validate(array $fields, array $input, ?string $id = null): ar
     }
 
     return [$data, $errors];
+}
+
+/**
+ * The card's payment due date for the billing period that contains $start
+ * (recorded SOA first, else the card's due-date rule), when it is known and
+ * after $start; otherwise null (never guessed).
+ */
+function cash_loan_default_first_due(?string $cardId, string $start): ?string
+{
+    if (!$cardId || !is_valid_uuid($cardId)) {
+        return null;
+    }
+    $due = borrowed_due_for($cardId, $start)['date'];
+    if ($due !== null && $due <= $start) {
+        // The loan was taken after that statement's cut-off: the next statement bills it.
+        $due = borrowed_due_for($cardId, (new DateTimeImmutable($start))->modify('+1 month')->format('Y-m-d'))['date'];
+    }
+
+    return $due !== null && $due > $start ? $due : null;
+}
+
+const CASH_LOAN_FIRST_DUE_MARKER = 'storage/upgrade_cash_loan_first_due.done';
+
+/**
+ * One-time repair: loans saved with a term but no first due date never got a
+ * schedule, so their borrowers' obligations had no due date and an agreed
+ * monthly rate was charged for 1 month only. Where the card's due date is
+ * known, set the first due date, build the schedule and bring the
+ * obligations in step (due date, months of interest). Others are left for
+ * the owner to complete (the loan page asks for the first due date).
+ */
+function cash_loan_first_due_repair(): void
+{
+    if (marker_exists(CASH_LOAN_FIRST_DUE_MARKER)) {
+        return;
+    }
+    foreach (db_all(
+        "SELECT l.* FROM cash_loans l WHERE l.term_months > 0 AND l.first_due_date IS NULL
+            AND NOT EXISTS (SELECT 1 FROM cash_loan_schedules s WHERE s.cash_loan_id = l.id)"
+    ) as $loan) {
+        $first = cash_loan_default_first_due($loan['credit_card_id'], $loan['start_date'] ?: substr((string) $loan['created_at'], 0, 10));
+        if ($first === null) {
+            continue;
+        }
+        db_transaction(static function () use ($loan, $first) {
+            $end = schedule_due_date($first, (int) $loan['term_months'] - 1, $loan['payment_frequency'] ?: 'monthly');
+            db_update('cash_loans', ['first_due_date' => $first, 'end_date' => $end], $loan['id']);
+            $fresh = db_row('SELECT * FROM cash_loans WHERE id = :l', [':l' => $loan['id']]);
+            cash_loan_generate_schedule($fresh);
+            $ids = array_column(db_all(
+                "SELECT o.id FROM borrower_obligations o JOIN cash_loan_allocations a ON a.id = o.cash_loan_allocation_id
+                  WHERE a.cash_loan_id = :l AND o.status <> 'cancelled'", [':l' => $loan['id']]), 'id');
+            schedule_move_obligations($ids, null, cash_loan_last_due($fresh));
+            foreach ($ids as $oid) {
+                obligation_rate_refresh($oid);
+                schedule_sync_obligation($oid);
+            }
+            log_activity('schedule_repair', 'cash_loan', $loan['id'], 'First due date ' . format_date($first) . ' taken from the card; repayment schedule built for '
+                . $loan['loan_reference'], null, null, $loan['owner_user_id'] ?? SYSTEM_ACTOR);
+        });
+    }
+    marker_write(CASH_LOAN_FIRST_DUE_MARKER);
 }
 
 function cash_loan_find(string $id): ?array
