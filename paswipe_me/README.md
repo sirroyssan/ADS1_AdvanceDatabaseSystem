@@ -1417,7 +1417,7 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
   - **Loan amount:** the obligation's original amount.
   - **Bank:** the bank it was processed with.
   - **Monthly:** the installment amount × the number of installments, from the obligation's schedule; "One payment" when there is a single amount.
-- **Borrower portal:** the obligation details (*What I Owe → open an item*) show a **Bank** row with the bank's name only (e.g. *BDO*), as plain text. Borrowers cannot open the card and never see its nickname or last four digits. The **What I Owe** list shows the same bank name on each item's grey line (e.g. *OBL-20261011-0004 · Jun 23, 2026 · BDO*). Card purchases already showed their bank in the item name.
+- **Borrower portal:** the obligation details (*What I Owe → open an item*) show a **Bank** row with the bank's name only (e.g. *BDO*), as plain text. Borrowers cannot open the card and never see its nickname or last four digits. The **What I Owe** list shows the same bank name on each item's grey line (e.g. *OBL-20261011-0004 · Jun 23, 2026 · BDO*). Card purchases already showed their bank in the item name. The separate **Date** column was removed, since the date is already under the item. A **Monthly** column shows the monthly payment × the number of months, or "One payment" for a single amount.
 - Nothing is stored: `obligation_find()` reads the card through the existing links.
 
 ## Receive Payment layout

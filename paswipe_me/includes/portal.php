@@ -288,6 +288,7 @@ function portal_all_items(string $borrowerId, bool $openOnly = true): array
             'due_month' => $outstanding + $penalties > 0.004 ? $due['due_month'] : 0.0,
             'due_date' => $due['current']['due']['date'] ?? $o['due_date'],
             'installment' => $due['current'] !== null ? 'Installment ' . $due['current']['n'] . ' of ' . $due['installments'] : null,
+            'monthly' => $due['monthly'], 'installments' => $due['installments'],   // the monthly payment (null: one amount)
             'overdue' => (float) $o['overdue_amount'] > 0.004 || ($o['due_date'] && $o['due_date'] < $today && $outstanding > 0.004),
             'overdue_amount' => (float) $o['overdue_amount'],   // what is past its due date (the owner's figure too)
             'status' => $o['status'],
@@ -318,6 +319,7 @@ function portal_all_items(string $borrowerId, bool $openOnly = true): array
             'total' => $l['outstanding'], 'due_now' => $l['status'] === 'repaid' ? 0.0 : $l['due_now'],
             'due_month' => $l['status'] === 'repaid' ? 0.0 : ($l['due_month'] ?? 0.0),
             'due_date' => $l['next_due']['date'] ?? null, 'installment' => borrowed_installment_text($l),
+            'monthly' => $l['installments'] >= 2 ? $l['monthly'] : null, 'installments' => $l['installments'],
             'overdue' => $l['status'] === 'overdue', 'overdue_amount' => (float) $l['overdue_amount'], 'status' => $l['status'],
         ];
     }

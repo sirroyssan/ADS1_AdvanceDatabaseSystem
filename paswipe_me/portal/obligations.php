@@ -69,8 +69,8 @@ require APP_ROOT . '/includes/header.php';
         <div class="table-wrap">
             <table class="table table--cards">
                 <thead><tr>
-                    <th scope="col" class="col-num">#</th><th scope="col">Type</th><th scope="col">Item</th><th scope="col">Date</th>
-                    <th scope="col" class="num">Amount</th><th scope="col" class="num">Paid</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th>
+                    <th scope="col" class="col-num">#</th><th scope="col">Type</th><th scope="col">Item</th>
+                    <th scope="col" class="num">Amount</th><th scope="col" class="num">Monthly</th><th scope="col" class="num">Paid</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th>
                     <th scope="col" class="num">Due this period</th><th scope="col">Next due</th><th scope="col">Status</th>
                 </tr></thead>
                 <tbody>
@@ -80,8 +80,8 @@ require APP_ROOT . '/includes/header.php';
                         <td data-label="Type"><?= e($i['type']) ?></td>
                         <td data-label="Item"><a data-modal-form class="table-link" href="<?= e($i['link']) ?>"><?= e(excerpt($i['title'], 45)) ?></a>
                             <br><span class="text-muted nowrap"><?= e($i['ref']) ?></span><?= $i['date'] ? ' <span class="text-muted nowrap">· ' . e(format_date($i['date'])) . '</span>' : '' ?><?= !empty($i['bank']) ? ' <span class="text-muted nowrap">· ' . e($i['bank']) . '</span>' : '' ?></td>
-                        <td data-label="Date"><?= $i['date'] ? e(format_date($i['date'])) : '—' ?></td>
                         <td data-label="Amount" class="num"><?= e(format_money($i['amount'])) ?></td>
+                        <td data-label="Monthly" class="num"><?= !empty($i['monthly']) ? e(format_money($i['monthly'])) . '<br><span class="text-muted">× ' . e($i['installments']) . ' months</span>' : '<span class="text-muted">One payment</span>' ?></td>
                         <td data-label="Paid" class="num"><?= e(format_money($i['paid'])) ?></td>
                         <td data-label="Outstanding" class="num"><?= e(format_money($i['outstanding'])) ?></td>
                         <td data-label="Penalties" class="num<?= $i['penalties'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($i['penalties'])) ?></td>
