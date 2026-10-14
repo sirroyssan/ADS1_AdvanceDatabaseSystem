@@ -1,9 +1,10 @@
 <?php
 /**
  * Transactions - repayments of a borrowed purchase (POST), by the card owner:
- *   record  - money received from the borrower (counts at once);
  *   confirm - a repayment the borrower reported (then it counts);
  *   reject  - a reported repayment that did not arrive (kept in the history).
+ * There is no "record" here any more: repayments come from the borrower's
+ * portal, and money handed over in person goes through Receive Payment.
  * The transaction is found through the owner-scoped finder: only the card
  * owner can do this (includes/borrowed.php).
  */
@@ -30,30 +31,7 @@ $ledger = $purchase['ledger'];
 $action = input_string($_POST, 'action');
 
 try {
-    if ($action === 'record') {
-        $fields = [
-            'amount'           => ['label' => 'Amount received', 'type' => 'decimal', 'required' => true, 'min_exclusive' => 0],
-            'payment_date'     => ['label' => 'Date received', 'type' => 'date', 'required' => true],
-            'reference_number' => ['label' => 'Reference', 'type' => 'text', 'max' => 150],
-            'notes'            => ['label' => 'Notes', 'type' => 'textarea'],
-        ];
-        [$data, $errors] = validate_fields($fields, $_POST);
-        if (!$errors && (float) $data['amount'] > $ledger['outstanding'] + 0.004) {
-            $errors['amount'] = 'Only ' . format_money($ledger['outstanding']) . ' is outstanding on this purchase.';
-        }
-        if (!$errors && $data['payment_date'] > date('Y-m-d')) {
-            $errors['payment_date'] = 'The date cannot be in the future.';
-        }
-        if ($errors) {
-            flash('error', 'Repayment not recorded: ' . reset($errors));
-        } elseif (!form_once_use('transaction_repayment', input_string($_POST, 'once'))) {
-            // The same form sent twice (double click, refresh) records once.
-            flash('info', 'This repayment was already recorded.');
-        } else {
-            borrowed_record_repayment($purchase, $data, $currentUser['id'], true);
-            flash('success', 'Repayment of ' . format_money($data['amount']) . ' recorded.');
-        }
-    } elseif (in_array($action, ['confirm', 'reject'], true)) {
+    if (in_array($action, ['confirm', 'reject'], true)) {
         $payment = db_row('SELECT * FROM borrower_payments WHERE id = :id AND transaction_id = :t', [':id' => input_string($_POST, 'payment_id'), ':t' => $txn['id']]);
         if (!$payment || !in_array($payment['status'], BORROWED_REPORTED_STATUSES, true)) {
             flash('error', 'Repayment not found, or it was already decided.');

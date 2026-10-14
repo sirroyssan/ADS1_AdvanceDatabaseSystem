@@ -53,13 +53,6 @@ $history = db_all(
       WHERE p.status <> 'pending' ORDER BY COALESCE(p.decided_at, p.requested_at) DESC LIMIT 20"
 );
 
-/** Reject with an optional reason (shown to the user for a password reset). */
-$rejectForm = static function (string $action, string $id, string $label) use ($self): string {
-    return '<form method="post" action="' . e($self) . '" class="inline-form approval-reject" data-confirm="' . e($label . '?') . '" data-confirm-title="' . e($label . '?') . '" data-confirm-button="Reject">'
-        . csrf_field() . '<input type="hidden" name="action" value="' . e($action) . '"><input type="hidden" name="id" value="' . e($id) . '">'
-        . '<input type="text" name="note" maxlength="1000" placeholder="Reason (optional)" aria-label="Reason">'
-        . '<button type="submit" class="btn btn--outline btn--sm">' . icon('x') . ' <span>Reject</span></button></form>';
-};
 
 $pageTitle = 'Approvals';
 $activeNav = 'approvals';
@@ -91,11 +84,9 @@ require APP_ROOT . '/includes/header.php';
                         <td data-label="Role"><?php foreach (array_filter(explode(',', (string) $a['roles'])) as $role): ?><span class="chip"><?= e(role_label($role)) ?></span> <?php endforeach; ?></td>
                         <td data-label="Registered"><?= e(format_datetime($a['created_at'])) ?><?= $a['ip'] ? '<br><span class="text-muted">from ' . e($a['ip']) . '</span>' : '' ?></td>
                         <td class="actions no-print">
-                            <div class="row-actions">
-                                <?= post_button($self, ['action' => 'approve_account', 'id' => $a['id']], 'Approve', 'check', 'btn btn--primary btn--sm',
-                                    'Approve the account of ' . user_display_name($a) . '? They can sign in right away as an owner of their own records.', false, 'Approve account?') ?>
-                                <?= $rejectForm('reject_account', $a['id'], 'Reject the account of ' . user_display_name($a)) ?>
-                            </div>
+                            <?= decision_bar([$self, ['action' => 'approve_account', 'id' => $a['id']],
+                                'Approve the account of ' . user_display_name($a) . '? They can sign in right away as an owner of their own records.', 'Approve account?'],
+                                'account', ['id' => $a['id']]) ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -125,11 +116,9 @@ require APP_ROOT . '/includes/header.php';
                             <?php if ($r['user_id'] === $currentUser['id']): ?>
                                 <span class="text-muted">Your own request: another administrator decides it.</span>
                             <?php else: ?>
-                                <div class="row-actions">
-                                    <?= post_button($self, ['action' => 'approve_reset', 'id' => $r['id']], 'Approve', 'check', 'btn btn--primary btn--sm',
-                                        'Approve the new password of ' . user_display_name($r) . '? Make sure the request really came from them.', false, 'Approve password reset?') ?>
-                                    <?= $rejectForm('reject_reset', $r['id'], 'Reject the password reset of ' . user_display_name($r)) ?>
-                                </div>
+                                <?= decision_bar([$self, ['action' => 'approve_reset', 'id' => $r['id']],
+                                    'Approve the new password of ' . user_display_name($r) . '? Make sure the request really came from them.', 'Approve password reset?'],
+                                    'reset', ['id' => $r['id']]) ?>
                             <?php endif; ?>
                         </td>
                     </tr>

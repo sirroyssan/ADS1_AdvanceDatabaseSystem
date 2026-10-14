@@ -62,7 +62,7 @@ require APP_ROOT . '/includes/header.php';
         <a href="<?= e(url('pages/obligations/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
         <?php if (!$isClosed): ?>
-            <a data-modal-form href="<?= e(url('pages/borrower_payments/create.php', ['borrower_id' => $obligation['borrower_id']])) ?>" class="btn btn--outline"><?= icon('receipt') ?> <span>Record payment</span></a>
+            <a href="<?= e(url('pages/staff/receive.php', ['borrower_id' => $obligation['borrower_id']])) ?>" class="btn btn--outline"><?= icon('wallet') ?> <span>Receive payment</span></a>
         <?php endif; ?>
         <?php if ($statusChoices && $obligation['status'] !== 'paid'): ?>
             <a data-modal-form href="<?= e(url('pages/obligations/status.php', ['id' => $id])) ?>" class="btn btn--outline"><?= icon('repeat') ?> <span>Change status</span></a>

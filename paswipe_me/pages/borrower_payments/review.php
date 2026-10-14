@@ -31,7 +31,8 @@ if (in_array($decision, ['rejected', 'correction_required', 'cancelled'], true) 
     redirect($back);
 }
 
-$verifiedAmount = str_replace([',', ' ', '₱'], '', input_string($_POST, 'verified_amount'));
+// The amount is the borrower's: approving verifies it as submitted (no reviewer edits it).
+$verifiedAmount = $decision === 'approved' ? number_format((float) $payment['amount'], 2, '.', '') : str_replace([',', ' ', '₱'], '', input_string($_POST, 'verified_amount'));
 if ($verifiedAmount !== '' && !preg_match('/^\d+(\.\d{1,2})?$/', $verifiedAmount)) {
     flash('error', 'Verified amount must be a number.');
     redirect($back);

@@ -8,6 +8,10 @@ require_once __DIR__ . '/payment_functions.php';
 
 $currentUser = require_admin();
 
+// Payments come from the borrower's portal; money handed over in person is received
+// in Receive Payment (it issues the receipt). Nothing is recorded by hand here.
+redirect('pages/staff/receive.php', is_valid_uuid(input_string($_GET, 'borrower_id')) ? ['borrower_id' => input_string($_GET, 'borrower_id')] : []);
+
 $fields = payment_fields();
 $preset = input_string($_GET, 'borrower_id');
 $data = form_defaults($fields, is_valid_uuid($preset) ? ['borrower_id' => $preset] : []);

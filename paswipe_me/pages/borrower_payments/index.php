@@ -67,13 +67,13 @@ require APP_ROOT . '/includes/header.php';
 ?>
 
 <?= render_print_header($state, $result['total'], $result['pager']) ?>
-<?= render_list_header($state, 'Payments sent by borrowers. Review, approve, then allocate them to obligations.', url('pages/borrower_payments/create.php'), 'Record Payment',
+<?= render_list_header($state, 'Payments sent by borrowers from their portal: review each one and approve or reject it. Cash handed over in person is recorded in Receive Payment.', url('pages/staff/receive.php'), 'Receive Payment',
     '<a href="' . e(url('pages/borrower_payments/index.php', ['status' => 'pending'])) . '" class="btn btn--outline">' . icon('receipt') . ' <span>Waiting for review</span></a>') ?>
 <?= render_list_toolbar($state) ?>
 
 <section class="panel panel--flush" aria-label="Payment list">
     <?php if ($result['total'] === 0): ?>
-        <?= render_empty_state($state, url('pages/borrower_payments/create.php'), 'Record a payment received from a borrower.', 'receipt') ?>
+        <?= render_empty_state($state, url('pages/staff/receive.php'), 'Borrowers submit their payments in their portal; cash is recorded in Receive Payment.', 'receipt') ?>
     <?php else: ?>
         <div class="table-wrap">
             <table class="table table--cards">
@@ -104,9 +104,6 @@ require APP_ROOT . '/includes/header.php';
                         <td class="actions no-print">
                             <div class="row-actions">
                                 <?= icon_link(url('pages/borrower_payments/view.php', ['id' => $row['id']]), 'eye', 'View ' . $row['payment_number']) ?>
-                                <?php if (in_array($row['status'], PAYMENT_EDITABLE_STATUSES, true)): ?>
-                                    <?= icon_link(url('pages/borrower_payments/edit.php', ['id' => $row['id']]), 'edit', 'Edit ' . $row['payment_number']) ?>
-                                <?php endif; ?>
                             </div>
                         </td>
                     </tr>

@@ -9,6 +9,10 @@ require_once __DIR__ . '/payment_functions.php';
 
 $currentUser = require_admin();
 
+// No editing of a payment's amount by the owner or admin side.
+flash('error', 'A payment is submitted by the borrower and is only approved or rejected here. To change it, reject it with the reason; the borrower submits a corrected one.');
+redirect('pages/borrower_payments/view.php', ['id' => request_id()]);
+
 $payment = find_or_redirect(payment_find(request_id()), 'pages/borrower_payments/index.php', 'Payment');
 
 if (!in_array($payment['status'], PAYMENT_EDITABLE_STATUSES, true)) {

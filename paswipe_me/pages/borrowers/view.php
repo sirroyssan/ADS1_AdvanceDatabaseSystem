@@ -158,7 +158,7 @@ require APP_ROOT . '/includes/header.php';
 <section class="panel subpanel">
     <header class="panel__header">
         <h3>Recent payments</h3>
-        <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/borrower_payments/create.php', ['borrower_id' => $id])) ?>"><?= icon('plus') ?> <span>Record</span></a>
+        <a class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/staff/receive.php', ['borrower_id' => $id])) ?>"><?= icon('wallet') ?> <span>Receive payment</span></a>
     </header>
     <?php if (!$payments): ?>
         <p class="empty-inline">No payments.</p>

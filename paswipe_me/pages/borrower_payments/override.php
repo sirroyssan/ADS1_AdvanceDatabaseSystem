@@ -10,6 +10,10 @@ require_once __DIR__ . '/payment_functions.php';
 
 $currentUser = require_admin();
 
+// No editing of a payment's amount by the owner or admin side.
+flash('error', 'Payment amounts are not edited by the owner or admin. Reject the payment with the reason (or delete a cash receipt line) instead.');
+redirect('pages/borrower_payments/view.php', ['id' => request_id()]);
+
 $payment = find_or_redirect(payment_find(request_id()), 'pages/borrower_payments/index.php', 'Payment');
 $back = 'pages/borrower_payments/view.php?id=' . $payment['id'];
 if ($payment['status'] === 'cancelled') {

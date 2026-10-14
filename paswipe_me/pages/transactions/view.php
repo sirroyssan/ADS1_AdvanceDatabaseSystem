@@ -191,53 +191,19 @@ require APP_ROOT . '/includes/header.php';
             <?= borrowed_render_ledger($purchase, $l, $canManage) ?>
             <?php if ($l['mode'] === 'transaction'): ?>
                 <h4 class="form-section">Repayments</h4>
-                <?= borrowed_render_repayments($repayments, static function ($r) use ($related, $id, $canManage) {
-                    if (!$canManage || !in_array($r['status'], array_merge(['approved'], BORROWED_REPORTED_STATUSES), true)) {
+                <?= borrowed_render_repayments($repayments, static function ($r) use ($id, $canManage) {
+                    if (!$canManage || !in_array($r['status'], array_merge(['approved', 'rejected'], BORROWED_REPORTED_STATUSES), true)) {
                         return '';
                     }
-                    // What it paid: late charges / which installment (the borrower's split).
-                    $split = '<a data-modal-form class="btn btn--sm btn--outline" href="' . e(url('pages/transactions/repayment_parts.php', ['id' => $id, 'payment_id' => $r['id']])) . '">'
-                        . icon('edit') . ' <span>What it paid</span></a> ';
-                    if ($r['status'] === 'approved') {
-                        return $split;
-                    }
-                    $url = url('pages/transactions/repayment.php');
-                    $panel = 'reject-repayment-' . $r['id'];
-
-                    // Confirm / Reject side by side; the reason for rejecting is asked in a small modal.
-                    return '<div class="row-actions row-actions--buttons">' . $split
-                        . post_button($url, ['id' => $id, 'action' => 'confirm', 'payment_id' => $r['id']], 'Confirm', 'check', 'btn btn--sm btn--primary',
-                            'Confirm that you received ' . format_money($r['amount']) . '? It is then taken off what the borrower owes.', false, 'Confirm repayment?')
-                        . '<button type="button" class="btn btn--sm btn--outline" data-modal-panel="' . e($panel) . '" data-modal-subtitle="'
-                        . e($r['payment_number'] . ' · ' . format_money($r['amount'])) . '">' . icon('x') . ' <span>Reject</span></button></div>'
-                        . '<form method="post" action="' . e($url) . '" class="inline-panel" id="' . e($panel) . '" hidden novalidate data-validate>' . csrf_field()
-                        . '<input type="hidden" name="id" value="' . e($id) . '"><input type="hidden" name="action" value="reject"><input type="hidden" name="payment_id" value="' . e($r['id']) . '">'
-                        . '<div class="form-group"><label for="' . e($panel) . '-reason">Reason for rejecting <span class="required" aria-hidden="true">*</span></label>'
-                        . '<textarea id="' . e($panel) . '-reason" name="reason" rows="3" maxlength="1000" required placeholder="e.g. The money did not arrive in my account"></textarea>'
-                        . '<p class="field-help">The repayment stays in the history as rejected and the borrower is told why.</p></div>'
-                        . '<div class="inline-panel__actions"><button type="button" class="btn btn--outline" data-toggle-panel="' . e($panel) . '">Cancel</button>'
-                        . '<button type="submit" class="btn btn--danger">' . icon('x') . ' <span class="btn__label">Reject repayment</span></button></div></form>';
+                    // Read-only; a reported one is approved or rejected inside (bottom right).
+                    $pending = in_array($r['status'], BORROWED_REPORTED_STATUSES, true);
+                    return '<a data-modal-form class="btn btn--sm ' . ($pending ? 'btn--primary' : 'btn--outline') . '" href="'
+                        . e(url('pages/transactions/repayment_parts.php', ['id' => $id, 'payment_id' => $r['id']])) . '">'
+                        . icon($pending ? 'check' : 'eye') . ' <span>' . ($pending ? 'Review' : 'View') . '</span></a>';
                 }) ?>
-                <?php if ($l['outstanding'] > 0.004 && !$isLocked && !$canManage): ?>
-                    <p class="no-print"><a class="btn btn--sm btn--primary" href="<?= e(url('pages/staff/receive.php', ['borrower_id' => $txn['borrower_id']])) ?>"><?= icon('wallet') ?> <span>Receive a payment</span></a></p>
-                <?php elseif ($l['outstanding'] > 0.004 && !$isLocked): ?>
-                    <details class="no-print">
-                        <summary>Record a repayment you received</summary>
-                        <form method="post" action="<?= e(url('pages/transactions/repayment.php')) ?>" class="repay-record">
-                            <?= csrf_field() ?>
-                            <input type="hidden" name="id" value="<?= e($id) ?>">
-                            <input type="hidden" name="action" value="record">
-                            <?= form_once_field('transaction_repayment') ?>
-                            <?= render_fields([
-                                'amount'           => ['label' => 'Amount received', 'type' => 'decimal', 'required' => true, 'help' => 'Up to ' . format_money($l['outstanding']) . '. Partial amounts are fine.'],
-                                'payment_date'     => ['label' => 'Date received', 'type' => 'date', 'required' => true],
-                                'reference_number' => ['label' => 'Reference', 'type' => 'text', 'max' => 150],
-                            ], ['payment_date' => date('Y-m-d')], []) ?>
-                            <div class="inline-panel__actions">
-                                <button type="submit" class="btn btn--primary" data-loading-text="Saving…"><?= icon('check') ?> <span class="btn__label">Record repayment</span></button>
-                            </div>
-                        </form>
-                    </details>
+                <?php if ($l['outstanding'] > 0.004 && !$isLocked): ?>
+                    <!-- Repayments come from the borrower's portal; money handed over in person is received in Receive Payment (receipt issued). -->
+                    <p class="no-print"><a class="btn btn--sm btn--outline" href="<?= e(url('pages/staff/receive.php', ['borrower_id' => $txn['borrower_id']])) ?>"><?= icon('wallet') ?> <span>Receive a cash payment</span></a></p>
                 <?php endif; ?>
             <?php endif; ?>
         </section>

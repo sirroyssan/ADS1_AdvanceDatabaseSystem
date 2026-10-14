@@ -66,21 +66,9 @@ require APP_ROOT . '/includes/header.php';
             <section class="panel no-print">
                 <header class="panel__header"><h3>Your decision</h3></header>
                 <p class="field-help">Approving applies the change at once to the record and every balance that depends on it. A delete voids the record; it is never erased.</p>
-                <form method="post" action="<?= e(url('pages/authorizations/decide.php')) ?>" class="status-form" data-confirm="Approve and apply this change now? Balances that depend on it are updated at once.">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="id" value="<?= e($req['id']) ?>">
-                    <input type="hidden" name="decision" value="approve">
-                    <?= render_fields(['note' => ['label' => 'Note (optional)', 'type' => 'textarea', 'rows' => 2, 'max' => 1000]], [], []) ?>
-                    <button type="submit" class="btn btn--primary btn--block"><?= icon('check') ?> <span>Approve and apply</span></button>
-                </form>
-                <form method="post" action="<?= e(url('pages/authorizations/decide.php')) ?>" class="status-form" data-confirm="Reject this request? Nothing will change.">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="id" value="<?= e($req['id']) ?>">
-                    <input type="hidden" name="decision" value="reject">
-                    <div class="form-group"><label for="f_reject_note">Reason for rejecting <span class="required" aria-hidden="true">*</span></label>
-                        <textarea id="f_reject_note" name="note" rows="2" maxlength="1000" required></textarea></div>
-                    <button type="submit" class="btn btn--outline btn--block"><?= icon('x') ?> <span>Reject</span></button>
-                </form>
+                <?= decision_bar([url('pages/authorizations/decide.php'), ['id' => $req['id'], 'decision' => 'approve'],
+                    'Approve and apply this change now? Balances that depend on it are updated at once.', 'Approve request?'],
+                    'authorization', ['id' => $req['id']]) ?>
             </section>
         <?php elseif ($req['status'] === 'pending'): ?>
             <section class="panel"><p class="field-help">Waiting for the card owner's decision. Nothing has changed.</p></section>

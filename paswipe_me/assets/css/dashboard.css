@@ -2919,3 +2919,35 @@ td.actions:has(.row-actions--buttons) { width: 1%; }   /* the buttons decide the
     width: 170px;
     padding: 6px 10px;
 }
+
+/* A total card without an icon (label then amount): stack them so the amount
+   gets the card's full width and never breaks in the middle of a number. */
+.stat-card:not(:has(> .stat-card__icon)) {
+    flex-direction: column;
+    gap: 4px;
+}
+.stat-card:not(:has(> .stat-card__icon)) > .stat-card__value {
+    margin-top: 0;
+    overflow-wrap: normal;
+    white-space: nowrap;
+}
+
+/* Approve / Reject of a record: together, bottom right (includes/decisions.php) */
+.decision-bar {
+    display: flex;
+    justify-content: flex-end;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 10px;
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid var(--border);
+}
+.decision-bar .inline-form { margin: 0; }
+td .decision-bar,
+.table .decision-bar {
+    margin: 0;
+    padding: 0;
+    border: 0;
+    flex-wrap: nowrap;
+}

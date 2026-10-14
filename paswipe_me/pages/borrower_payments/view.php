@@ -68,12 +68,9 @@ require APP_ROOT . '/includes/header.php';
         <a href="<?= e(url('pages/borrower_payments/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
         <?php if (user_is_admin($currentUser) && $payment['status'] !== 'cancelled'): ?>
-            <a data-modal-form href="<?= e(url('pages/borrower_payments/override.php', ['id' => $id])) ?>" class="btn btn--outline"><?= icon('lock') ?> <span>Override amount</span></a>
             <a data-modal-form href="<?= e(url('pages/borrower_payments/void.php', ['id' => $id])) ?>" class="btn btn--outline btn--danger-outline"><?= icon('trash') ?> <span>Delete</span></a>
         <?php endif; ?>
-        <?php if (in_array($payment['status'], PAYMENT_EDITABLE_STATUSES, true)): ?>
-            <a data-modal-form href="<?= e(url('pages/borrower_payments/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
-        <?php endif; ?>
+        <?php /* No Edit / Override: the borrower submits the amount; here it is only approved or rejected (bottom right). */ ?>
     </div>
 </section>
 
@@ -90,9 +87,7 @@ require APP_ROOT . '/includes/header.php';
 <?php $parts = borrowed_parts($id); $rest = round((float) $payment['amount'] - array_sum(array_column($parts, 'amount')), 2); ?>
 <section class="panel subpanel">
     <header class="panel__header"><h3><?= icon('credit-card') ?> Repayment of card purchase <?= e($purchase['transaction_number']) ?></h3>
-        <?php if (in_array($payment['status'], ['approved', 'submitted', 'under_review'], true)): ?>
-            <a data-modal-form class="btn btn--sm btn--outline no-print" href="<?= e(url('pages/transactions/repayment_parts.php', ['id' => $purchase['id'], 'payment_id' => $id])) ?>"><?= icon('edit') ?> <span>What it paid</span></a>
-        <?php endif; ?></header>
+</header>
     <p><a href="<?= e(url('pages/transactions/view.php', ['id' => $purchase['id']])) ?>"><?= e($purchase['merchant_name'] ?: $purchase['transaction_number']) ?></a></p>
     <div class="table-wrap">
         <table class="table table--cards table--compact">
@@ -134,33 +129,6 @@ require APP_ROOT . '/includes/header.php';
     </section>
 
     <div class="detail-side">
-        <?php if ($decisions): ?>
-            <section class="panel no-print">
-                <header class="panel__header"><h3><?= icon('shield') ?> Review</h3></header>
-                <form method="post" action="<?= e(url('pages/borrower_payments/review.php')) ?>" class="subpanel" novalidate>
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="id" value="<?= e($id) ?>">
-                    <div class="form-group">
-                        <label for="decision">Decision</label>
-                        <select id="decision" name="decision" required>
-                            <?php foreach ($decisions as $d): ?><option value="<?= e($d) ?>"><?= e(humanize($d)) ?></option><?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="verified_amount">Verified amount</label>
-                        <input type="text" inputmode="decimal" class="input-num" id="verified_amount" name="verified_amount" value="<?= e($payment['amount']) ?>">
-                    </div>
-                    <label class="check-option"><input type="checkbox" name="reference_verified" value="1"><span><strong>Reference number verified</strong></span></label>
-                    <label class="check-option"><input type="checkbox" name="proof_verified" value="1"><span><strong>Proof of payment checked</strong></span></label>
-                    <label class="check-option"><input type="checkbox" name="payment_date_verified" value="1"><span><strong>Payment date verified</strong></span></label>
-                    <div class="form-group">
-                        <label for="reason">Reason / remarks</label>
-                        <textarea id="reason" name="reason" rows="3" placeholder="Required when rejecting, cancelling or asking for a correction"></textarea>
-                    </div>
-                    <button type="submit" class="btn btn--primary btn--block" data-loading-text="Saving…"><?= icon('check') ?> <span class="btn__label">Save decision</span></button>
-                </form>
-            </section>
-        <?php endif; ?>
 
         <section class="panel">
             <header class="panel__header"><h3>Latest verification</h3></header>
@@ -287,5 +255,11 @@ require APP_ROOT . '/includes/header.php';
         </ul>
     <?php endif; ?>
 </section>
+
+<?php if (in_array('approved', $decisions, true)): ?>
+    <?= decision_bar([url('pages/borrower_payments/review.php'), ['id' => $id, 'decision' => 'approved'],
+        'Approve payment ' . $payment['payment_number'] . ' of ' . format_money($payment['amount']) . '? It is applied as the borrower chose and the borrower is told.', 'Approve payment?'],
+        'payment', ['id' => $id]) ?>
+<?php endif; ?>
 
 <?php require APP_ROOT . '/includes/footer.php'; ?>

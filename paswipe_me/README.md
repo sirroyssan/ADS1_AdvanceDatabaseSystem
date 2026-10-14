@@ -1403,6 +1403,28 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/paswipe_me/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Payments are approved or rejected, never edited (one decision layout everywhere)
+
+The process: the borrower submits a payment in their portal, and the owner or admin approves or rejects it. Money handed over in person is recorded only through **Receive Payment** (staff, owner or admin), which issues a receipt. Nobody on the owner's side changes the amount a borrower submitted.
+
+- **Review screen (read-only):** a card repayment opens with **Review** (or **View** once decided), replacing "What it paid", in `pages/transactions/repayment_parts.php`.
+  - It shows the amount, date, reference, method, proof, notes and status.
+  - It shows what the repayment pays: exactly the borrower's choices, plus the rest going to the oldest unpaid installments. Months already paid are never listed, and there are no input boxes.
+- **Approve / Reject together, bottom right** (`decision_bar()` in `includes/decisions.php`):
+  - **Approve** asks for confirmation.
+  - **Reject** opens a second modal for the reason (`pages/decisions/reject.php`), then saves. The borrower is told why and can submit again.
+  - The same bar is used for card repayments, borrower payments (page and notification), staff authorization requests (page and notification), and new accounts and password resets on Approvals.
+- **Removed:**
+  - The owner's "Record a repayment you received" form on a transaction. It is replaced by a *Receive a cash payment* link to Receive Payment.
+  - The confirm / reject buttons and the inline reason box on each repayment row.
+  - The Borrower Payments review form (decision list, editable "Verified amount", checkboxes). Approving now verifies the amount as submitted.
+  - The **Edit** and **Override amount** buttons for payments, including Override on a receipt's lines. Opening those pages directly says so and goes back.
+  - "Record Payment" on Borrower Payments, a borrower's page and an obligation now leads to Receive Payment.
+- **Not changed:**
+  - Staff still *request* a correction or void of a cash receipt line; the owner approves or rejects it with the same bar.
+  - Allocating the unallocated part of an approved payment to an obligation is unchanged.
+- **Late & Finance Charges totals:** the label and amount are stacked, so long amounts (e.g. ₱50,844.84) no longer break in the middle of a number.
+
 ## New accounts and password resets need an administrator's approval
 
 **New owners (self-registration):**

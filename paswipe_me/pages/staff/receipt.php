@@ -148,7 +148,6 @@ require APP_ROOT . '/includes/header.php';
                         <span><strong><?= e(format_money($p['amount'])) ?></strong>
                         <?php if ($p['status'] !== 'cancelled'): ?>
                             <?php if (user_is_admin($currentUser)): /* the owner changes it directly; staff ask for authorization */ ?>
-                                <a data-modal-form class="btn btn--sm btn--outline" href="<?= e(url('pages/borrower_payments/override.php', ['id' => $p['id']])) ?>"><?= icon('lock') ?> <span>Override</span></a>
                                 <a data-modal-form class="btn btn--sm btn--outline btn--danger-outline" href="<?= e(url('pages/borrower_payments/void.php', ['id' => $p['id']])) ?>"><?= icon('trash') ?> <span>Delete</span></a>
                             <?php else: ?>
                                 <a data-modal-form class="btn btn--sm btn--outline" href="<?= e(url('pages/authorizations/request.php', ['type' => 'borrower_payment', 'id' => $p['id'], 'action' => 'edit'])) ?>"><?= icon('edit') ?> <span>Edit</span></a>

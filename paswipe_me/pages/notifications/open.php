@@ -51,7 +51,6 @@ if ($isAdmin && $type === 'borrower_payment') {
 }
 
 $decisions = $payment ? (PAYMENT_TRANSITIONS[$payment['status']] ?? []) : [];
-$otherDecisions = array_values(array_diff($decisions, ['approved']));
 $selections = $payment ? payment_selections($payment['id']) : [];
 $attachments = $payment ? db_all(
     'SELECT d.id AS document_id, d.original_filename FROM payment_attachments pa JOIN documents d ON d.id = pa.document_id
@@ -118,42 +117,10 @@ require APP_ROOT . '/includes/header.php';
         <?php endif; ?>
     </section>
 
-    <?php if ($decisions): ?>
-        <section class="panel no-print notice-decision">
-            <header class="panel__header"><h3><?= icon('shield') ?> Your decision</h3></header>
-            <?php if (in_array('approved', $decisions, true)): ?>
-                <form method="post" action="<?= e(url('pages/borrower_payments/review.php')) ?>" class="status-form"
-                      data-confirm="Approve payment <?= e($payment['payment_number']) ?> of <?= e(format_money($payment['amount'])) ?>? It is applied to the borrower's balance at once."
-                      data-confirm-title="Approve payment?" data-confirm-button="Approve">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="id" value="<?= e($payment['id']) ?>">
-                    <input type="hidden" name="decision" value="approved">
-                    <input type="hidden" name="verified_amount" value="<?= e($payment['amount']) ?>">
-                    <label class="check-option"><input type="checkbox" name="reference_verified" value="1"><span><strong>Reference number verified</strong></span></label>
-                    <label class="check-option"><input type="checkbox" name="proof_verified" value="1"><span><strong>Proof of payment checked</strong></span></label>
-                    <label class="check-option"><input type="checkbox" name="payment_date_verified" value="1"><span><strong>Payment date verified</strong></span></label>
-                    <button type="submit" class="btn btn--primary btn--block"><?= icon('check') ?> <span>Approve <?= e(format_money($payment['amount'])) ?></span></button>
-                </form>
-            <?php endif; ?>
-            <?php if ($otherDecisions): ?>
-                <form method="post" action="<?= e(url('pages/borrower_payments/review.php')) ?>" class="status-form"
-                      data-confirm="Save this decision for payment <?= e($payment['payment_number']) ?>? The borrower is told." data-confirm-title="Save decision?" data-confirm-button="Save">
-                    <?= csrf_field() ?>
-                    <input type="hidden" name="id" value="<?= e($payment['id']) ?>">
-                    <div class="form-group">
-                        <label for="f_decision">Other decision</label>
-                        <select id="f_decision" name="decision" required>
-                            <?php foreach ($otherDecisions as $d): ?><option value="<?= e($d) ?>"<?= $d === 'rejected' ? ' selected' : '' ?>><?= e(humanize($d)) ?></option><?php endforeach; ?>
-                        </select>
-                    </div>
-                    <div class="form-group">
-                        <label for="f_reason">Reason (the borrower sees it)</label>
-                        <textarea id="f_reason" name="reason" rows="2" maxlength="5000" placeholder="Required when rejecting, cancelling or asking for a correction"></textarea>
-                    </div>
-                    <button type="submit" class="btn btn--outline btn--block"><?= icon('x') ?> <span>Save decision</span></button>
-                </form>
-            <?php endif; ?>
-        </section>
+    <?php if (in_array('approved', $decisions, true)): ?>
+        <?= decision_bar([url('pages/borrower_payments/review.php'), ['id' => $payment['id'], 'decision' => 'approved'],
+            'Approve payment ' . $payment['payment_number'] . ' of ' . format_money($payment['amount']) . '? It is applied as the borrower chose and the borrower is told.', 'Approve payment?'],
+            'payment', ['id' => $payment['id']]) ?>
     <?php else: ?>
         <section class="panel"><p class="field-help">Already decided: this payment is <?= badge($payment['status']) ?>. Nothing is waiting for you.</p></section>
     <?php endif; ?>
@@ -182,26 +149,9 @@ require APP_ROOT . '/includes/header.php';
                 'Reference' => show($p['reference_number']),
                 'Notes'     => show_multiline($p['notes']),
             ]) ?>
-            <form method="post" action="<?= e(url('pages/transactions/repayment.php')) ?>" class="status-form"
-                  data-confirm="Confirm that <?= e(format_money($p['amount'])) ?> was received? It counts against the purchase at once." data-confirm-title="Confirm repayment?" data-confirm-button="Confirm">
-                <?= csrf_field() ?>
-                <input type="hidden" name="id" value="<?= e($txn['id']) ?>">
-                <input type="hidden" name="action" value="confirm">
-                <input type="hidden" name="payment_id" value="<?= e($p['id']) ?>">
-                <button type="submit" class="btn btn--primary btn--block"><?= icon('check') ?> <span>Confirm received</span></button>
-            </form>
-            <form method="post" action="<?= e(url('pages/transactions/repayment.php')) ?>" class="status-form"
-                  data-confirm="Reject this repayment? It stays in the history and the borrower is told." data-confirm-title="Reject repayment?" data-confirm-button="Reject">
-                <?= csrf_field() ?>
-                <input type="hidden" name="id" value="<?= e($txn['id']) ?>">
-                <input type="hidden" name="action" value="reject">
-                <input type="hidden" name="payment_id" value="<?= e($p['id']) ?>">
-                <div class="form-group">
-                    <label for="f_reason_<?= e($p['id']) ?>">Reason for rejecting <span class="required" aria-hidden="true">*</span></label>
-                    <textarea id="f_reason_<?= e($p['id']) ?>" name="reason" rows="2" maxlength="1000" required></textarea>
-                </div>
-                <button type="submit" class="btn btn--outline btn--block"><?= icon('x') ?> <span>Reject</span></button>
-            </form>
+            <?= decision_bar([url('pages/transactions/repayment.php'), ['id' => $txn['id'], 'action' => 'confirm', 'payment_id' => $p['id']],
+                'Approve the repayment of ' . format_money($p['amount']) . '? It is then taken off what the borrower owes.', 'Approve repayment?'],
+                'repayment', ['id' => $txn['id'], 'payment_id' => $p['id']]) ?>
         </section>
     <?php endforeach; ?>
 
@@ -234,23 +184,9 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel no-print notice-decision">
             <header class="panel__header"><h3><?= icon('shield') ?> Your decision</h3></header>
             <p class="field-help">Approving applies the change at once to the record and every balance that depends on it. A delete voids the record; it is never erased.</p>
-            <form method="post" action="<?= e(url('pages/authorizations/decide.php')) ?>" class="status-form"
-                  data-confirm="Approve and apply this change now? Balances that depend on it are updated at once." data-confirm-title="Approve request?" data-confirm-button="Approve">
-                <?= csrf_field() ?>
-                <input type="hidden" name="id" value="<?= e($req['id']) ?>">
-                <input type="hidden" name="decision" value="approve">
-                <?= render_fields(['note' => ['label' => 'Note (optional)', 'type' => 'textarea', 'rows' => 2, 'max' => 1000]], [], []) ?>
-                <button type="submit" class="btn btn--primary btn--block"><?= icon('check') ?> <span>Approve and apply</span></button>
-            </form>
-            <form method="post" action="<?= e(url('pages/authorizations/decide.php')) ?>" class="status-form"
-                  data-confirm="Reject this request? Nothing will change." data-confirm-title="Reject request?" data-confirm-button="Reject">
-                <?= csrf_field() ?>
-                <input type="hidden" name="id" value="<?= e($req['id']) ?>">
-                <input type="hidden" name="decision" value="reject">
-                <div class="form-group"><label for="f_reject_note">Reason for rejecting <span class="required" aria-hidden="true">*</span></label>
-                    <textarea id="f_reject_note" name="note" rows="2" maxlength="1000" required></textarea></div>
-                <button type="submit" class="btn btn--outline btn--block"><?= icon('x') ?> <span>Reject</span></button>
-            </form>
+            <?= decision_bar([url('pages/authorizations/decide.php'), ['id' => $req['id'], 'decision' => 'approve'],
+                'Approve and apply this change now? Balances that depend on it are updated at once.', 'Approve request?'],
+                'authorization', ['id' => $req['id']]) ?>
         </section>
     <?php elseif ($req['status'] === 'pending'): ?>
         <section class="panel"><p class="field-help">Waiting for the card owner's decision. Nothing has changed.</p></section>
