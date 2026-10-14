@@ -146,12 +146,15 @@ function obligation_find(string $id): ?array
 
     return db_row(
         "SELECT o.*, b.first_name, b.last_name, b.borrower_number, t.transaction_number,
-                a.cash_loan_id, cl.loan_reference
+                a.cash_loan_id, cl.loan_reference,
+                cc.id AS card_id, cc.issuer AS card_issuer, cc.card_nickname, cc.last_four AS card_last_four
            FROM borrower_obligations o
            JOIN borrowers b ON b.id = o.borrower_id
            LEFT JOIN transactions t ON t.id = o.transaction_id
            LEFT JOIN cash_loan_allocations a ON a.id = o.cash_loan_allocation_id
            LEFT JOIN cash_loans cl ON cl.id = a.cash_loan_id
+           -- The card (bank) it was processed on: the transaction's or the cash loan's.
+           LEFT JOIN credit_cards cc ON cc.id = COALESCE(t.credit_card_id, cl.credit_card_id)
           WHERE o.id = :id AND " . owner_scope('borrower_obligations', 'o'),
         [':id' => $id]
     );

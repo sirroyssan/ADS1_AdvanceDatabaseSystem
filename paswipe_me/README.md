@@ -1403,6 +1403,12 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/paswipe_me/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Obligation: which bank / card it was processed on
+
+- The obligation page now has a **Bank / card** row (e.g. *UnionBank — Unionbank •••• 9638*) linking to the card. It comes from the obligation's card purchase or cash loan, whichever it belongs to.
+- An obligation not tied to a purchase or cash loan shows "Not linked to a card".
+- Nothing is stored: `obligation_find()` reads the card through the existing links.
+
 ## Receive Payment layout
 
 - The **Borrower** box stretches across the panel and **Show balance** sits on the same line, the same height, bottoms aligned.

@@ -90,6 +90,9 @@ require APP_ROOT . '/includes/header.php';
             'Borrower'          => related_link($obligation['borrower_id'], borrower_name($obligation) . ' (' . $obligation['borrower_number'] . ')', 'pages/borrowers/view.php'),
             'Transaction'       => related_link($obligation['transaction_id'], $obligation['transaction_number'], 'pages/transactions/view.php'),
             'Cash loan'         => related_link($obligation['cash_loan_id'], $obligation['loan_reference'], 'pages/cash_loans/view.php'),
+            'Bank / card'       => $obligation['card_id']
+                ? related_link($obligation['card_id'], $obligation['card_issuer'] . ' — ' . $obligation['card_nickname'] . ' •••• ' . $obligation['card_last_four'], 'pages/credit_cards/view.php')
+                : '<span class="text-muted">Not linked to a card</span>',
             'Description'       => show($obligation['description']),
             'Obligation date'   => e(format_date($obligation['obligation_date'])),
             'Due date'          => e(format_date($obligation['due_date'])),
