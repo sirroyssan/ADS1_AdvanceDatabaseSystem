@@ -123,7 +123,7 @@ function allocation_fields(): array
         'allocation_type'  => ['label' => 'Responsibility', 'type' => 'select', 'options' => CASH_LOAN_ALLOCATION_TYPES, 'required' => true, 'initial' => 'reimburse',
                                'help' => 'You stay responsible to the bank for the whole loan. "Owes me" creates the person\'s obligation at once (active), repaid over the loan\'s term and due on its last installment date.'],
         'allocated_amount' => ['label' => 'Amount', 'type' => 'decimal', 'required' => true, 'min' => 0],
-        'description'      => ['label' => 'Description', 'type' => 'text', 'max' => 500],
+        'description'      => ['label' => 'Description', 'type' => 'text', 'max' => 500, 'full' => true],
     ];
 }
 

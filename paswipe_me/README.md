@@ -1403,6 +1403,12 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/paswipe_me/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Modals: rounded corners and room above Save
+
+- Every modal keeps its rounded corners at the bottom too. The white Save / Cancel bar used to paint square corners over them; the dialog now clips its content (`overflow: hidden`).
+- There is a small space between the last field of a form or panel and the Save / Cancel bar, so the last box is never cut off.
+- Cash loan → **Add allocation:** Description now spans the full width of the modal.
+
 ## Obligation: which bank / card it was processed on
 
 - The obligation page now has a **Bank / card** row (e.g. *UnionBank — Unionbank •••• 9638*) linking to the card. It comes from the obligation's card purchase or cash loan, whichever it belongs to.
