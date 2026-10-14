@@ -22,11 +22,21 @@ $account = db_row(
     [':id' => $id]
 );
 $obligations = db_all(
-    'SELECT o.id, o.obligation_number, o.obligation_date, o.due_date, o.total_amount_due, o.outstanding_amount, o.status,
-            COALESCE(pen.penalties_unpaid, 0) AS penalties_unpaid
-       FROM borrower_obligations o ' . penalty_totals_join() . ' WHERE o.borrower_id = :id ORDER BY o.obligation_date DESC LIMIT 10',
+    'SELECT o.*, COALESCE(pen.penalties_unpaid, 0) AS penalties_unpaid, cc.issuer AS bank_name
+       FROM borrower_obligations o ' . penalty_totals_join() . '
+       LEFT JOIN transactions t ON t.id = o.transaction_id
+       LEFT JOIN cash_loan_allocations ca ON ca.id = o.cash_loan_allocation_id
+       LEFT JOIN cash_loans cl ON cl.id = ca.cash_loan_id
+       LEFT JOIN credit_cards cc ON cc.id = COALESCE(t.credit_card_id, cl.credit_card_id)   -- the bank it was processed with
+      WHERE o.borrower_id = :id ORDER BY o.obligation_date DESC LIMIT 10',
     [':id' => $id]
 );
+foreach ($obligations as $k => $o) {
+    // Monthly payment: the first installment of its schedule (one amount: none).
+    $rows = array_values(array_filter(obligation_schedule_view($o)[0], static fn ($r) => !in_array($r['status'], ['cancelled', 'waived'], true)));
+    $obligations[$k]['monthly'] = count($rows) >= 2 ? (float) $rows[0]['amount_due'] : null;
+    $obligations[$k]['installments'] = count($rows);
+}
 $collect = collection_totals($id);
 // Card purchases assigned to this borrower (the transactions themselves) and what is still owed on them.
 $purchases = borrowed_owner_purchases($id);
@@ -138,11 +148,14 @@ require APP_ROOT . '/includes/header.php';
     <?php else: ?>
         <div class="table-wrap">
             <table class="table table--compact">
-                <thead><tr><th scope="col">Obligation #</th><th scope="col">Due</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th><th scope="col">Status</th></tr></thead>
+                <thead><tr><th scope="col">Obligation #</th><th scope="col" class="num">Loan amount</th><th scope="col">Bank</th><th scope="col" class="num">Monthly</th><th scope="col">Due</th><th scope="col" class="num">Outstanding</th><th scope="col" class="num">Penalties</th><th scope="col">Status</th></tr></thead>
                 <tbody>
                 <?php foreach ($obligations as $o): ?>
                     <tr>
                         <td><a href="<?= e(url('pages/obligations/view.php', ['id' => $o['id']])) ?>"><?= e($o['obligation_number']) ?></a></td>
+                        <td class="num"><?= e(format_money($o['original_amount'])) ?></td>
+                        <td><?= $o['bank_name'] ? e($o['bank_name']) : '<span class="text-muted">—</span>' ?></td>
+                        <td class="num"><?= $o['monthly'] !== null ? e(format_money($o['monthly'])) . '<br><span class="text-muted">× ' . e($o['installments']) . '</span>' : '<span class="text-muted">One payment</span>' ?></td>
                         <td><?= e(format_date($o['due_date'])) ?></td>
                         <td class="num"><?= e(format_money($o['outstanding_amount'])) ?></td>
                         <td class="num<?= (float) $o['penalties_unpaid'] > 0 ? ' text-danger' : '' ?>"><?= e(format_money($o['penalties_unpaid'])) ?></td>
