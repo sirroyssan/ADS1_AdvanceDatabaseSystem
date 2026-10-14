@@ -76,6 +76,7 @@ $navigation = [
         'label' => 'System',
         'items' => [
             ['key' => 'users',         'label' => 'Users & Roles', 'icon' => 'shield',  'path' => 'pages/users/index.php', 'admin' => true],
+            ['key' => 'approvals',     'label' => 'Approvals',     'icon' => 'check',   'path' => 'pages/users/approvals.php', 'admin' => true, 'badge' => 'approvals'],
             ['key' => 'notifications', 'label' => 'Sent Notifications', 'icon' => 'bell',    'path' => 'pages/notifications/index.php'],
             ['key' => 'activity_logs', 'label' => 'Activity Logs', 'icon' => 'history', 'path' => 'pages/activity_logs/index.php'],
             ['key' => 'google_drive',  'label' => 'Google Drive',  'icon' => 'folder',  'path' => 'pages/drive/index.php'],
@@ -206,6 +207,9 @@ if (!borrowed_has_items()) {
                                title="<?= e($navItem['label']) ?>">
                                 <?= icon($navItem['icon']) ?>
                                 <span class="nav-link__label"><?= e($navItem['label']) ?></span>
+                                <?php if (($navItem['badge'] ?? null) === 'approvals' && ($waiting = approvals_waiting()) > 0): ?>
+                                    <span class="nav-link__badge" title="<?= e($waiting) ?> waiting"><?= e($waiting) ?></span>
+                                <?php endif; ?>
                             </a>
                         </li>
                     <?php endforeach; ?>

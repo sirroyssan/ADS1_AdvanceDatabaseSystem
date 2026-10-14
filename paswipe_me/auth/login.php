@@ -88,6 +88,9 @@ if (is_post()) {
             $errors[] = $genericError;
         } elseif ((int) $user['is_locked'] === 1) {
             $errors[] = 'Too many failed attempts. Try again in ' . (int) $user['lock_minutes'] . ' minute(s).';
+        } elseif (!password_verify($password, $user['password_hash']) && password_reset_waiting_for($user['id'], $password)) {
+            // The new password of a reset that is not approved yet: say so (not a failed attempt).
+            $errors[] = 'Your new password is waiting for the administrator\'s approval. Until then, sign in with your current password.';
         } elseif (!password_verify($password, $user['password_hash'])) {
             // --- Wrong password: count it and lock if needed ---------------
             $attempts = (int) $user['failed_login_attempts'] + 1;
@@ -111,7 +114,7 @@ if (is_post()) {
         } else {
             // --- Password correct: check account status ---------------------
             $statusMessages = [
-                'pending'   => 'Your account is pending activation. Please contact the administrator.',
+                'pending'   => 'Your account is waiting for the administrator\'s approval. You can sign in once it is approved.',
                 'suspended' => 'Your account has been suspended. Please contact the administrator.',
                 'locked'    => 'Your account is locked. Please contact the administrator.',
                 'inactive'  => 'Your account is inactive. Please contact the administrator.',
@@ -232,6 +235,7 @@ $flashes = take_flash_messages();
                     </button>
                 </div>
                 <p class="field-error" id="password-error" hidden></p>
+                <p class="auth-form__forgot"><a href="<?= e(url('auth/forgot_password.php')) ?>">Forgot password?</a></p>
             </div>
 
             <button type="submit" class="btn btn--primary btn--block" id="login-button" data-loading-text="Signing in…">

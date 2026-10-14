@@ -4,6 +4,8 @@
  * own credit cards and records. New accounts get the Owner role (an owner of
  * their own records only - see includes/ownership.php); administrator and
  * borrower accounts are still created by an administrator / a lender.
+ * A new account waits for a system administrator's approval (users.status
+ * 'pending' until approved in System → Approvals; includes/account_approval.php).
  *
  *   users.email     required, unique (checked here and by the UNIQUE key)
  *   users.username  optional, unique
@@ -55,15 +57,15 @@ if (is_post()) {
             try {
                 $id = new_uuid();
                 db_transaction(function () use ($id, $data, $password) {
-                    db_insert('users', ['id' => $id] + $data + ['status' => 'active', 'password_hash' => password_hash($password, PASSWORD_DEFAULT)]);
+                    // Waits for an administrator's approval before it can sign in.
+                    db_insert('users', ['id' => $id] + $data + ['status' => 'pending', 'password_hash' => password_hash($password, PASSWORD_DEFAULT)]);
                     db_insert('user_roles', ['id' => new_uuid(), 'user_id' => $id, 'role' => 'owner']);
                 });
-                $user = ['id' => $id] + $data;
-                sign_in_user($user, ['owner']);
-                db_exec('UPDATE users SET last_login_at = NOW() WHERE id = :id', [':id' => $id]);
-                log_activity('register', 'user', $id, 'Registered account ' . $data['email'], null, $data, $id);
-                flash('success', 'Welcome, ' . $_SESSION['display_name'] . '! Your account is ready. Start by adding your first credit card.');
-                redirect('pages/dashboard.php');
+                log_activity('register', 'user', $id, 'Registered account ' . $data['email'] . ' (waiting for approval)', null, $data, $id);
+                notify_system_admins('account_registered', 'New account to approve: ' . user_display_label($data),
+                    user_display_label($data) . ' registered as a new owner. Approve or reject the account in System → Approvals.');
+                flash('success', 'Your account was created and is waiting for the administrator\'s approval. You can sign in once it is approved.');
+                redirect('auth/login.php');
             } catch (PDOException $e) {
                 $errors['_form'] = db_error_message($e);
             }
@@ -106,7 +108,7 @@ $flashes = take_flash_messages();
         <header class="auth-card__header">
             <div class="brand-mark"><?= icon('credit-card') ?></div>
             <h1 id="register-title">Create your account</h1>
-            <p class="text-muted">Your cards and records are visible only to you.</p>
+            <p class="text-muted">Your cards and records are visible only to you. New accounts are approved by the administrator before the first sign-in.</p>
         </header>
 
         <?php foreach ($flashes as $flash): ?>

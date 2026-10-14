@@ -159,11 +159,19 @@
     text-align: center;
 }
 
-#register-form .form-group {
+#register-form .form-group,
+#forgot-form .form-group {
     margin: 0;
 }
 
 .auth-form .form-grid {
     display: grid;
     gap: 14px;
+}
+
+/* "Forgot password?" under the password field */
+.auth-form__forgot {
+    margin: 6px 0 0;
+    text-align: right;
+    font-size: 0.875rem;
 }

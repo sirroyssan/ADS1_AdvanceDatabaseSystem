@@ -51,5 +51,6 @@ require_once APP_ROOT . '/includes/late_charges.php';
 require_once APP_ROOT . '/includes/google_drive.php';
 require_once APP_ROOT . '/includes/installments.php';
 require_once APP_ROOT . '/includes/staff.php';
+require_once APP_ROOT . '/includes/account_approval.php';
 
 start_secure_session();

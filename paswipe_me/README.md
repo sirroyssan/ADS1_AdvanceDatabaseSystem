@@ -1403,6 +1403,32 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/paswipe_me/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## New accounts and password resets need an administrator's approval
+
+**New owners (self-registration):**
+- An account created on *Create account* (`auth/register.php`) starts with status `pending`. It is not signed in; the page says it is waiting for the administrator's approval.
+- Signing in before approval shows: "Your account is waiting for the administrator's approval."
+- Every active system administrator gets a notification. **System → Approvals** (`pages/users/approvals.php`, admin role only) lists the waiting accounts:
+  - **Approve:** status `active`; the owner can sign in and is welcomed in their inbox.
+  - **Reject:** status `inactive`, with an optional reason that is logged. Accounts are never deleted.
+- Accounts an administrator creates in Users & Roles are not affected.
+
+**Forgot password:**
+- *Forgot password?* on the sign-in page (`auth/forgot_password.php`) asks for the username or email and a new password (same password rules). The password is **not** changed yet:
+  - A request `PWR-YYYYMMDD-####` is filed with the new password's hash only.
+  - A newer request replaces an older pending one.
+  - The page gives the same answer whether or not the account exists, and allows 5 requests per hour per network.
+- Until it is approved, the current password keeps working. Signing in with the new one says it is waiting for approval; this does not count as a failed attempt.
+- Administrators approve or reject it in **System → Approvals**, after confirming it is really the account holder. They never see the password.
+  - **Approve:** sets the new password and clears a sign-in lockout. The account status is not changed, so a suspended account stays suspended.
+  - **Reject:** leaves the password as it was; the reason is shown to the user in their inbox.
+  - The stored hash is cleared after either decision.
+  - Nobody can decide their own request. If the only administrator forgets their password, create a second administrator with `db/create_admin.php` (command line) to approve it.
+- Only active accounts can request a reset. A pending, suspended, locked or inactive account is answered the same way, but no request is filed.
+- The sidebar shows how many items are waiting on **Approvals**. Every decision is in the Activity Logs.
+
+**Schema change (additive):** new table `password_reset_requests`, created automatically on first use (`includes/account_approval.php`, marker `storage/upgrade_password_resets.done`). The same SQL is in `db/upgrade_password_resets.sql`. Existing tables are unchanged; pending accounts use the existing `users.status = 'pending'`.
+
 ## Fix: lowering a card's credit limit (e.g. ₱90,000 → ₱75,000)
 
 - **Error:** "The submitted values are not allowed by the database rules."

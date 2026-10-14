@@ -23,6 +23,7 @@ const NOTIFICATION_KINDS = [
     'demand_letter'         => ['Notice', 'mail-alert'],
     'agreement'             => ['Agreement', 'file-sign'],
     'payment_receipt'       => ['Receipt', 'file-text'],
+    'account_approval'      => ['Account approval', 'shield'],
 ];
 
 /** Full pages of the records, for the "Open full record" link (admin layout). */
@@ -35,6 +36,7 @@ const NOTIFICATION_PAGES = [
     'demand_letter'         => 'pages/demand_letters/view.php',
     'agreement'             => 'pages/agreements/view.php',
     'payment_receipt'       => 'pages/staff/receipt.php',
+    'account_approval'      => 'pages/users/approvals.php',
 ];
 
 /** Pages a staff member may open (the rest are the owner's). */
@@ -58,6 +60,10 @@ function notification_kind_chip(array $n): string
 function notification_record_url(array $n, array $user): ?string
 {
     $type = (string) $n['entity_type'];
+    if ($type === 'account_approval') {
+        // Not one record: the Approvals list (system administrators only).
+        return user_is_system_admin($user) ? url(NOTIFICATION_PAGES[$type]) : null;
+    }
     if (!isset(NOTIFICATION_PAGES[$type]) || !is_valid_uuid((string) $n['entity_id'])) {
         return null;
     }

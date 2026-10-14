@@ -2908,3 +2908,14 @@ td.actions:has(.row-actions--buttons) { width: 1%; }   /* the buttons decide the
     justify-content: flex-end;
     margin-top: 4px;
 }
+
+/* Approvals: reject with an optional reason, next to Approve */
+.approval-reject {
+    display: inline-flex;
+    gap: 6px;
+    align-items: center;
+}
+.approval-reject input[type="text"] {
+    width: 170px;
+    padding: 6px 10px;
+}

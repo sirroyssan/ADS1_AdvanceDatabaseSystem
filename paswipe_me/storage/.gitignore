@@ -27,3 +27,4 @@ upgrade_purchase_status.done
 google_drive/
 upgrade_documents_key.done
 upgrade_borrowed_schedule.done
+upgrade_password_resets.done
