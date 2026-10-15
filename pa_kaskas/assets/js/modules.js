@@ -276,6 +276,45 @@
             });
         });
 
+        /* Installment plan: data-plan-terms on the interest amount. The interest, fees, total and
+           monthly amount follow the chosen interest method, rate and processing fee as they are
+           typed (installment_compute() calculates them again on save). Read-only while calculated. */
+        scope.querySelectorAll('[data-plan-terms]').forEach(function (target) {
+            if (!App.once(target, 'M12')) return;
+            var get = function (id) { return document.getElementById(id); };
+            var method = get('f_interest_method'), feeType = get('f_fee_type');
+            var fees = get('f_fees_amount'), total = get('f_total_repayment'), monthly = get('f_installment_amount');
+            if (!method || !feeType) return;
+            var watched = ['f_total_principal', 'f_number_of_installments', 'f_interest_method', 'f_interest_rate', 'f_fee_type', 'f_fee_value', 'f_interest_amount'];
+            function update() {
+                var m = method.value, P = number('f_total_principal'), n = Math.max(1, Math.round(number('f_number_of_installments')));
+                var r = number('f_interest_rate') / 100;
+                target.readOnly = m !== '' && m !== 'fixed_amount';
+                if (fees) fees.readOnly = feeType.value !== '';
+                if (m === '' || P <= 0) return;
+                var interest = number('f_interest_amount');
+                if (m === 'none') interest = 0;
+                else if (m === 'add_on_monthly') interest = P * r * n;
+                else if (m === 'add_on_total') interest = P * r;
+                else if (m === 'reducing_balance') interest = r > 0 ? (P * r / (1 - Math.pow(1 + r, -n))) * n - P : 0;
+                interest = Math.round(interest * 100) / 100;
+                var fee = feeType.value === 'fixed' ? number('f_fee_value') : feeType.value === 'percent' ? P * number('f_fee_value') / 100 : 0;
+                fee = Math.round(fee * 100) / 100;
+                if (m !== 'fixed_amount') formatAmount(target, interest.toFixed(2));
+                if (fees && feeType.value !== '') formatAmount(fees, fee.toFixed(2));
+                var sum = Math.round((P + interest + (feeType.value !== '' ? fee : number('f_fees_amount'))) * 100) / 100;
+                if (total) formatAmount(total, sum.toFixed(2));
+                if (monthly) formatAmount(monthly, (Math.round(sum / n * 100) / 100).toFixed(2));
+            }
+            watched.forEach(function (id) {
+                var e = get(id);
+                if (!e) return;
+                e.addEventListener('input', update);
+                e.addEventListener('change', update);
+            });
+            update();
+        });
+
         scope.querySelectorAll('[data-sum]').forEach(function (target) {
             if (!App.once(target, 'M3')) return;
             bindCalc(target, 'data-sum', function (values) {
@@ -343,19 +382,24 @@
         /* ------------------------------------------------------------------
          * Fields shown only for one value of another field:
          * data-show-if="f_payment_type=installment" (on the input) hides its form group otherwise.
+         * Several conditions (all must hold) are separated by ";", several values by "|":
+         * data-show-if="f_payment_type=installment;f_inst_interest_method=add_on_monthly|add_on_total".
+         * An empty value matches an empty select ("f_inst_rule_id=").
          * ------------------------------------------------------------------ */
         scope.querySelectorAll('[data-show-if]').forEach(function (input) {
             if (!App.once(input, 'M8')) return;
-            var rule = input.getAttribute('data-show-if').split('=');
-            var source = document.getElementById(rule[0]);
+            var rules = input.getAttribute('data-show-if').split(';').map(function (part) {
+                var bits = part.split('=');
+                return { source: document.getElementById(bits[0]), values: (bits[1] || '').split('|') };
+            }).filter(function (r) { return r.source; });
             var group = input.closest('.form-group') || input;
-            if (!source) return;
+            if (!rules.length) return;
             function apply() {
-                var show = source.value === rule[1];
+                var show = rules.every(function (r) { return r.values.indexOf(r.source.value) !== -1; });
                 group.hidden = !show;
                 input.disabled = !show;   // hidden terms are not sent
             }
-            source.addEventListener('change', apply);
+            rules.forEach(function (r) { r.source.addEventListener('change', apply); });
             apply();
         });
 

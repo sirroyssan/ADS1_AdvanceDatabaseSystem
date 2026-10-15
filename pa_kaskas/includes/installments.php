@@ -129,6 +129,12 @@ function installment_terms_errors(array $t, string $prefix = ''): array
     }
     if (!isset(INSTALLMENT_METHODS[$method])) {
         $errors[$prefix . 'interest_method'] = 'Choose how interest is calculated.';
+    } elseif ($method === 'none' && (float) ($t['interest_rate'] ?? 0) > 0) {
+        // A rate typed with "No interest" would be silently dropped.
+        $errors[$prefix . 'interest_method'] = 'You entered an interest rate of ' . rtrim(rtrim(number_format((float) $t['interest_rate'], 4), '0'), '.')
+            . '%, but the interest is set to "No interest". Choose the interest method of that rate (e.g. Add-on rate per month).';
+    } elseif ($method === 'none' && (float) ($t['interest_amount'] ?? 0) > 0) {
+        $errors[$prefix . 'interest_method'] = 'You entered an interest amount, but the interest is set to "No interest". Choose "Fixed interest amount".';
     } elseif (in_array($method, ['add_on_monthly', 'add_on_total', 'reducing_balance'], true) && ($t['interest_rate'] === null || $t['interest_rate'] === '')) {
         $errors[$prefix . 'interest_rate'] = 'Enter the interest rate of this method (0 if none).';
     } elseif ($method === 'fixed_amount' && ($t['interest_amount'] === null || $t['interest_amount'] === '')) {
@@ -136,6 +142,8 @@ function installment_terms_errors(array $t, string $prefix = ''): array
     }
     if (!isset(INSTALLMENT_FEE_TYPES[$t['fee_type'] ?? ''])) {
         $errors[$prefix . 'fee_type'] = 'Choose the processing fee type.';
+    } elseif ($t['fee_type'] === 'none' && (float) ($t['fee_value'] ?? 0) > 0) {
+        $errors[$prefix . 'fee_type'] = 'You entered a processing fee, but the fee is set to "No processing fee". Choose Fixed amount or % of the principal.';
     } elseif ($t['fee_type'] !== 'none' && ($t['fee_value'] === null || $t['fee_value'] === '')) {
         $errors[$prefix . 'fee_value'] = 'Enter the processing fee.';
     }

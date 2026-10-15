@@ -1403,6 +1403,18 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/pa_kaskas/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Installment interest: choose the method first; the interest is calculated from the rate
+
+A rate typed while **Installment: interest** was left on "No interest (0%)" was silently ignored (e.g. 1.25% add-on was never charged).
+
+- **Add transaction** (`transaction_installment_fields()`): **Installment: interest** and **Installment: processing fee** no longer start on "No interest" / "No processing fee"; they start on "— Choose … —" and are required (marked *) when no bank rule is chosen. The rate box appears only for add-on and reducing-balance methods, the fixed amount box only for "Fixed interest amount", and the fee value and billing only for a fixed or % fee. When a bank rule is chosen, these fields are hidden (the rule fills them).
+- **Server check** (`installment_terms_errors()`): a rate or interest amount with "No interest", or a fee value with "No processing fee", is refused with a message instead of being dropped.
+- **Edit installment plan** (`pages/installment_plans/`): the plan form now has **Interest**, **Interest rate (%)**, **Processing fee**, **Fee (₱ or %)** and **Fee billed**. The interest amount, fees, total repayment and installment amount are calculated from them as you type (read-only while calculated) and again on save (`installment_compute()`); a plan with payments keeps them (amounts corrected in place). The plan page shows the terms (e.g. "add-on 1.25% per month"). Older plans saved with typed amounts and no method may keep them.
+- `data-show-if` (`assets/js/modules.js`) accepts several conditions (`;`) and several values (`|`); forms support `required_mark` (shows * without forcing the field when it is hidden).
+- No schema change (the plan's `interest_method`, `interest_rate`, `fee_type`, `fee_value`, `fee_billing` columns already exist).
+
+**To fix a plan saved without its rate:** Installment Plans → the plan → Edit → Interest: *Add-on rate per month*, Interest rate: *1.25* → Save. The schedule (and a borrower's obligation linked to the purchase) follow; payments already made are kept.
+
 ## Fix: Receive payment review showed ₱5.00 for ₱5,416.67
 
 When an amount on an item was typed with a thousands separator (5,416.67), the **Review payment** step showed only the part before the comma (₱5.00). The validation and saving already read the full amount; only the review list (and the values carried back to the form) used the raw text. The amounts are now cleaned of commas, spaces and ₱ when collected (`pages/staff/receive.php`, `includes/payment_form.php`). No schema change.

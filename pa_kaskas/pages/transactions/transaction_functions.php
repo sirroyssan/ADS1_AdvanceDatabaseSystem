@@ -64,6 +64,11 @@ function transaction_fields(?array $current = null, bool $withInstallment = true
 function transaction_installment_fields(): array
 {
     $show = ['data-show-if' => 'f_payment_type=installment'];
+    // Without a bank rule the interest and fee type are chosen first; their rate or amount shows after.
+    $terms = ['data-show-if' => 'f_payment_type=installment;f_inst_rule_id='];
+    $rateShow = ['data-show-if' => 'f_payment_type=installment;f_inst_rule_id=;f_inst_interest_method=add_on_monthly|add_on_total|reducing_balance'];
+    $amountShow = ['data-show-if' => 'f_payment_type=installment;f_inst_rule_id=;f_inst_interest_method=fixed_amount'];
+    $feeShow = ['data-show-if' => 'f_payment_type=installment;f_inst_rule_id=;f_inst_fee_type=fixed|percent'];
     $rules = [];
     foreach (installment_rules_for_card(null) as $r) {
         $rules[$r['id']] = $r['name'] . ' — ' . implode('/', installment_rule_terms($r)) . ' mo';
@@ -71,15 +76,16 @@ function transaction_installment_fields(): array
 
     return [
         'inst_rule_id'         => ['label' => 'Installment: bank rule', 'type' => 'select', 'options' => $rules, 'empty_label' => $rules ? '— Enter the terms below —' : '— No rules yet (Installment Rules) —',
-                                   'attrs' => $show, 'help' => 'A rule fills the method, rate and fee below (they are then ignored).'],
-        'inst_months'          => ['label' => 'Installment: number of months', 'type' => 'int', 'min' => 1, 'max' => 360, 'attrs' => $show],
-        'inst_interest_method' => ['label' => 'Installment: interest', 'type' => 'select', 'options' => INSTALLMENT_METHODS, 'initial' => 'none', 'attrs' => $show],
-        'inst_interest_rate'   => ['label' => 'Installment: interest rate (%)', 'type' => 'decimal', 'scale' => 4, 'digits' => 8, 'min' => 0, 'attrs' => $show,
-                                   'help' => 'Per month for add-on per month and reducing balance; for the whole term for add-on total.'],
-        'inst_interest_amount' => ['label' => 'Installment: fixed interest amount', 'type' => 'decimal', 'min' => 0, 'attrs' => $show],
-        'inst_fee_type'        => ['label' => 'Installment: processing fee', 'type' => 'select', 'options' => INSTALLMENT_FEE_TYPES, 'initial' => 'none', 'attrs' => $show],
-        'inst_fee_value'       => ['label' => 'Installment: fee (₱ or %)', 'type' => 'decimal', 'scale' => 4, 'digits' => 15, 'min' => 0, 'attrs' => $show],
-        'inst_fee_billing'     => ['label' => 'Installment: fee billed', 'type' => 'select', 'options' => INSTALLMENT_FEE_BILLING, 'initial' => 'spread', 'attrs' => $show],
+                                   'attrs' => $show, 'help' => 'A rule fills the interest and processing fee (their fields are then hidden).'],
+        'inst_months'          => ['label' => 'Installment: number of months', 'type' => 'int', 'min' => 1, 'max' => 360, 'attrs' => $show, 'required_mark' => true],
+        'inst_interest_method' => ['label' => 'Installment: interest', 'type' => 'select', 'options' => INSTALLMENT_METHODS, 'empty_label' => '— Choose the interest —', 'attrs' => $terms, 'required_mark' => true,
+                                   'help' => 'Choose this first; the rate or amount box appears after. "No interest (0%)" ignores any rate.'],
+        'inst_interest_rate'   => ['label' => 'Installment: interest rate (%)', 'type' => 'decimal', 'scale' => 4, 'digits' => 8, 'min' => 0, 'attrs' => $rateShow, 'required_mark' => true,
+                                   'help' => 'Per month for add-on per month and reducing balance (e.g. 1.25); for the whole term for add-on total. The interest amount is calculated from it.'],
+        'inst_interest_amount' => ['label' => 'Installment: fixed interest amount', 'type' => 'decimal', 'min' => 0, 'attrs' => $amountShow, 'required_mark' => true],
+        'inst_fee_type'        => ['label' => 'Installment: processing fee', 'type' => 'select', 'options' => INSTALLMENT_FEE_TYPES, 'empty_label' => '— Choose the processing fee —', 'attrs' => $terms, 'required_mark' => true],
+        'inst_fee_value'       => ['label' => 'Installment: fee (₱ or %)', 'type' => 'decimal', 'scale' => 4, 'digits' => 15, 'min' => 0, 'attrs' => $feeShow, 'required_mark' => true],
+        'inst_fee_billing'     => ['label' => 'Installment: fee billed', 'type' => 'select', 'options' => INSTALLMENT_FEE_BILLING, 'initial' => 'spread', 'attrs' => $feeShow],
         'inst_first_due_date'  => ['label' => 'Installment: first due date', 'type' => 'date', 'attrs' => $show,
                                    'help' => 'Leave blank for the payment due date of the statement this purchase is billed on (recorded SOA or the card\'s due-date rule).'],
     ];

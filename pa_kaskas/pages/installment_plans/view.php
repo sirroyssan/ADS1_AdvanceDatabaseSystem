@@ -57,6 +57,7 @@ require APP_ROOT . '/includes/header.php';
             'Card'                   => related_link($plan['credit_card_id'], $plan['card_nickname'] . ' •••• ' . $plan['last_four'], 'pages/credit_cards/view.php'),
             'Borrower'               => $plan['borrower_id'] ? ($canManage ? related_link($plan['borrower_id'], borrower_name($plan), 'pages/borrowers/view.php') : e(borrower_name($plan))) : 'Owner',
             'Total principal'        => e(format_money($plan['total_principal'])),
+            'Interest'               => e(!empty($plan['interest_method']) ? installment_terms_text($plan) : 'Amounts entered by hand'),
             'Interest amount'        => e(format_money($plan['interest_amount'])),
             'Fees amount'            => e(format_money($plan['fees_amount'])),
             'Total repayment'        => '<strong>' . e(format_money($plan['total_repayment'])) . '</strong>',

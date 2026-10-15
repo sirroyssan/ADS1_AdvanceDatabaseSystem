@@ -231,7 +231,7 @@ function render_field(string $name, array $f, mixed $value, ?string $error): str
             . '<span class="switch__label">' . e($f['switch_label'] ?? 'Yes') . '</span></label>';
     } else {
         $html .= '<label for="' . e($id) . '">' . e($f['label'])
-            . (!empty($f['required']) ? ' <span class="required" aria-hidden="true">*</span>' : '') . '</label>';
+            . (!empty($f['required']) || !empty($f['required_mark']) ? ' <span class="required" aria-hidden="true">*</span>' : '') . '</label>';
 
         switch ($type) {
             case 'textarea':

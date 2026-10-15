@@ -38,7 +38,10 @@ if (is_post()) {
     }
     // A plan made from terms (interest method, fees) keeps them: a new principal or term is
     // recalculated with them; interest or fees typed by hand become the plan's fixed amounts.
-    if (!$errors && $amountsChanged && !empty($plan['interest_method'])) {
+    // (Changed terms were already calculated in plan_validate().)
+    if (!$errors && $amountsChanged && !empty($plan['interest_method']) && !plan_terms_changed($data, $plan)
+        && abs((float) $data['total_principal'] - (float) $plan['total_principal']) < 0.005
+        && (int) $data['number_of_installments'] === (int) $plan['number_of_installments']) {
         $byHand = abs((float) $data['interest_amount'] - (float) $plan['interest_amount']) >= 0.005
             || abs((float) $data['fees_amount'] - (float) $plan['fees_amount']) >= 0.005;
         if ($byHand) {
