@@ -21,4 +21,6 @@ CREATE TABLE IF NOT EXISTS savings_goals (
     KEY idx_savings_goals_owner (owner_user_id),
     KEY idx_savings_goals_card (credit_card_id),
     CONSTRAINT chk_savings_goal_amount CHECK (target_amount > 0)
-) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+-- Use the same collation as your other tables, e.g. on XAMPP:
+-- ALTER TABLE savings_goals CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;

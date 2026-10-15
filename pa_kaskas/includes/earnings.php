@@ -27,11 +27,13 @@
 defined('APP_ROOT') or exit('No direct access.');
 
 const EARNINGS_UPGRADE_MARKER = 'storage/upgrade_earnings.done';
+const EARNINGS_COLLATION_MARKER = 'storage/upgrade_earnings_v2.done';
 const SAVINGS_GOAL_STATUSES = ['active' => 'Saving', 'used' => 'Used', 'cancelled' => 'Cancelled'];
 
 function earnings_schema_upgrade(): void
 {
     if (marker_exists(EARNINGS_UPGRADE_MARKER)) {
+        earnings_collation_fix();
         return;
     }
     db()->exec('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS borrower_rate DECIMAL(8,4) NULL AFTER borrower_id');
@@ -53,9 +55,38 @@ function earnings_schema_upgrade(): void
             KEY idx_savings_goals_owner (owner_user_id),
             KEY idx_savings_goals_card (credit_card_id),
             CONSTRAINT chk_savings_goal_amount CHECK (target_amount > 0)
-        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_unicode_ci"
+        ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COLLATE=" . earnings_collation()
     );
     marker_write(EARNINGS_UPGRADE_MARKER);
+    marker_write(EARNINGS_COLLATION_MARKER);
+}
+
+/**
+ * The collation of the existing tables (credit_cards.id), so savings_goals
+ * joins them without "Illegal mix of collations" (databases differ:
+ * utf8mb4_general_ci on XAMPP, utf8mb4_unicode_ci elsewhere).
+ */
+function earnings_collation(): string
+{
+    $c = (string) db_value("SELECT COLLATION_NAME FROM information_schema.COLUMNS
+                             WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'credit_cards' AND COLUMN_NAME = 'id'");
+
+    return preg_match('/^utf8mb4_[a-z0-9_]+$/', $c) ? $c : 'utf8mb4_general_ci';
+}
+
+/** savings_goals created by the first version with a fixed collation: match the other tables. */
+function earnings_collation_fix(): void
+{
+    if (marker_exists(EARNINGS_COLLATION_MARKER)) {
+        return;
+    }
+    $want = earnings_collation();
+    $have = (string) db_value("SELECT COLLATION_NAME FROM information_schema.COLUMNS
+                                WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'savings_goals' AND COLUMN_NAME = 'id'");
+    if ($have !== '' && $have !== $want) {
+        db()->exec('ALTER TABLE savings_goals CONVERT TO CHARACTER SET utf8mb4 COLLATE ' . $want);
+    }
+    marker_write(EARNINGS_COLLATION_MARKER);
 }
 
 /** Is the borrower_rate column there yet (before the upgrade ran)? */

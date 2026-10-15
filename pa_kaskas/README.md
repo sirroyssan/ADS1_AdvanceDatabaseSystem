@@ -1419,6 +1419,7 @@ For a purchase lent to a borrower (often a 0% bank installment), you can charge 
   - `transactions.borrower_rate DECIMAL(8,4) NULL`
   - new table `savings_goals` (id, owner_user_id, credit_card_id, name, target_amount, start_date, target_date, status, used_at, notes, created_by, created_at, updated_at)
 - Older purchases tracked by an obligation, and cash loan shares, keep their obligation's own *Agreed rate*; they are not on the Earnings page.
+- **Fix: "Illegal mix of collations (utf8mb4_general_ci) and (utf8mb4_unicode_ci)" on Earnings.** `savings_goals` is now created with the collation of your other tables (read from `credit_cards.id`; XAMPP databases use `utf8mb4_general_ci`). A table already created with the other collation is converted once on the next page load (`earnings_collation_fix()`, marker `storage/upgrade_earnings_v2.done`). No data changes.
 
 ## Installment plan page: Delete plan beside Edit; view-modal buttons on the right
 
