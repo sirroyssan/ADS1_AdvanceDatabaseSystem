@@ -447,6 +447,22 @@ function installment_billing(array $ctx, string $startDate, int $count): array
     return $out;
 }
 
+/**
+ * The statement that bills an installment due on $due: the one whose cut-off
+ * is the last one before that due date (as the bank bills it). Never before
+ * the period the loan started in. Returns ['date' => billing date, 'period'].
+ */
+function installment_billing_for_due(array $ctx, string $due, string $startDate): array
+{
+    $containing = card_period_containing($ctx, $due);
+    $period = card_period_containing($ctx, date_add_days($containing['start'], -1));
+    if ($period['end'] < $startDate) {
+        $period = card_period_containing($ctx, $startDate);
+    }
+
+    return ['date' => $startDate >= $period['start'] && $startDate <= $period['end'] ? $startDate : $period['end'], 'period' => $period];
+}
+
 function statement_period_lines(string $cardId, string $start, string $end): array
 {
     $p = [':c' => $cardId, ':s' => $start, ':e' => $end];
@@ -529,8 +545,10 @@ function statement_period_lines(string $cardId, string $start, string $end): arr
              'remaining_count' => (int) $s['remaining_count'], 'remaining_after' => (float) $s['remaining_after']]);
     }
 
-    // Cash loans: monthly installments billed one per period from the loan's start (not by due date),
-    // fees on the card when the loan started.
+    // Cash loans: each monthly installment is billed on the statement whose cut-off is the last
+    // one before its due date (never by counting months from the start, which put an installment
+    // due Sep 5 on October's statement, or one due in 2027 a year early). An unpaid installment
+    // stays on its own statement: it is never added to the next one. Fees on the card when the loan started.
     foreach (db_all(
         "SELECT s.id, s.installment_number, s.due_date, s.amount_due, s.status, l.id AS loan_id, l.loan_reference,
                 COALESCE(l.start_date, DATE(l.created_at)) AS billing_start,
@@ -546,7 +564,9 @@ function statement_period_lines(string $cardId, string $start, string $end): arr
           ORDER BY s.installment_number",
         [':c' => $cardId, ':e' => $end]
     ) as $s) {
-        $billed = $ctx ? $billedIn('l' . $s['loan_id'], $s['billing_start'], (int) $s['max_number'], (int) $s['installment_number']) : null;
+        $billed = !$ctx ? null : ($s['due_date']
+            ? installment_billing_for_due($ctx, $s['due_date'], $s['billing_start'])['date']
+            : $billedIn('l' . $s['loan_id'], $s['billing_start'], (int) $s['max_number'], (int) $s['installment_number']));
         if ($billed === null || $billed < $start || $billed > $end) {
             continue;   // billed on another statement
         }

@@ -1403,6 +1403,19 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/pa_kaskas/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Statements: cash loan installments billed by their due date
+
+- **Problem:** cash loan installments were placed on statements by counting months from the loan's start date, not by their due dates. A loan whose dates did not line up with its start was billed on the wrong statement:
+  - October's statement showed CL-20261014-0002 installment 17/24 (due Sep 5, 2026, overdue);
+  - it also showed CL-20261011-0002 installment 18/24 (due Oct 26, **2027**), a year early;
+  - so two near-identical amounts appeared, from two loans with the same terms.
+- **Fix:** each cash loan installment is billed on the statement whose cut-off is the last one before its due date, as the bank bills it (`installment_billing_for_due()` in `includes/statement_engine.php`), never before the period the loan started in.
+  - An installment due Oct 10 is on the statement with the Sep 20 cut-off (due Oct 10).
+  - One due in 2027 waits for its 2027 statement.
+- **No carry-over:** an unpaid installment stays on its own statement (shown as overdue there). It is never added to the next billing; each installment is on exactly one statement.
+- Prepared statements move their lines automatically. Recorded SOAs are never changed.
+- Installment purchases are unchanged: the bank bills them monthly from the purchase date.
+
 ## Dashboard: card totals on the right
 
 - **My credit cards and payments:** the six counts (My credit cards, Pending SOAs, Pending payments, Partially paid, Upcoming, Overdue) sit on the left in three columns.
