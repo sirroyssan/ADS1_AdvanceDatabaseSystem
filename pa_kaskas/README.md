@@ -1403,6 +1403,23 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/pa_kaskas/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Your rate to the borrower, Earnings and saving goals (`includes/earnings.php`, `pages/earnings/`)
+
+For a purchase lent to a borrower (often a 0% bank installment), you can charge your own interest and see what you earn.
+
+- **Your rate to the borrower (% per month)** on the transaction form (Add / Edit). It is add-on, per month on the purchase amount: amount × rate % × months (a straight purchase: 1 month), split evenly over the installments.
+  - Example: ₱12,000 in 12 months at 0% bank interest, your rate 1% → the bank bills ₱1,000/month; the borrower repays **₱1,120/month** (₱1,000 + ₱120); your interest is ₱1,440 in total.
+  - The bank side does not change: installment schedule, statements and the card's used credit stay at the bank's amounts.
+  - The borrower sees "Card owner's interest 1% per month: ₱1,440.00 (included in each installment)" and the higher monthly amount on their purchase, Receive Payment and the portal.
+  - The rate needs a borrower. Once a repayment is confirmed on the purchase, the rate is locked (what the borrower owes per installment is settled).
+- **Earned only when the borrower pays:** every repayment on an installment covers the bank's part first, then your interest (so the bank schedule receives exactly what it did before). Interest counts in the month it was paid.
+- **Earnings page** (sidebar → Reports → Earnings; filter by card; printable): Earned (received), Still to receive, Total agreed interest, This month, this year; a table by purchase (rate, your interest, received, to receive) and *Received by month*.
+- **Saving goals** (e.g. "BDO annual fee ₱4,500, needed by Mar 2027"): choose a card (or all cards) and a start date; the interest received from then counts toward it, with a progress bar. *Mark used* when the fee is paid; edit or delete anytime. A goal only keeps track; no money is moved, and deleting it does not affect earnings. Changes are in the activity log.
+- **Schema change (additive, automatic once; marker `storage/upgrade_earnings.done`, SQL in `db/upgrade_earnings.sql`):**
+  - `transactions.borrower_rate DECIMAL(8,4) NULL`
+  - new table `savings_goals` (id, owner_user_id, credit_card_id, name, target_amount, start_date, target_date, status, used_at, notes, created_by, created_at, updated_at)
+- Older purchases tracked by an obligation, and cash loan shares, keep their obligation's own *Agreed rate*; they are not on the Earnings page.
+
 ## Installment plan page: Delete plan beside Edit; view-modal buttons on the right
 
 - `pages/installment_plans/view.php`: **Delete plan** (only while no payment is recorded) sits beside **Edit** at the top, with its note; the separate "Delete plan" panel at the bottom of the side column is gone. With payments, the note says to set the status to Cancelled instead.

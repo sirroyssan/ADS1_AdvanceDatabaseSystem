@@ -361,7 +361,10 @@ function borrowed_obligation_due_now(array $o, string $today, float $outstanding
     ];
 }
 
-function borrowed_ledger(array $t, ?string $today = null): array
+/**
+ * $asOf: count only repayments made up to that date (earnings by month).
+ */
+function borrowed_ledger(array $t, ?string $today = null, ?string $asOf = null): array
 {
     $today ??= date('Y-m-d');
     $money = static fn (float $v) => round($v, 2);
@@ -383,7 +386,7 @@ function borrowed_ledger(array $t, ?string $today = null): array
             'penalty_paid' => $money((float) $legacy['penalties_charged'] - $penalties), 'penalty_unpaid' => $penalties,
             'outstanding' => $money($remaining + $penalties), 'rows' => [], 'next_due' => $legacy['due_date'] ? ['date' => $legacy['due_date'], 'source' => 'obligation', 'statement' => null] : null,
             'status' => $status, 'overdue_amount' => $status === 'overdue' ? $remaining : 0.0, 'review' => null, 'unknown_due' => !$legacy['due_date'],
-            'terms_missing' => false,
+            'terms_missing' => false, 'rate' => 0.0, 'markup' => 0.0, 'markup_earned' => 0.0,
         ] + borrowed_obligation_due_now($legacy, $today, $money($remaining + $penalties), $penalties);
     }
 
@@ -409,6 +412,8 @@ function borrowed_ledger(array $t, ?string $today = null): array
         $rows[] = ['schedule_id' => null, 'label' => 'Purchase', 'charge_date' => $t['transaction_date'], 'amount' => (float) $t['amount'],
                    'due' => borrowed_due_for($t['credit_card_id'], $t['transaction_date'])];
     }
+    // The card owner's own rate to the borrower (includes/earnings.php): added on top of each bank amount.
+    $rows = borrower_rate_rows($rows, (float) $t['amount'], $termsMissing ? 0.0 : borrower_rate_of($t));
     $responsible = $termsMissing ? (float) $t['amount'] : $money(array_sum(array_column($rows, 'amount')));
 
     $pay = db_row(
@@ -423,7 +428,11 @@ function borrowed_ledger(array $t, ?string $today = null): array
 
     // Confirmed repayments go where the borrower chose (late charges, an installment);
     // money without a choice fills the installments oldest first (borrowed_allocate).
-    [$rowPaid, $penaltyPaid, $left] = borrowed_allocate($t['id'], $rows, $penalties, $termsMissing ? (float) $t['amount'] : 0.0);
+    [$rowPaid, $penaltyPaid, $left] = borrowed_allocate($t['id'], $rows, $penalties, $termsMissing ? (float) $t['amount'] : 0.0, $asOf);
+    $markupEarned = 0.0;
+    foreach ($rows as $i => $r) {
+        $markupEarned += borrower_rate_earned_row($r, $rowPaid[$i]);
+    }
     $overdue = 0.0;
     $nextDue = null;
     $unknown = false;
@@ -507,7 +516,10 @@ function borrowed_ledger(array $t, ?string $today = null): array
         'rows' => $rows, 'next_due' => $nextDue, 'status' => $status, 'overdue_amount' => $money($overdue), 'review' => $review, 'soa_note' => $soaNote, 'unknown_due' => $unknown || $termsMissing,
         'due_now' => $termsMissing ? 0.0 : $money(min($dueNow + $penaltyUnpaid, $outstanding)),
         'due_month' => $termsMissing ? 0.0 : $money(min($dueMonth + $penaltyUnpaid, $outstanding)), 'current' => $current === null ? null : $rows[$current] + ['n' => $current + 1],
-        'installments' => $plan ? count($rows) : 0, 'monthly' => $plan ? (float) $plan['installment_amount'] : null, 'terms_missing' => $termsMissing,
+        'installments' => $plan ? count($rows) : 0, 'terms_missing' => $termsMissing,
+        // With the owner's rate the borrower's monthly amount is the bank's installment plus the interest share.
+        'monthly' => $plan ? ($rows ? (float) $rows[0]['amount'] : (float) $plan['installment_amount']) : null,
+        'rate' => $termsMissing ? 0.0 : borrower_rate_of($t), 'markup' => $money(array_sum(array_column($rows, 'markup'))), 'markup_earned' => $money($markupEarned),
     ];
 }
 
@@ -903,7 +915,7 @@ function borrowed_select_sql(): string
     $share = cash_share_sql('t');
 
     return "SELECT t.id, IF($share, t.reference_number, t.transaction_number) AS transaction_number, t.transaction_date, t.amount, t.status, t.payment_type, t.notes,
-                   t.borrower_id, t.credit_card_id, t.reference_number,
+                   t.borrower_id, t.credit_card_id, t.reference_number," . (earnings_ready() ? ' t.borrower_rate,' : '') . "
                    COALESCE(m.merchant_name, IF($share, IF(t.payment_type = 'cash_loan', 'Cash loan', 'Cash advance'), NULL)) AS merchant_name, c.issuer, c.card_nickname, c.last_four,
                    b.first_name, b.last_name, b.borrower_number,
                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', ou.first_name, ou.last_name)), ''), ou.email) AS lender_name
@@ -1127,6 +1139,12 @@ function borrowed_render_ledger(array $row, array $l, bool $owner = false): stri
             $details['Current installment'] = e(borrowed_installment_text($l)) . ': ' . e(format_money($l['current']['amount']))
                 . ($l['current']['due']['date'] ? ' · repay by ' . e(format_date($l['current']['due']['date'])) : '');
         }
+    }
+    if (($l['rate'] ?? 0) > 0) {
+        // The card owner's own interest (includes/earnings.php), on top of the bank's amounts.
+        $details[$owner ? 'Your rate to the borrower' : 'Card owner\'s interest'] = e(borrower_rate_text($l['rate'])) . ': ' . e(format_money($l['markup']))
+            . ($owner ? ' <span class="text-muted">(' . e(format_money($l['markup_earned'])) . ' received; counted as earned only when repaid)</span>'
+                      : ' <span class="text-muted">(included in each installment below)</span>');
     }
     if ($l['mode'] === 'obligation') {
         $details['Tracked as'] = 'obligation ' . e($l['obligation']['obligation_number']) . ' <span class="text-muted">(older workflow: repayments are posted to it)</span>';
@@ -1457,8 +1475,9 @@ function borrowed_parts_label(string $paymentId): string
  * $rows: the ledger's charge rows; $noRows: the amount owed when the plan is
  * not entered yet (terms missing). Returns [paid per row, penalty paid, unused].
  */
-function borrowed_allocate(string $transactionId, array $rows, float $penalties, float $noRows = 0.0): array
+function borrowed_allocate(string $transactionId, array $rows, float $penalties, float $noRows = 0.0, ?string $asOf = null): array
 {
+    $upTo = $asOf !== null && preg_match('/^\d{4}-\d{2}-\d{2}$/', $asOf) ? " AND p.payment_date <= '$asOf'" : '';
     $rowPaid = array_fill(0, count($rows), 0.0);
     $rowIndex = [];
     foreach ($rows as $i => $r) {
@@ -1471,11 +1490,11 @@ function borrowed_allocate(string $transactionId, array $rows, float $penalties,
     // Until the table is created, every repayment counts as "no choice".
     $ready = borrowed_parts_table_exists();
     $payments = !$ready
-        ? db_all("SELECT id, amount, 0 AS chosen FROM borrower_payments WHERE transaction_id = :t AND status = 'approved' ORDER BY payment_date, submitted_at", [':t' => $transactionId])
+        ? db_all("SELECT p.id, p.amount, 0 AS chosen FROM borrower_payments p WHERE p.transaction_id = :t AND p.status = 'approved'$upTo ORDER BY p.payment_date, p.submitted_at", [':t' => $transactionId])
         : db_all(
         "SELECT p.id, p.amount, COALESCE(SUM(pp.amount), 0) AS chosen
            FROM borrower_payments p LEFT JOIN borrower_payment_purchase_parts pp ON pp.borrower_payment_id = p.id
-          WHERE p.transaction_id = :t AND p.status = 'approved'
+          WHERE p.transaction_id = :t AND p.status = 'approved'$upTo
           GROUP BY p.id, p.amount, p.payment_date, p.submitted_at ORDER BY p.payment_date, p.submitted_at",
         [':t' => $transactionId]
     );
@@ -1483,7 +1502,7 @@ function borrowed_allocate(string $transactionId, array $rows, float $penalties,
     foreach (!$ready ? [] : db_all(
         "SELECT pp.borrower_payment_id, pp.part, pp.installment_schedule_id, pp.amount
            FROM borrower_payment_purchase_parts pp JOIN borrower_payments p ON p.id = pp.borrower_payment_id
-          WHERE pp.transaction_id = :t AND p.status = 'approved'",
+          WHERE pp.transaction_id = :t AND p.status = 'approved'$upTo",
         [':t' => $transactionId]
     ) as $pp) {
         $parts[$pp['borrower_payment_id']][] = $pp;

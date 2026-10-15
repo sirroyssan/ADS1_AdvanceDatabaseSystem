@@ -69,7 +69,8 @@ $navigation = [
     [
         'label' => 'Reports',
         'items' => [
-            ['key' => 'reports', 'label' => 'Reports', 'icon' => 'chart', 'path' => 'pages/reports/index.php'],
+            ['key' => 'reports',  'label' => 'Reports',  'icon' => 'chart',    'path' => 'pages/reports/index.php'],
+            ['key' => 'earnings', 'label' => 'Earnings', 'icon' => 'banknote', 'path' => 'pages/earnings/index.php'],
         ],
     ],
     [
