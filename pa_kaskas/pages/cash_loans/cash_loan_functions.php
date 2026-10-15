@@ -457,3 +457,107 @@ function cash_loan_notify_followers(array $before, string $note = ''): void
         }
     }
 }
+
+/* ------------------------------------------------------------------
+ * Duplicates and voiding a loan entered by mistake
+ * ------------------------------------------------------------------ */
+
+/**
+ * A loan already recorded that looks like this one: same card, same amount
+ * (principal) and a start date within a month, not cancelled or rejected.
+ * Two real loans can match, so it is a warning the owner confirms, not a block.
+ */
+function cash_loan_duplicate(array $data, ?string $exceptId = null): ?array
+{
+    $principal = cash_loan_principal($data);
+    if (empty($data['credit_card_id']) || $principal <= 0) {
+        return null;
+    }
+    foreach (db_all(
+        "SELECT * FROM cash_loans WHERE credit_card_id = :c AND status NOT IN ('cancelled', 'rejected') AND id <> :x
+            AND (:s1 IS NULL OR start_date IS NULL OR ABS(DATEDIFF(start_date, :s2)) <= 31)",
+        [':c' => $data['credit_card_id'], ':x' => $exceptId ?? '', ':s1' => $data['start_date'] ?: null, ':s2' => $data['start_date'] ?: null]
+    ) as $other) {
+        if (abs(cash_loan_principal($other) - $principal) < 0.005) {
+            return $other;
+        }
+    }
+
+    return null;
+}
+
+/** Why a loan cannot be voided (real money is attached), or [] when it can. */
+function cash_loan_void_blockers(array $loan): array
+{
+    $out = [];
+    $paidRows = (int) db_value('SELECT COUNT(*) FROM cash_loan_schedules WHERE cash_loan_id = :l AND amount_paid > 0', [':l' => $loan['id']]);
+    if ($paidRows > 0) {
+        $out[] = $paidRows . ' installment(s) of this loan already show payments to the bank.';
+    }
+    foreach (db_all(
+        "SELECT o.obligation_number, o.total_paid,
+                (SELECT COALESCE(SUM(ap.paid_amount), 0) FROM applied_penalties ap WHERE ap.obligation_id = o.id) AS penalties_paid,
+                (SELECT COUNT(*) FROM borrower_payment_allocations x WHERE x.obligation_id = o.id) AS allocations
+           FROM borrower_obligations o JOIN cash_loan_allocations a ON a.id = o.cash_loan_allocation_id
+          WHERE a.cash_loan_id = :l AND o.status <> 'cancelled'",
+        [':l' => $loan['id']]
+    ) as $o) {
+        if ((float) $o['total_paid'] > 0.004 || (float) $o['penalties_paid'] > 0.004 || (int) $o['allocations'] > 0) {
+            $out[] = 'Obligation ' . $o['obligation_number'] . ' already has payments applied (' . format_money((float) $o['total_paid'] + (float) $o['penalties_paid']) . ').';
+        }
+    }
+
+    return $out;
+}
+
+/**
+ * Void a loan entered by mistake: nothing is erased. The loan, its schedule and
+ * its borrowers' obligations are set to cancelled (so no statement, card total,
+ * balance or portal counts them), unpaid late charges on those obligations are
+ * waived, the reason is added to their notes, the activity log keeps the old
+ * values, and each borrower is told. Refused while payments are attached.
+ * Returns an error, or null.
+ */
+function cash_loan_void(array $loan, string $reason, array $user): ?string
+{
+    if ($loan['status'] === 'cancelled') {
+        return 'This cash loan is already cancelled.';
+    }
+    if ($blockers = cash_loan_void_blockers($loan)) {
+        return 'It cannot be voided while money is attached: ' . implode(' ', $blockers) . ' Reject or void those payments first.';
+    }
+    $stamp = 'VOIDED ' . date('Y-m-d H:i') . ' by ' . user_display_name($user) . ': ' . $reason;
+    $obligations = [];
+    card_usage_apply([$loan['credit_card_id']], static function () use ($loan, $stamp, &$obligations) {
+        db_value('SELECT id FROM cash_loans WHERE id = :id FOR UPDATE', [':id' => $loan['id']]);
+        db_update('cash_loans', ['status' => 'cancelled', 'notes' => trim(($loan['notes'] ? $loan['notes'] . "\n" : '') . $stamp)], $loan['id']);
+        db_exec("UPDATE cash_loan_schedules SET status = 'cancelled' WHERE cash_loan_id = :l", [':l' => $loan['id']]);
+        $obligations = db_all(
+            "SELECT o.* FROM borrower_obligations o JOIN cash_loan_allocations a ON a.id = o.cash_loan_allocation_id
+              WHERE a.cash_loan_id = :l AND o.status <> 'cancelled' FOR UPDATE",
+            [':l' => $loan['id']]
+        );
+        foreach ($obligations as $o) {
+            db_update('borrower_obligations', ['status' => 'cancelled', 'overdue_amount' => '0.00',
+                'notes' => trim(($o['notes'] ? $o['notes'] . "\n" : '') . $stamp)], $o['id']);
+            db_exec("UPDATE applied_penalties SET remaining_amount = 0, notes = CONCAT(COALESCE(notes, ''), :n)
+                      WHERE obligation_id = :o AND remaining_amount > 0", [':o' => $o['id'], ':n' => "\nWaived: the cash loan was voided."]);
+        }
+        // Prepared statement lines of its installments and fees go (statements are prepared again without them).
+        db_exec("DELETE i FROM statement_items i JOIN credit_card_statements s ON s.id = i.statement_id
+                  WHERE s.soa_recorded_at IS NULL AND ((i.source_type = 'cash_loan_fee' AND i.source_id = :l)
+                     OR (i.source_type = 'cash_loan_schedule' AND i.source_id IN (SELECT id FROM cash_loan_schedules WHERE cash_loan_id = :l2)))",
+            [':l' => $loan['id'], ':l2' => $loan['id']]);
+    });
+    log_activity('void', 'cash_loan', $loan['id'], 'Voided cash loan ' . $loan['loan_reference'] . ' (' . format_money($loan['approved_amount']) . '): ' . $reason,
+        ['status' => $loan['status']], ['status' => 'cancelled', 'reason' => $reason]);
+    foreach ($obligations as $o) {
+        log_activity('void', 'obligation', $o['id'], 'Cancelled obligation ' . $o['obligation_number'] . ' with voided cash loan ' . $loan['loan_reference'] . ': ' . $reason,
+            ['status' => $o['status']], ['status' => 'cancelled', 'reason' => $reason]);
+        notify_borrower($o['borrower_id'], 'obligation_cancelled', 'Item cancelled: ' . $o['obligation_number'],
+            'Your share of cash loan ' . $loan['loan_reference'] . ' (' . format_money($o['total_amount_due']) . ') was cancelled: it was recorded by mistake. You owe nothing on it.',
+            'obligation', $o['id']);
+    }
+
+    return null;
+}

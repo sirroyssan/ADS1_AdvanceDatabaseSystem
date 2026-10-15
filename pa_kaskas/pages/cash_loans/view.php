@@ -131,7 +131,12 @@ require APP_ROOT . '/includes/header.php';
         <section class="panel panel--danger no-print">
             <header class="panel__header"><h3>Delete</h3></header>
             <?php if ($allocations || array_filter($schedule, static fn ($s) => (float) $s['amount_paid'] > 0) || !in_array($loan['status'], ['offered', 'rejected', 'cancelled'], true)): ?>
-                <p class="field-help">Only offers that were never taken (no allocations, no payments) can be deleted. Set the status to Cancelled or Rejected instead.</p>
+                <?php if ($loan['status'] !== 'cancelled'): ?>
+                    <p class="field-help">Recorded by mistake (e.g. entered twice)? Void it: the loan, its schedule and its borrowers' obligations are cancelled with your reason and stop counting everywhere. Nothing is erased.</p>
+                    <a data-modal-form class="btn btn--danger btn--block" href="<?= e(url('pages/cash_loans/void.php', ['id' => $id])) ?>"><?= icon('trash') ?> <span>Void cash loan</span></a>
+                <?php else: ?>
+                    <p class="field-help">This loan is cancelled. It no longer counts on the card, its statements or any balance.</p>
+                <?php endif; ?>
             <?php else: ?>
                 <p class="field-help">This offer has no allocations or payments.</p>
                 <?= post_button(url('pages/cash_loans/delete.php'), ['id' => $id], 'Delete loan', 'trash', 'btn btn--danger btn--block',

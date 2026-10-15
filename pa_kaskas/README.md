@@ -1403,6 +1403,17 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/pa_kaskas/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Cash loans: duplicate warning, and voiding a loan entered by mistake
+
+- **Duplicate warning:** Add cash loan warns when a loan already exists on the **same card** with the **same amount** and a start date **within a month**, unless that loan is cancelled or rejected.
+  - Two real loans can match, so it does not block. Tick **Save anyway: this is a different loan** and save again.
+- **Void cash loan** (loan page → *Void cash loan*): use it for a loan recorded by mistake, e.g. entered twice. A modal lists what will be cancelled and asks for the reason (required). Then:
+  - the loan and its repayment schedule become **Cancelled**: they no longer count on the card's credit or its statements, and prepared statement lines are removed;
+  - the borrower obligations it created become **Cancelled**, with their unpaid late charges waived. Each borrower is told it was recorded by mistake and they owe nothing on it, and it disappears from their portal;
+  - **nothing is erased**: the reason is added to the loan's and obligations' notes, and the activity log keeps the old values.
+- **Refused while money is attached:** an installment already paid to the bank, or a borrower payment applied to one of its obligations (including paid late charges). Reject or void those payments first.
+- A loan offer that was never taken can still be deleted as before. No schema change.
+
 ## Statements: cash loan installments billed by their due date
 
 - **Problem:** cash loan installments were placed on statements by counting months from the loan's start date, not by their due dates. A loan whose dates did not line up with its start was billed on the wrong statement:

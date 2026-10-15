@@ -17,6 +17,16 @@ if (is_post()) {
     require_csrf('pages/cash_loans/create.php');
     [$data, $errors] = cash_loan_validate($fields, $_POST);
 
+    // Same card, same amount, started within a month: probably entered twice. Two real loans can
+    // match, so the owner may still save it after ticking "Save anyway".
+    $duplicate = $errors ? null : cash_loan_duplicate($data);
+    if ($duplicate && input_string($_POST, 'confirm_duplicate') !== '1') {
+        $errors['_form'] = 'This looks like cash loan ' . $duplicate['loan_reference'] . ', already recorded on the same card for '
+            . format_money(cash_loan_principal($duplicate)) . ($duplicate['start_date'] ? ' (started ' . format_date($duplicate['start_date']) . ')' : '')
+            . '. If it really is another loan, tick "Save anyway" below and save again.';
+        $fields['confirm_duplicate'] = ['label' => 'Duplicate check', 'type' => 'bool', 'switch_label' => 'Save anyway: this is a different loan from ' . $duplicate['loan_reference'], 'full' => true];
+    }
+
     if (!$errors) {
         try {
             $id = new_uuid();
