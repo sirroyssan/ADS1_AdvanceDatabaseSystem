@@ -31,6 +31,9 @@ require APP_ROOT . '/includes/header.php';
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/card_payments/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
+        <?php if (($payment['payment_type'] ?? '') !== AUTO_CARD_PAYMENT_TYPE): ?>
+            <a data-modal-form href="<?= e(url('pages/card_payments/void.php', ['id' => $payment['id']])) ?>" class="btn btn--outline btn--danger-outline"><?= icon('trash') ?> <span>Void</span></a>
+        <?php endif; ?>
         <a data-modal-form href="<?= e(url('pages/card_payments/edit.php', ['id' => $payment['id']])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
     </div>
 </section>

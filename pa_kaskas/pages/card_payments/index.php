@@ -103,4 +103,29 @@ require APP_ROOT . '/includes/header.php';
     <?php endif; ?>
 </section>
 
+<?php $voids = card_payment_voids_list(); ?>
+<?php if ($voids): ?>
+<section class="panel subpanel" aria-labelledby="voids-title">
+    <header class="panel__header"><h3 id="voids-title"><?= icon('trash') ?> Voided card payments</h3></header>
+    <p class="field-help">Kept for the audit trail. They no longer count on any card, statement or report.</p>
+    <div class="table-wrap">
+        <table class="table table--cards table--compact">
+            <thead><tr><th scope="col">Paid</th><th scope="col">Card</th><th scope="col">Reference</th><th scope="col" class="num">Amount</th><th scope="col">Voided</th><th scope="col">Reason</th></tr></thead>
+            <tbody>
+            <?php foreach ($voids as $v): ?>
+                <tr>
+                    <td data-label="Paid"><?= e(format_date($v['payment_date'])) ?></td>
+                    <td data-label="Card"><?= e($v['card_nickname'] . ' •••• ' . $v['last_four']) ?></td>
+                    <td data-label="Reference"><?= e($v['reference_number'] ?: '—') ?></td>
+                    <td data-label="Amount" class="num"><s><?= e(format_money($v['amount'])) ?></s></td>
+                    <td data-label="Voided"><?= e(format_datetime($v['voided_at'])) ?><?= $v['voided_by_name'] ? '<br><span class="text-muted">by ' . e($v['voided_by_name']) . '</span>' : '' ?></td>
+                    <td data-label="Reason"><?= e($v['void_reason']) ?></td>
+                </tr>
+            <?php endforeach; ?>
+            </tbody>
+        </table>
+    </div>
+</section>
+<?php endif; ?>
+
 <?php require APP_ROOT . '/includes/footer.php'; ?>

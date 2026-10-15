@@ -1403,6 +1403,17 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/pa_kaskas/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Card payments can be voided (with a reason, kept for audit)
+
+- **How:** Card Payments → open a payment → **Void**. A modal asks for the reason (required, at least 5 characters), then the payment is voided.
+- **Effect:** the payment leaves `credit_card_payments`, so every total drops it at once: the card's used and available credit, statements and reports. A prepared statement line for it is removed and the statement is prepared again.
+- **Audit:** nothing is erased without a trace.
+  - A full copy of the payment, the reason, who voided it and when are kept in the new table `card_payment_voids`.
+  - These are listed under **Voided card payments** on the Card Payments page (amount struck through).
+  - The activity log keeps the old values and the reason.
+- **Automatic card payments** (type "Borrower payment (auto)") cannot be voided: they follow the borrower payment they came from, so reject or void that payment instead.
+- **Schema change (additive):** new table `card_payment_voids`, created on first use (marker `storage/upgrade_card_payment_voids.done`). The same SQL is in `db/upgrade_card_payment_voids.sql`. Existing tables are unchanged.
+
 ## The project folder is now `pa_kaskas` (address `http://localhost/pa_kaskas/`)
 
 - **Address:** the app finds its own path, so the address follows the folder name (`APP_BASE_URL` stays empty). The project folder, the zip (`pa_kaskas.zip`) and every path in the docs are now `pa_kaskas`. The data-reset download is named `pa_kaskas_<batch>.sql`.
