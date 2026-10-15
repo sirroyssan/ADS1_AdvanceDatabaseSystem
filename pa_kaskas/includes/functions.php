@@ -22,7 +22,7 @@ function e(mixed $value): string
  * ------------------------------------------------------------------ */
 
 /**
- * Web path of the project folder, e.g. "/paswipe_me" (no trailing slash).
+ * Web path of the project folder, e.g. "/pa_kaskas" (no trailing slash).
  *
  * Auto-detected by comparing the running script's file path with its URL,
  * so the project works in any folder without hardcoding a path.
@@ -61,7 +61,7 @@ function app_base_url(): string
 
 /**
  * Build an absolute web path to a file inside the project.
- * Example: url('assets/css/base.css') -> "/paswipe_me/assets/css/base.css"
+ * Example: url('assets/css/base.css') -> "/pa_kaskas/assets/css/base.css"
  */
 function url(string $path = '', array $query = []): string
 {

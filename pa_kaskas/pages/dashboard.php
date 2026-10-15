@@ -457,7 +457,7 @@ require APP_ROOT . '/includes/header.php';
         </div>
     </article>
 
-    <article class="stat-card">
+    <article class="stat-card stat-card--wide">
         <div class="stat-card__icon stat-card__icon--warning"><?= icon('wallet') ?></div>
         <div>
             <p class="stat-card__label"><a href="<?= e(url('pages/reports/borrower_balances.php')) ?>">Total to collect</a></p>

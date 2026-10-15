@@ -5,9 +5,9 @@
  * The website already runs this check once a day on the first page load.
  * Schedule this script if you want it to run even when nobody opens the
  * site, e.g. Windows Task Scheduler, daily at 1:00 AM:
- *     C:\xampp\php\php.exe C:\xampp\htdocs\paswipe_me\db\run_penalties.php
+ *     C:\xampp\php\php.exe C:\xampp\htdocs\pa_kaskas\db\run_penalties.php
  * Linux / macOS cron:
- *     0 1 * * * /opt/lampp/bin/php /opt/lampp/htdocs/paswipe_me/db/run_penalties.php
+ *     0 1 * * * /opt/lampp/bin/php /opt/lampp/htdocs/pa_kaskas/db/run_penalties.php
  */
 
 if (PHP_SAPI !== 'cli') {

@@ -1,6 +1,6 @@
 # PA-KASKAS — Administrative System (PHP + MySQL/MariaDB + XAMPP)
 
-> The system was renamed from **PA-SWIPE AKO** to **PA-KASKAS** (`APP_NAME` in `config/app.php`). The database name `pa_swipe_ako`, the schema file and the `paswipe_me` folder are unchanged.
+> The system was renamed from **PA-SWIPE AKO** to **PA-KASKAS** (`APP_NAME` in `config/app.php`). The database name `pa_swipe_ako`, the schema file and the `pa_kaskas` folder are unchanged.
 
 Secure login → session authentication → role check → admin dashboard with a persistent
 sidebar → **all administrative modules** of the schema with CRUD (where appropriate), search,
@@ -147,7 +147,7 @@ All of these modules are now built and linked from the sidebar (see the final se
 ## PART 4 — System architecture
 
 ```
-paswipe_me/
+pa_kaskas/
 ├── index.php                      → redirects to dashboard or login
 ├── setup_check.php                → installation checker (localhost only)
 ├── README.md
@@ -204,7 +204,7 @@ Additions to your structure, and why: `bootstrap.php` (one place that loads ever
 copies one folder), and `.htaccess` files that block browsing to `config/`, `includes/` and `db/`.
 
 **Paths:** nothing is hardcoded. `includes/functions.php → app_base_url()` works out the
-project's web path (e.g. `/paswipe_me`) from the running script, and every link/asset uses
+project's web path (e.g. `/pa_kaskas`) from the running script, and every link/asset uses
 `url('assets/css/base.css')`. So files at any depth produce correct URLs, and the folder can
 be renamed or moved. PHP includes use `__DIR__`, so they never depend on the current directory.
 If auto-detection ever fails (unusual Apache aliases), set `APP_BASE_URL` in `config/app.php`.
@@ -291,26 +291,26 @@ to the PHP time zone in `config/app.php` (default `Asia/Manila`). That keeps `NO
 ## PART 8 — XAMPP setup (first run)
 
 1. **Start Apache and MySQL** in the XAMPP Control Panel.
-2. **Copy** the `paswipe_me` folder into `xampp/htdocs/` (Windows `C:\xampp\htdocs\`,
+2. **Copy** the `pa_kaskas` folder into `xampp/htdocs/` (Windows `C:\xampp\htdocs\`,
    macOS `/Applications/XAMPP/xamppfiles/htdocs/`, Linux `/opt/lampp/htdocs/`).
 3. **Create the database:** open `http://localhost/phpmyadmin` → *SQL* tab → run
    ```sql
    CREATE DATABASE pa_swipe_ako CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci;
    ```
 4. **Import the schema:** click `pa_swipe_ako` in the left panel → *Import* → choose
-   `paswipe_me/db/pa_swipe_ako_mariadb_10_6_v2.sql` → *Import*. You should see 41 tables and 4 views.
+   `pa_kaskas/db/pa_swipe_ako_mariadb_10_6_v2.sql` → *Import*. You should see 41 tables and 4 views.
    (Command line alternative: `mysql -u root pa_swipe_ako < db/pa_swipe_ako_mariadb_10_6_v2.sql`)
 5. **Check `config/database.php`** (Part 7).
 6. **Create your administrator** (the schema ships with no users). Open a terminal
    (XAMPP Control Panel → *Shell* on Windows) and run:
    ```
-   php C:\xampp\htdocs\paswipe_me\db\create_admin.php
+   php C:\xampp\htdocs\pa_kaskas\db\create_admin.php
    ```
    Enter your email, optional username, names, role (`admin` or `owner`) and a password
    (min. 8 characters). It cannot be run from the browser.
 7. *(Optional, test database only)* import `db/test_data_categories.sql` to get sample categories.
    Every row is marked `[TEST]`, and the file contains the SQL to remove them.
-8. **Open** `http://localhost/paswipe_me/` and sign in with the username or email you entered.
+8. **Open** `http://localhost/pa_kaskas/` and sign in with the username or email you entered.
 
 ### XAMPP for macOS / Linux: let the web server write to `storage/`
 
@@ -318,7 +318,7 @@ On macOS, Apache runs as its own user and usually may not write into a folder yo
 Uploading files (receipts, SOA PDFs, payment proofs) needs that, so run once in Terminal:
 
 ```
-sudo chmod -R 777 /Applications/XAMPP/xamppfiles/htdocs/paswipe_me/storage
+sudo chmod -R 777 /Applications/XAMPP/xamppfiles/htdocs/pa_kaskas/storage
 ```
 
 Everything else works without it: one-time upgrades and the daily jobs then keep their "done"
@@ -328,7 +328,7 @@ your own computer (localhost), it shows the technical details to copy.
 
 ### Troubleshooting (blank page / "HTTP ERROR 500")
 
-1. Open **`http://localhost/paswipe_me/setup_check.php`** (works only from the same computer).
+1. Open **`http://localhost/pa_kaskas/setup_check.php`** (works only from the same computer).
    It checks PHP version, `pdo_mysql`/`mbstring`, the session folder, the MySQL connection,
    the database, the imported tables and whether an admin account exists, and says how to fix each ✕.
 2. Errors now show a "Something went wrong" page with the likely cause instead of a blank 500.
@@ -1390,7 +1390,7 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
   - The proof is saved on the computer instead, and `metadata.drive_error` records the reason.
   - The Google Drive page shows it as "Not yet in Drive". *Send pending proofs now* uploads it later (25 per click), including proofs from before Drive was connected.
   - If the payment itself fails to save, the file just uploaded to Drive is deleted again.
-- **The `storage` folder must still be writable.** It holds the Drive settings (`storage/google_drive/`), the fallback copies and other documents. When it is not writable, the Google Drive page says so with the fix. On XAMPP for macOS, run `sudo chmod -R 777 /Applications/XAMPP/xamppfiles/htdocs/paswipe_me/storage`.
+- **The `storage` folder must still be writable.** It holds the Drive settings (`storage/google_drive/`), the fallback copies and other documents. When it is not writable, the Google Drive page says so with the fix. On XAMPP for macOS, run `sudo chmod -R 777 /Applications/XAMPP/xamppfiles/htdocs/pa_kaskas/storage`.
 - **Privacy:**
   - The app asks only for Google's `drive.file` permission, so it sees just the files it created itself, never the rest of the Drive. Files stay private to the Gmail account.
   - The Client secret and tokens are kept in `storage/google_drive/`, which is closed to the web, never shown again, not committed and not zipped.
@@ -1400,8 +1400,23 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 1. On console.cloud.google.com, with your Gmail, create a project (e.g. PA-KASKAS).
 2. *APIs & Services → Library*: enable **Google Drive API**.
 3. *OAuth consent screen*: choose External, enter the app name and your Gmail, then **Publish app** (In production). Otherwise Google signs you out every 7 days. "Unverified app" can be passed for your own account.
-4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/paswipe_me/pages/drive/callback.php`.
+4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/pa_kaskas/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
+
+## The project folder is now `pa_kaskas` (address `http://localhost/pa_kaskas/`)
+
+- **Address:** the app finds its own path, so the address follows the folder name (`APP_BASE_URL` stays empty). The project folder, the zip (`pa_kaskas.zip`) and every path in the docs are now `pa_kaskas`. The data-reset download is named `pa_kaskas_<batch>.sql`.
+- **Moving an existing XAMPP install:**
+  1. Unzip `pa_kaskas.zip` into `/Applications/XAMPP/xamppfiles/htdocs/` (it creates `pa_kaskas/`).
+  2. Copy your `config/database.php` and the whole `storage/` folder from the old `htdocs/paswipe_me/` into `htdocs/pa_kaskas/`. That keeps your database settings, uploaded files, Google Drive connection and upgrade markers.
+  3. Open `http://localhost/pa_kaskas/` and sign in again: the address changed, so the browser needs a new session.
+  4. **Google Drive:** in Google Cloud → Credentials → your OAuth client, add the new redirect URI shown on System → Google Drive (`http://localhost/pa_kaskas/pages/drive/callback.php`).
+  5. When everything works, delete the old `htdocs/paswipe_me/` folder.
+- **Not renamed:** the database name and the internal session cookie name.
+
+## Dashboard: Total to collect fits on one line
+
+- The *Total to collect* card is two columns wide on screens 900px and wider, and its amount never breaks in the middle of the number (e.g. ₱1,746,704.37).
 
 ## Fix: cash loan saved without a first due date (no schedule, wrong interest)
 

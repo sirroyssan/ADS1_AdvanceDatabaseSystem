@@ -2977,3 +2977,15 @@ td .decision-bar,
 .form-card--full {
     max-width: none;
 }
+
+/* A total card with a long peso amount (Dashboard: Total to collect): two columns
+   wide when there is room, and the amount always on one line. */
+.stat-card--wide .stat-card__value {
+    overflow-wrap: normal;
+    white-space: nowrap;
+}
+@media (min-width: 900px) {
+    .stat-card--wide {
+        grid-column: span 2;
+    }
+}

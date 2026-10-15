@@ -16,6 +16,6 @@ if ($sql === null) {
 }
 
 header('Content-Type: application/sql; charset=utf-8');
-header('Content-Disposition: attachment; filename="paswipe_' . $batch . '.sql"');
+header('Content-Disposition: attachment; filename="pa_kaskas_' . $batch . '.sql"');
 header('Content-Length: ' . strlen($sql));
 echo $sql;

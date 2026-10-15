@@ -12,8 +12,8 @@ const APP_TAGLINE = 'Credit card, borrower and repayment tracking';
 
 /*
  * Base URL of the application, WITHOUT a trailing slash.
- * Leave empty ('') to auto-detect (works for htdocs/paswipe_me, a sub-folder,
- * or a virtual host). Only set it if auto-detection fails, e.g. '/paswipe_me'.
+ * Leave empty ('') to auto-detect (works for htdocs/pa_kaskas, a sub-folder,
+ * or a virtual host). Only set it if auto-detection fails, e.g. '/pa_kaskas'.
  */
 const APP_BASE_URL = '';
 

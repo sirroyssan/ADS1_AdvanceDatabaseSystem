@@ -1,6 +1,6 @@
 <?php
 /**
- * Entry point: http://localhost/paswipe_me/
+ * Entry point: http://localhost/pa_kaskas/
  * Sends signed-in users to the dashboard and everyone else to the login page.
  */
 

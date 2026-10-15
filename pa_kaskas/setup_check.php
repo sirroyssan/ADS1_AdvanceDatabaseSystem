@@ -1,6 +1,6 @@
 <?php
 /**
- * Installation check for XAMPP: http://localhost/paswipe_me/setup_check.php
+ * Installation check for XAMPP: http://localhost/pa_kaskas/setup_check.php
  *
  * Shows what is working and what still needs to be set up (PHP version,
  * extensions, database connection, imported tables, admin account).

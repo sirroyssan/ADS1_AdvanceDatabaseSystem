@@ -7,9 +7,9 @@
  * It writes to the existing tables only: users + user_roles.
  *
  * Run from the XAMPP shell / terminal:
- *     Windows: C:\xampp\php\php.exe C:\xampp\htdocs\paswipe_me\db\create_admin.php
- *     macOS:   /Applications/XAMPP/xamppfiles/bin/php /Applications/XAMPP/xamppfiles/htdocs/paswipe_me/db/create_admin.php
- *     Linux:   /opt/lampp/bin/php /opt/lampp/htdocs/paswipe_me/db/create_admin.php
+ *     Windows: C:\xampp\php\php.exe C:\xampp\htdocs\pa_kaskas\db\create_admin.php
+ *     macOS:   /Applications/XAMPP/xamppfiles/bin/php /Applications/XAMPP/xamppfiles/htdocs/pa_kaskas/db/create_admin.php
+ *     Linux:   /opt/lampp/bin/php /opt/lampp/htdocs/pa_kaskas/db/create_admin.php
  */
 
 if (PHP_SAPI !== 'cli') {
