@@ -1413,7 +1413,7 @@ A rate typed while **Installment: interest** was left on "No interest (0%)" was 
 - `data-show-if` (`assets/js/modules.js`) accepts several conditions (`;`) and several values (`|`); forms support `required_mark` (shows * without forcing the field when it is hidden).
 - No schema change (the plan's `interest_method`, `interest_rate`, `fee_type`, `fee_value`, `fee_billing` columns already exist).
 
-**To fix a plan saved without its rate:** Installment Plans → the plan → Edit → Interest: *Add-on rate per month*, Interest rate: *1.25* → Save. The schedule (and a borrower's obligation linked to the purchase) follow; payments already made are kept.
+**To fix a plan saved without its rate:** Installment Plans → the plan → Edit → Interest: *Add-on rate per month*, Interest rate: *1.25* → Save. The schedule follows and payments already made are kept. If a borrower obligation is linked to the purchase, the page says so after saving; check its amount too.
 
 ## Fix: Receive payment review showed ₱5.00 for ₱5,416.67
 
