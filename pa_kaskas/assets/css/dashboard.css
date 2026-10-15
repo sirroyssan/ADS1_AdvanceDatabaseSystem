@@ -3016,3 +3016,10 @@ td .decision-bar,
         grid-template-columns: repeat(3, minmax(0, 1fr));
     }
 }
+
+/* Borrowers - merge: one radio row per record that may be kept */
+.choice { display: flex; gap: .6rem; align-items: flex-start; padding: .6rem .75rem; border: 1px solid var(--color-border, #e2e8f0); border-radius: 10px; margin-top: .5rem; cursor: pointer; }
+.choice input { margin-top: .2rem; }
+.choice:has(input:checked) { border-color: var(--color-primary, #2563eb); background: rgba(37, 99, 235, .06); }
+fieldset.form-group { border: 0; padding: 0; margin: 0 0 1rem; }
+fieldset.form-group legend { font-weight: 600; padding: 0; }

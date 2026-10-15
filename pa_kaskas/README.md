@@ -1403,6 +1403,19 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/pa_kaskas/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Borrowers: duplicates filter, duplicate warning, delete or merge
+
+Two records for one person (for example two "Alfred Agasa") happen when the borrower is added twice; each Add creates a new borrower number.
+
+- **Filter** (`pages/borrowers/index.php`): **Duplicates → Possible duplicates only / No duplicates**. A borrower counts as a possible duplicate when another of your borrowers has the same first and last name (ignoring case and spaces), the same mobile (last 10 digits) or the same email (`borrower_duplicate_sql()`). The list also shows a **Possible duplicate** tag under the name.
+- **Warning when adding or editing** (`create.php`, `edit.php`): saving a borrower who matches an existing one stops with the matching record(s); tick **Save anyway** if it really is a different person. On Edit, the check runs only when the name, mobile or email changed.
+- **Delete** (trash icon on each row, or **Delete / Merge / delete** on the borrower page → `pages/borrowers/remove.php`, a modal):
+  - *No records yet* → delete the borrower with their addresses and contacts.
+  - *Has records and a duplicate exists* → **Merge and delete**: choose the record to keep and enter a reason. Every record of the duplicate (purchases, obligations, payments, payment methods, agreements, signatures, demand letters, cash loan allocations, receipts, addresses, contacts, portal account) moves to the kept borrower, and missing contact details are copied over. Then the empty duplicate is deleted (`borrower_merge()`). Nothing financial is erased; the activity log keeps a copy of the deleted record, the reason, and how many records moved. Merging is refused when both records have a portal sign-in account.
+  - *Has records, no duplicate* → it cannot be deleted (history is kept); mark it inactive instead.
+- Receipts (`payment_receipts`) now count as records that block a plain delete.
+- No schema change.
+
 ## Cash loans: duplicate warning, and voiding a loan entered by mistake
 
 - **Duplicate warning:** Add cash loan warns when a loan already exists on the **same card** with the **same amount** and a start date **within a month**, unless that loan is cancelled or rejected.

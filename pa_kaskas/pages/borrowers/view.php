@@ -58,6 +58,7 @@ $methods = db_all('SELECT id, display_name, method_type, is_active FROM payment_
 $usage = borrower_usage($id);
 
 $related = url('pages/borrowers/related.php');
+$duplicates = borrower_duplicates($borrower, $borrower['id']);
 
 $pageTitle = 'Borrower Details';
 $activeNav = 'borrowers';
@@ -80,13 +81,7 @@ require APP_ROOT . '/includes/header.php';
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/borrowers/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
-        <?php if ($usage['total'] > 0 && $borrower['status'] !== 'inactive'): ?>
-            <?= post_button(url('pages/borrowers/delete.php'), ['id' => $id, 'action' => 'deactivate'], 'Mark as inactive', 'power', 'btn btn--warning',
-                'This borrower has ' . usage_text($usage) . ', so the record is kept. Mark them as inactive? Their history stays.', false, 'Deactivate borrower?') ?>
-        <?php elseif ($usage['total'] === 0): ?>
-            <?= post_button(url('pages/borrowers/delete.php'), ['id' => $id, 'action' => 'delete'], 'Delete', 'trash', 'btn btn--danger',
-                'No financial records yet. Delete this borrower with their addresses and contacts? This cannot be undone.', false, 'Delete borrower?') ?>
-        <?php endif; ?>
+        <a data-modal-form href="<?= e(url('pages/borrowers/remove.php', ['id' => $id])) ?>" class="btn btn--danger"><?= icon('trash') ?> <span><?= $duplicates ? 'Merge / delete' : 'Delete' ?></span></a>
         <a data-modal-form href="<?= e(url('pages/borrowers/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
     </div>
 </section>

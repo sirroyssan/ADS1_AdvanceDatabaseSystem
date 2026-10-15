@@ -67,7 +67,135 @@ function borrower_usage(string $id): array
         'demand letters'        => ['demand_letters', 'borrower_id'],
         'cash loan allocations' => ['cash_loan_allocations', 'borrower_id'],
         'user accounts'         => ['borrower_user_accounts', 'borrower_id'],
+        'receipts'              => ['payment_receipts', 'borrower_id'],
     ], $id);
+}
+
+/**
+ * SQL condition: another of the owner's borrowers looks like the same person -
+ * same first and last name, the same mobile (last 10 digits) or the same email.
+ * $alias is the borrowers alias of the outer query.
+ */
+function borrower_duplicate_sql(string $alias = 'b'): string
+{
+    $a = preg_replace('/[^a-z0-9_]/i', '', $alias);
+
+    return "EXISTS (SELECT 1 FROM borrowers dup WHERE dup.id <> $a.id AND " . owner_scope('borrowers', 'dup') . " AND (
+                (LOWER(TRIM(dup.first_name)) = LOWER(TRIM($a.first_name)) AND LOWER(TRIM(dup.last_name)) = LOWER(TRIM($a.last_name)))
+             OR (LENGTH(REGEXP_REPLACE(COALESCE($a.primary_mobile, ''), '[^0-9]', '')) >= 7
+                 AND RIGHT(REGEXP_REPLACE(COALESCE(dup.primary_mobile, ''), '[^0-9]', ''), 10) = RIGHT(REGEXP_REPLACE($a.primary_mobile, '[^0-9]', ''), 10))
+             OR (TRIM(COALESCE($a.primary_email, '')) <> '' AND LOWER(TRIM(dup.primary_email)) = LOWER(TRIM($a.primary_email)))))";
+}
+
+/**
+ * The owner's borrowers that look like the same person as $data (a form or a
+ * borrowers row), excluding $exceptId. Each row says what matched.
+ */
+function borrower_duplicates(array $data, ?string $exceptId = null): array
+{
+    $first = mb_strtolower(trim((string) ($data['first_name'] ?? '')));
+    $last = mb_strtolower(trim((string) ($data['last_name'] ?? '')));
+    $mobile = substr(preg_replace('/\D/', '', (string) ($data['primary_mobile'] ?? '')), -10);
+    $email = mb_strtolower(trim((string) ($data['primary_email'] ?? '')));
+    if (strlen($mobile) < 7) {
+        $mobile = '';
+    }
+
+    $rows = db_all(
+        "SELECT b.id, b.borrower_number, b.first_name, b.middle_name, b.last_name, b.suffix, b.primary_mobile, b.primary_email, b.status,
+                (LOWER(TRIM(b.first_name)) = :f1 AND LOWER(TRIM(b.last_name)) = :l1) AS same_name,
+                (:m1 <> '' AND RIGHT(REGEXP_REPLACE(COALESCE(b.primary_mobile, ''), '[^0-9]', ''), 10) = :m2) AS same_mobile,
+                (:e1 <> '' AND LOWER(TRIM(b.primary_email)) = :e2) AS same_email
+           FROM borrowers b
+          WHERE b.id <> :x AND " . owner_scope('borrowers', 'b') . "
+            AND ((LOWER(TRIM(b.first_name)) = :f2 AND LOWER(TRIM(b.last_name)) = :l2)
+              OR (:m3 <> '' AND RIGHT(REGEXP_REPLACE(COALESCE(b.primary_mobile, ''), '[^0-9]', ''), 10) = :m4)
+              OR (:e3 <> '' AND LOWER(TRIM(b.primary_email)) = :e4))
+          ORDER BY b.created_at",
+        [':f1' => $first, ':l1' => $last, ':f2' => $first, ':l2' => $last, ':m1' => $mobile, ':m2' => $mobile, ':m3' => $mobile, ':m4' => $mobile,
+         ':e1' => $email, ':e2' => $email, ':e3' => $email, ':e4' => $email, ':x' => (string) $exceptId]
+    );
+    foreach ($rows as &$r) {
+        $r['matched'] = implode(', ', array_keys(array_filter(['same name' => $r['same_name'], 'same mobile' => $r['same_mobile'], 'same email' => $r['same_email']])));
+    }
+
+    return $rows;
+}
+
+/** "BRW-… Alfred Agasa (same name)" for messages. */
+function borrower_duplicate_text(array $rows): string
+{
+    return implode('; ', array_map(fn ($r) => $r['borrower_number'] . ' ' . borrower_full_name($r) . ' (' . $r['matched'] . ')', $rows));
+}
+
+/** Tables whose borrower_id moves to the kept borrower when two records are merged. */
+const BORROWER_MERGE_TABLES = [
+    'transactions', 'borrower_obligations', 'borrower_payments', 'payment_methods', 'agreements', 'agreement_signatories',
+    'demand_letters', 'cash_loan_allocations', 'payment_receipts', 'borrower_addresses', 'borrower_contacts',
+    'borrower_user_accounts', 'backup_borrowed_borrower_obligations', 'backup_borrowed_borrower_payments',
+];
+
+/**
+ * Merge a duplicate borrower into the record that is kept: every record of
+ * $from (purchases, obligations, payments, agreements, receipts, addresses,
+ * contacts, portal account...) is moved to $into - nothing financial is
+ * erased - and the now empty duplicate is deleted. The activity log keeps the
+ * deleted record, the reason and how many records moved.
+ */
+function borrower_merge(array $from, array $into, string $reason, array $user): array
+{
+    if ($from['id'] === $into['id']) {
+        throw new DomainException('Choose a different borrower to keep.');
+    }
+    if (!owns('borrowers', $from['id']) || !owns('borrowers', $into['id'])) {
+        throw new DomainException('Both borrowers must be yours.');
+    }
+
+    $moved = db_transaction(function () use ($from, $into) {
+        db_all('SELECT id FROM borrowers WHERE id IN (:a, :b) FOR UPDATE', [':a' => $from['id'], ':b' => $into['id']]);
+        if ((int) db_value('SELECT COUNT(*) FROM borrower_user_accounts WHERE borrower_id = :a', [':a' => $from['id']]) > 0
+            && (int) db_value('SELECT COUNT(*) FROM borrower_user_accounts WHERE borrower_id = :b', [':b' => $into['id']]) > 0) {
+            throw new DomainException('Both borrowers have a portal sign-in account. Unlink the account of ' . $from['borrower_number'] . ' on its page first, then merge.');
+        }
+
+        $existing = array_flip(array_column(db_all(
+            "SELECT TABLE_NAME FROM information_schema.COLUMNS WHERE TABLE_SCHEMA = DATABASE() AND COLUMN_NAME = 'borrower_id'"
+        ), 'TABLE_NAME'));
+        // The kept borrower keeps its primary address; the moved ones become extra addresses.
+        if ((int) db_value('SELECT COUNT(*) FROM borrower_addresses WHERE borrower_id = :b AND is_primary = 1', [':b' => $into['id']]) > 0) {
+            db_exec('UPDATE borrower_addresses SET is_primary = 0 WHERE borrower_id = :a', [':a' => $from['id']]);
+        }
+        $moved = [];
+        foreach (BORROWER_MERGE_TABLES as $table) {
+            if (!isset($existing[$table])) {
+                continue;
+            }
+            $count = db_exec('UPDATE ' . db_identifier($table) . ' SET borrower_id = :into WHERE borrower_id = :from', [':into' => $into['id'], ':from' => $from['id']]);
+            if ($count > 0) {
+                $moved[$table] = $count;
+            }
+        }
+        // Keep contact details the kept record is missing.
+        $fill = [];
+        foreach (['middle_name', 'suffix', 'nickname', 'relationship', 'primary_mobile', 'primary_email'] as $col) {
+            if (trim((string) ($into[$col] ?? '')) === '' && trim((string) ($from[$col] ?? '')) !== '') {
+                $fill[$col] = $from[$col];
+            }
+        }
+        if ($fill) {
+            db_update('borrowers', $fill, $into['id']);
+        }
+        db_exec('DELETE FROM borrowers WHERE id = :id', [':id' => $from['id']]);
+
+        return $moved;
+    });
+
+    $snapshot = array_diff_key($from, array_flip(['created_by_name', 'updated_by_name']));
+    log_activity('merge', 'borrower', $into['id'], 'Merged duplicate borrower ' . $from['borrower_number'] . ' ' . borrower_full_name($from)
+        . ' into ' . $into['borrower_number'] . ': ' . $reason, $snapshot, ['kept' => $into['borrower_number'], 'reason' => $reason, 'moved' => $moved]);
+    log_activity('delete', 'borrower', $from['id'], 'Deleted duplicate borrower ' . $from['borrower_number'] . ' after merging it into ' . $into['borrower_number'], $snapshot);
+
+    return $moved;
 }
 
 function address_fields(): array

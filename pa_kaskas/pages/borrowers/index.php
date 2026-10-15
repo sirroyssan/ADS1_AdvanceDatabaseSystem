@@ -13,7 +13,8 @@ $state = list_state([
     'title'   => 'Borrowers',
     'search'  => 'Search number, name, nickname, mobile or email…',
     'filters' => [
-        'status' => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_BORROWER_STATUS), 'all' => 'All statuses'],
+        'status'    => ['label' => 'Status', 'type' => 'select', 'options' => enum_options(ENUM_BORROWER_STATUS), 'all' => 'All statuses'],
+        'duplicate' => ['label' => 'Duplicates', 'type' => 'select', 'options' => ['yes' => 'Possible duplicates only', 'no' => 'No duplicates'], 'all' => 'All borrowers'],
     ],
     'sorts'   => [
         'name'        => ['Name (A–Z)', 'b.last_name ASC, b.first_name ASC'],
@@ -30,11 +31,18 @@ if ($state['filters']['status'] !== '') {
     $where[] = 'b.status = :status';
     $params[':status'] = $state['filters']['status'];
 }
+// Same name, same mobile or same email as another of your borrowers.
+if ($state['filters']['duplicate'] === 'yes') {
+    $where[] = borrower_duplicate_sql('b');
+} elseif ($state['filters']['duplicate'] === 'no') {
+    $where[] = 'NOT ' . borrower_duplicate_sql('b');
+}
 
 $result = run_list(
     $state,
     'b.id, b.borrower_number, b.first_name, b.middle_name, b.last_name, b.suffix, b.nickname, b.primary_mobile, b.primary_email, b.status,
-     COALESCE(v.outstanding, 0) AS outstanding, COALESCE(v.overdue, 0) AS overdue',
+     COALESCE(v.outstanding, 0) AS outstanding, COALESCE(v.overdue, 0) AS overdue,
+     ' . borrower_duplicate_sql('b') . ' AS is_duplicate',
     'borrowers b LEFT JOIN vw_borrower_balances v ON v.borrower_id = b.id',
     $where,
     $params
@@ -83,6 +91,7 @@ require APP_ROOT . '/includes/header.php';
                         <td data-label="Name">
                             <a data-modal-form class="table-link" href="<?= e(url('pages/borrowers/view.php', ['id' => $row['id']])) ?>"><?= e($name) ?></a>
                             <?php if ($row['nickname']): ?><br><span class="text-muted">“<?= e($row['nickname']) ?>”</span><?php endif; ?>
+                            <?php if ((int) $row['is_duplicate'] === 1): ?><br><a data-modal-form class="status status--warning" href="<?= e(url('pages/borrowers/remove.php', ['id' => $row['id']])) ?>" title="Another borrower has the same name, mobile or email">Possible duplicate</a><?php endif; ?>
                         </td>
                         <td data-label="Mobile / Email"><?= show($row['primary_mobile']) ?><?php if ($row['primary_email']): ?><br><span class="text-muted"><?= e($row['primary_email']) ?></span><?php endif; ?></td>
                         <td data-label="Status"><?= badge($row['status']) ?></td>
@@ -92,6 +101,7 @@ require APP_ROOT . '/includes/header.php';
                             <div class="row-actions">
                                 <?= icon_link(url('pages/borrowers/view.php', ['id' => $row['id']]), 'eye', 'View ' . $name) ?>
                                 <?= icon_link(url('pages/borrowers/edit.php', ['id' => $row['id']]), 'edit', 'Edit ' . $name) ?>
+                                <a data-modal-form class="icon-button icon-button--danger" href="<?= e(url('pages/borrowers/remove.php', ['id' => $row['id']])) ?>" title="<?= e('Delete or merge ' . $name) ?>" aria-label="<?= e('Delete or merge ' . $name) ?>"><?= icon('trash') ?></a>
                             </div>
                         </td>
                     </tr>

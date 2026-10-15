@@ -16,6 +16,16 @@ if (is_post()) {
     require_csrf('pages/borrowers/create.php');
     [$data, $errors] = validate_fields($fields, $_POST);
 
+    // Same name, mobile or email as another borrower: probably added twice. Two people can share a
+    // name, so the owner may still save after ticking "Save anyway".
+    $duplicates = $errors ? [] : borrower_duplicates($data, null);
+    if ($duplicates && input_string($_POST, 'confirm_duplicate') !== '1') {
+        $errors['_form'] = 'This borrower may already be recorded: ' . borrower_duplicate_text($duplicates)
+            . '. Use the existing record, or if this really is a different person, tick "Save anyway" below and save again.';
+        $fields['confirm_duplicate'] = ['label' => 'Duplicate check', 'type' => 'bool', 'switch_label' => 'Save anyway: this is a different person', 'full' => true];
+    }
+
+
     if (!$errors) {
         try {
             $id = new_uuid();

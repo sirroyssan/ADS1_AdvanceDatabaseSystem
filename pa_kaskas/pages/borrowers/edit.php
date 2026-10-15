@@ -19,6 +19,19 @@ if (is_post()) {
     require_csrf('pages/borrowers/edit.php?id=' . $borrower['id']);
     [$data, $errors] = validate_fields($fields, $_POST, $borrower['id']);
 
+    // Same name, mobile or email as another borrower: probably added twice. Two people can share a
+    // name, so the owner may still save after ticking "Save anyway".
+    // Only when the name, mobile or email changed, so an existing pair does not block every edit.
+    $identity = ['first_name', 'last_name', 'primary_mobile', 'primary_email'];
+    $changed = array_intersect_key($data, array_flip($identity)) != array_intersect_key($borrower, array_flip($identity));
+    $duplicates = ($errors || !$changed) ? [] : borrower_duplicates($data, $borrower['id']);
+    if ($duplicates && input_string($_POST, 'confirm_duplicate') !== '1') {
+        $errors['_form'] = 'This borrower may already be recorded: ' . borrower_duplicate_text($duplicates)
+            . '. Use the existing record, or if this really is a different person, tick "Save anyway" below and save again.';
+        $fields['confirm_duplicate'] = ['label' => 'Duplicate check', 'type' => 'bool', 'switch_label' => 'Save anyway: this is a different person', 'full' => true];
+    }
+
+
     if (!$errors) {
         try {
             db_update('borrowers', $data + ['updated_by' => $currentUser['id']], $borrower['id']);
