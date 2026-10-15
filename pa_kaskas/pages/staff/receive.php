@@ -37,7 +37,8 @@ if ($borrower && is_post()) {
     require_csrf('pages/staff/receive.php?borrower_id=' . $borrower['id']);
     foreach ((array) ($_POST['select'] ?? []) as $key => $on) {
         if (is_string($key) && $on === '1') {
-            $chosen[$key] = (string) ($_POST['select_amount'][$key] ?? '');
+            // Typed with thousands separators (5,416.67): keep the plain number so (float) and format_money() read it right.
+            $chosen[$key] = str_replace([',', ' ', '₱'], '', (string) ($_POST['select_amount'][$key] ?? ''));
         }
     }
     [$data, $purchases, $selections, $errors] = receive_validate($borrower, $groups, $_POST);

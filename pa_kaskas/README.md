@@ -1403,6 +1403,10 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/pa_kaskas/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Fix: Receive payment review showed ₱5.00 for ₱5,416.67
+
+When an amount on an item was typed with a thousands separator (5,416.67), the **Review payment** step showed only the part before the comma (₱5.00). The validation and saving already read the full amount; only the review list (and the values carried back to the form) used the raw text. The amounts are now cleaned of commas, spaces and ₱ when collected (`pages/staff/receive.php`, `includes/payment_form.php`). No schema change.
+
 ## Cash loan page: Void / Delete next to Edit (`pages/cash_loans/view.php`)
 
 The **Void cash loan** button (or **Delete loan** for an offer with no allocations or payments) and its short explanation now sit in the page header beside **Edit**, instead of in a separate "Delete" panel at the bottom of the side column. On a phone the note shows under the buttons. No schema change.

@@ -236,7 +236,8 @@ function payment_form_handle(array $ctx): array
     $chosen = [];
     foreach ((array) ($_POST['select'] ?? []) as $key => $on) {
         if (is_string($key) && $on === '1') {
-            $chosen[$key] = (string) ($_POST['select_amount'][$key] ?? '');
+            // Typed with thousands separators (5,416.67): keep the plain number so (float) and format_money() read it right.
+            $chosen[$key] = str_replace([',', ' ', '₱'], '', (string) ($_POST['select_amount'][$key] ?? ''));
         }
     }
     $purchases = [];
