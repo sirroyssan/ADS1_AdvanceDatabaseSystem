@@ -1403,6 +1403,11 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/pa_kaskas/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Installment plan page: Delete plan beside Edit; view-modal buttons on the right
+
+- `pages/installment_plans/view.php`: **Delete plan** (only while no payment is recorded) sits beside **Edit** at the top, with its note; the separate "Delete plan" panel at the bottom of the side column is gone. With payments, the note says to set the status to Cancelled instead.
+- `assets/css/dashboard.css`: in every view modal, the record's buttons (Edit, Pay, Void, Delete…) line up on the right, with their note on its own line below.
+
 ## Installment interest: choose the method first; the interest is calculated from the rate
 
 A rate typed while **Installment: interest** was left on "No interest (0%)" was silently ignored (e.g. 1.25% add-on was never charged).

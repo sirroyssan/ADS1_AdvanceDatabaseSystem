@@ -3028,3 +3028,7 @@ fieldset.form-group legend { font-weight: 600; padding: 0; }
 .page-header__actions .page-header__note { flex-basis: 100%; max-width: 34rem; margin: .25rem 0 0 auto; text-align: right; }
 @media (max-width: 720px) { .page-header__actions .page-header__note { text-align: left; margin-left: 0; } }
 .page-header__actions:has(.page-header__note) { justify-content: flex-end; }
+
+/* View modal: the record's buttons line up on the right, their note on its own line below */
+.modal-form__actions { justify-content: flex-end; align-items: center; margin-bottom: 16px; }
+.modal-form__actions .page-header__note { flex-basis: 100%; max-width: none; margin: 0; text-align: right; }

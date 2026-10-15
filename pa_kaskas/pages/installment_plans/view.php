@@ -38,7 +38,16 @@ require APP_ROOT . '/includes/header.php';
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/installment_plans/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print schedule</span></button>
-        <?php if ($canManage): ?>        <a data-modal-form href="<?= e(url('pages/installment_plans/edit.php', ['id' => $plan['id']])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a><?php endif; ?>
+        <?php if ($canManage): ?>
+            <?php if (!$locked): ?>
+                <?= post_button(url('pages/installment_plans/delete.php'), ['id' => $plan['id']], 'Delete plan', 'trash', 'btn btn--danger',
+                    'Delete this installment plan and its schedule? This cannot be undone.') ?>
+            <?php endif; ?>
+            <a data-modal-form href="<?= e(url('pages/installment_plans/edit.php', ['id' => $plan['id']])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+            <p class="page-header__note field-help"><?= $locked
+                ? 'Payments are recorded on this schedule, so the plan cannot be deleted. Edit it and set the status to Cancelled instead.'
+                : 'No payments yet. Deleting removes the plan and its schedule.' ?></p>
+        <?php endif; ?>
     </div>
 </section>
 
@@ -77,16 +86,6 @@ require APP_ROOT . '/includes/header.php';
             <header class="panel__header"><h3>About this schedule</h3></header>
             <p class="field-help">Use <strong>Pay</strong> on a row to record what was paid to the bank for that installment; the plan becomes Completed when every row is paid or waived.</p>
             <p class="field-help">Borrower repayments are recorded separately in Borrower Payments.</p>
-        </section>
-        <section class="panel panel--danger no-print"<?= $canManage ? '' : ' hidden' ?>>
-            <header class="panel__header"><h3>Delete plan</h3></header>
-            <?php if ($locked): ?>
-                <p class="field-help">Payments are recorded on this schedule, so the plan is kept. Set its status to Cancelled instead.</p>
-            <?php else: ?>
-                <p class="field-help">No payments yet. Deleting removes the plan and its schedule.</p>
-                <?= post_button(url('pages/installment_plans/delete.php'), ['id' => $plan['id']], 'Delete plan', 'trash', 'btn btn--danger btn--block',
-                    'Delete this installment plan and its schedule? This cannot be undone.') ?>
-            <?php endif; ?>
         </section>
     </div>
 </div>
