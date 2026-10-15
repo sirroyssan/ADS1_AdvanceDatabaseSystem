@@ -103,7 +103,7 @@ require APP_ROOT . '/includes/header.php';
 
 <div class="detail-layout">
     <section class="panel panel--flush">
-        <header class="panel__header"><h3><?= icon('layers') ?> By purchase</h3></header>
+        <header class="panel__header panel__header--padded"><h3><?= icon('layers') ?> By purchase</h3></header>
         <?php if (!$purchases): ?>
             <p class="text-muted panel__body">No lent purchase has your rate yet. Add it on the purchase: Transactions → Edit → "Your rate to the borrower (% per month)".</p>
         <?php else: ?>
@@ -132,7 +132,7 @@ require APP_ROOT . '/includes/header.php';
     </section>
 
     <section class="panel panel--flush">
-        <header class="panel__header"><h3><?= icon('calendar') ?> Received by month</h3></header>
+        <header class="panel__header panel__header--padded"><h3><?= icon('calendar') ?> Received by month</h3></header>
         <?php if (!$byMonth): ?>
             <p class="text-muted panel__body">Nothing received yet.</p>
         <?php else: ?>

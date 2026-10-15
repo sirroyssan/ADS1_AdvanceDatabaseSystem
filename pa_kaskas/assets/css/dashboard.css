@@ -3043,3 +3043,8 @@ fieldset.form-group legend { font-weight: 600; padding: 0; }
 .goal__bar { height: 10px; border-radius: 999px; background: var(--surface-muted, #eef2f7); overflow: hidden; margin: 10px 0 6px; }
 .goal__bar span { display: block; height: 100%; background: var(--success, #16a34a); border-radius: inherit; }
 .goal p:last-child { margin: 0; }
+
+/* Text inside a flush panel (no padding of its own), e.g. Earnings "By purchase" */
+.panel--flush > .panel__body { margin: 0; padding: 12px 20px 16px; }
+.panel--flush > .table-wrap + .panel__body { border-top: 1px solid var(--border); }
+.panel--flush > .panel__body + .panel__body { padding-top: 0; }
