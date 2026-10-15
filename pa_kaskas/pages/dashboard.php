@@ -311,28 +311,38 @@ require APP_ROOT . '/includes/header.php';
         <h3 id="card-pay-title"><?= icon('credit-card') ?> My credit cards and payments</h3>
         <a class="btn btn--sm btn--outline" href="<?= e(url('pages/statements/index.php')) ?>">Statements</a>
     </header>
-    <div class="pay-cards">
-        <?php
-        $limit = (float) $stats['cards_limit'];
-        $payCards = [
-            ['My credit cards', $cardPay['cards'], $cardPay['active_cards'] . ' active', url('pages/credit_cards/index.php'), 'primary', 'credit-card'],
-            ['Total credit limit', format_money($stats['cards_limit']), 'on active cards', url('pages/reports/card_utilization.php'), 'primary', 'chart'],
-            ['Total outstanding balance', format_money($stats['cards_used']), 'used credit (' . number_format($limit > 0 ? (float) $stats['cards_used'] / $limit * 100 : 0, 2) . '% of limit) · ' . format_money($cardPay['outstanding']) . ' left on SOAs', url('pages/reports/card_utilization.php'), 'primary', 'banknote'],
-            ['Pending SOAs', $cardPay['awaiting_soa'], 'closed periods, bank SOA not entered yet', url('pages/statements/index.php'), 'info', 'file-text'],
-            ['Pending payments', $cardPay['pending'], 'SOAs with nothing paid yet · ' . $cardPay['unpaid'] . ' unpaid on ' . $cardPay['unpaid_cards'] . ' card(s)', url('pages/statements/index.php', ['status' => 'unpaid']), 'warning', 'history'],
-            ['Partially paid', $cardPay['partial'], 'payment recorded, balance left', url('pages/statements/index.php', ['status' => 'partially_paid']), 'info', 'wallet'],
-            ['Upcoming', $cardPay['upcoming'], 'due in the next ' . STATEMENT_UPCOMING_DAYS . ' days', url('pages/statements/index.php', ['status' => 'upcoming']), 'warning', 'calendar'],
-            ['Overdue', $cardPay['overdue'], $cardPay['overdue'] ? format_money($cardPay['overdue_amount']) . ' on ' . $cardPay['overdue_cards'] . ' card(s)' : 'nothing overdue', url('pages/statements/index.php', ['status' => 'overdue']), 'danger', 'alert'],
-            ['Total minimum due', format_money($cardPay['minimum_due']), 'still needed to cover the minimums of unpaid SOAs', url('pages/statements/index.php', ['status' => 'unpaid']), 'warning', 'receipt'],
-        ];
-        foreach ($payCards as [$label, $value, $meta, $href, $tone, $iconName]): ?>
-            <a class="pay-card pay-card--<?= e($tone) ?>" href="<?= e($href) ?>">
-                <span class="pay-card__icon"><?= icon($iconName) ?></span>
-                <span class="pay-card__label"><?= e($label) ?></span>
-                <span class="pay-card__value"><?= e(is_numeric($value) ? stat_number((int) $value) : $value) ?></span>
-                <span class="pay-card__meta"><?= e($meta) ?></span>
-            </a>
-        <?php endforeach; ?>
+    <?php
+    $limit = (float) $stats['cards_limit'];
+    // Counts on the left; the peso totals stacked on the right, full width of their column.
+    $countCards = [
+        ['My credit cards', $cardPay['cards'], $cardPay['active_cards'] . ' active', url('pages/credit_cards/index.php'), 'primary', 'credit-card'],
+        ['Pending SOAs', $cardPay['awaiting_soa'], 'closed periods, bank SOA not entered yet', url('pages/statements/index.php'), 'info', 'file-text'],
+        ['Pending payments', $cardPay['pending'], 'SOAs with nothing paid yet · ' . $cardPay['unpaid'] . ' unpaid on ' . $cardPay['unpaid_cards'] . ' card(s)', url('pages/statements/index.php', ['status' => 'unpaid']), 'warning', 'history'],
+        ['Partially paid', $cardPay['partial'], 'payment recorded, balance left', url('pages/statements/index.php', ['status' => 'partially_paid']), 'info', 'wallet'],
+        ['Upcoming', $cardPay['upcoming'], 'due in the next ' . STATEMENT_UPCOMING_DAYS . ' days', url('pages/statements/index.php', ['status' => 'upcoming']), 'warning', 'calendar'],
+        ['Overdue', $cardPay['overdue'], $cardPay['overdue'] ? format_money($cardPay['overdue_amount']) . ' on ' . $cardPay['overdue_cards'] . ' card(s)' : 'nothing overdue', url('pages/statements/index.php', ['status' => 'overdue']), 'danger', 'alert'],
+    ];
+    $moneyCards = [
+        ['Total credit limit', format_money($stats['cards_limit']), 'on active cards', url('pages/reports/card_utilization.php'), 'primary', 'chart'],
+        ['Total outstanding balance', format_money($stats['cards_used']), 'used credit (' . number_format($limit > 0 ? (float) $stats['cards_used'] / $limit * 100 : 0, 2) . '% of limit) · ' . format_money($cardPay['outstanding']) . ' left on SOAs', url('pages/reports/card_utilization.php'), 'primary', 'banknote'],
+        ['Total minimum due', format_money($cardPay['minimum_due']), 'still needed to cover the minimums of unpaid SOAs', url('pages/statements/index.php', ['status' => 'unpaid']), 'warning', 'receipt'],
+    ];
+    $payCard = static function (array $c): string {
+        [$label, $value, $meta, $href, $tone, $iconName] = $c;
+        return '<a class="pay-card pay-card--' . e($tone) . '" href="' . e($href) . '">'
+            . '<span class="pay-card__icon">' . icon($iconName) . '</span>'
+            . '<span class="pay-card__label">' . e($label) . '</span>'
+            . '<span class="pay-card__value">' . e(is_numeric($value) ? stat_number((int) $value) : $value) . '</span>'
+            . '<span class="pay-card__meta">' . e($meta) . '</span></a>';
+    };
+    ?>
+    <div class="pay-layout">
+        <div class="pay-cards pay-cards--counts">
+            <?php foreach ($countCards as $c): ?><?= $payCard($c) ?><?php endforeach; ?>
+        </div>
+        <div class="pay-money">
+            <?php foreach ($moneyCards as $c): ?><?= $payCard($c) ?><?php endforeach; ?>
+        </div>
     </div>
     <h4 class="pay-summary__title">Upcoming and overdue payments</h4>
     <?php if (!$dueSoon): ?>

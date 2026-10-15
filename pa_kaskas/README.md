@@ -1403,6 +1403,12 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/pa_kaskas/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Dashboard: card totals on the right
+
+- **My credit cards and payments:** the six counts (My credit cards, Pending SOAs, Pending payments, Partially paid, Upcoming, Overdue) sit on the left in three columns.
+- The peso totals are stacked on the right in a wider column: **Total credit limit**, **Total outstanding balance** and **Total minimum due**. Their amounts stay on one line.
+- On narrower screens (under 1100px) the totals go below the counts, full width.
+
 ## Card payments can be voided (with a reason, kept for audit)
 
 - **How:** Card Payments → open a payment → **Void**. A modal asks for the reason (required, at least 5 characters), then the payment is voided.
