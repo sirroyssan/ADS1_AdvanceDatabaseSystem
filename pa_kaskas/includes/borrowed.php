@@ -386,7 +386,8 @@ function borrowed_ledger(array $t, ?string $today = null, ?string $asOf = null):
             'penalty_paid' => $money((float) $legacy['penalties_charged'] - $penalties), 'penalty_unpaid' => $penalties,
             'outstanding' => $money($remaining + $penalties), 'rows' => [], 'next_due' => $legacy['due_date'] ? ['date' => $legacy['due_date'], 'source' => 'obligation', 'statement' => null] : null,
             'status' => $status, 'overdue_amount' => $status === 'overdue' ? $remaining : 0.0, 'review' => null, 'unknown_due' => !$legacy['due_date'],
-            'terms_missing' => false, 'rate' => 0.0, 'markup' => 0.0, 'markup_earned' => 0.0,
+            'terms_missing' => false, 'rate' => 0.0, 'your_terms' => null, 'interest_total' => 0.0, 'fee_total' => 0.0,
+            'markup' => 0.0, 'markup_earned' => 0.0, 'interest_earned' => 0.0, 'fee_earned' => 0.0,
         ] + borrowed_obligation_due_now($legacy, $today, $money($remaining + $penalties), $penalties);
     }
 
@@ -413,7 +414,11 @@ function borrowed_ledger(array $t, ?string $today = null, ?string $asOf = null):
                    'due' => borrowed_due_for($t['credit_card_id'], $t['transaction_date'])];
     }
     // The card owner's own rate to the borrower (includes/earnings.php): added on top of each bank amount.
-    $rows = borrower_rate_rows($rows, (float) $t['amount'], $termsMissing ? 0.0 : borrower_rate_of($t));
+    $yourTerms = borrower_terms_of($t);
+    if ($termsMissing) {
+        $yourTerms = ['rate' => 0.0, 'fee_type' => null, 'fee_value' => 0.0, 'fee_billing' => 'first'];
+    }
+    $rows = borrower_rate_rows($rows, (float) $t['amount'], $yourTerms);
     $responsible = $termsMissing ? (float) $t['amount'] : $money(array_sum(array_column($rows, 'amount')));
 
     $pay = db_row(
@@ -429,9 +434,11 @@ function borrowed_ledger(array $t, ?string $today = null, ?string $asOf = null):
     // Confirmed repayments go where the borrower chose (late charges, an installment);
     // money without a choice fills the installments oldest first (borrowed_allocate).
     [$rowPaid, $penaltyPaid, $left] = borrowed_allocate($t['id'], $rows, $penalties, $termsMissing ? (float) $t['amount'] : 0.0, $asOf);
-    $markupEarned = 0.0;
+    $feeEarned = $interestEarned = 0.0;
     foreach ($rows as $i => $r) {
-        $markupEarned += borrower_rate_earned_row($r, $rowPaid[$i]);
+        $got = borrower_rate_earned_row($r, $rowPaid[$i]);
+        $feeEarned += $got['fee'];
+        $interestEarned += $got['interest'];
     }
     $overdue = 0.0;
     $nextDue = null;
@@ -518,8 +525,12 @@ function borrowed_ledger(array $t, ?string $today = null, ?string $asOf = null):
         'due_month' => $termsMissing ? 0.0 : $money(min($dueMonth + $penaltyUnpaid, $outstanding)), 'current' => $current === null ? null : $rows[$current] + ['n' => $current + 1],
         'installments' => $plan ? count($rows) : 0, 'terms_missing' => $termsMissing,
         // With the owner's rate the borrower's monthly amount is the bank's installment plus the interest share.
-        'monthly' => $plan ? ($rows ? (float) $rows[0]['amount'] : (float) $plan['installment_amount']) : null,
-        'rate' => $termsMissing ? 0.0 : borrower_rate_of($t), 'markup' => $money(array_sum(array_column($rows, 'markup'))), 'markup_earned' => $money($markupEarned),
+        // (a regular month: the first may also carry a fee billed with it)
+        'monthly' => $plan ? ($rows ? (float) $rows[min(1, count($rows) - 1)]['amount'] : (float) $plan['installment_amount']) : null,
+        'rate' => $yourTerms['rate'], 'your_terms' => $yourTerms,
+        'interest_total' => $money(array_sum(array_column($rows, 'interest'))), 'fee_total' => $money(array_sum(array_column($rows, 'fee'))),
+        'markup' => $money(array_sum(array_column($rows, 'markup'))), 'markup_earned' => $money($feeEarned + $interestEarned),
+        'interest_earned' => $money($interestEarned), 'fee_earned' => $money($feeEarned),
     ];
 }
 
@@ -915,7 +926,8 @@ function borrowed_select_sql(): string
     $share = cash_share_sql('t');
 
     return "SELECT t.id, IF($share, t.reference_number, t.transaction_number) AS transaction_number, t.transaction_date, t.amount, t.status, t.payment_type, t.notes,
-                   t.borrower_id, t.credit_card_id, t.reference_number," . (earnings_ready() ? ' t.borrower_rate,' : '') . "
+                   t.borrower_id, t.credit_card_id, t.reference_number," . (earnings_ready() ? ' t.borrower_rate,' : '')
+                   . (earnings_fee_ready() ? ' t.borrower_fee_type, t.borrower_fee_value, t.borrower_fee_billing,' : '') . "
                    COALESCE(m.merchant_name, IF($share, IF(t.payment_type = 'cash_loan', 'Cash loan', 'Cash advance'), NULL)) AS merchant_name, c.issuer, c.card_nickname, c.last_four,
                    b.first_name, b.last_name, b.borrower_number,
                    COALESCE(NULLIF(TRIM(CONCAT_WS(' ', ou.first_name, ou.last_name)), ''), ou.email) AS lender_name
@@ -1140,11 +1152,18 @@ function borrowed_render_ledger(array $row, array $l, bool $owner = false): stri
                 . ($l['current']['due']['date'] ? ' · repay by ' . e(format_date($l['current']['due']['date'])) : '');
         }
     }
-    if (($l['rate'] ?? 0) > 0) {
-        // The card owner's own interest (includes/earnings.php), on top of the bank's amounts.
-        $details[$owner ? 'Your rate to the borrower' : 'Card owner\'s interest'] = e(borrower_rate_text($l['rate'])) . ': ' . e(format_money($l['markup']))
+    if (($l['markup'] ?? 0) > 0) {
+        // The card owner's own interest and processing fee (includes/earnings.php), on top of the bank's amounts.
+        $parts = [];
+        if ($l['interest_total'] > 0) {
+            $parts[] = 'interest ' . borrower_rate_text($l['rate']) . ' = ' . format_money($l['interest_total']);
+        }
+        if ($l['fee_total'] > 0) {
+            $parts[] = 'processing fee ' . borrower_fee_text($l['your_terms'], (float) $row['amount']);
+        }
+        $details[$owner ? 'Your charges to the borrower' : 'Card owner\'s interest and fees'] = e(implode(' · ', $parts)) . ': <strong>' . e(format_money($l['markup'])) . '</strong>'
             . ($owner ? ' <span class="text-muted">(' . e(format_money($l['markup_earned'])) . ' received; counted as earned only when repaid)</span>'
-                      : ' <span class="text-muted">(included in each installment below)</span>');
+                      : ' <span class="text-muted">(included in the installments below)</span>');
     }
     if ($l['mode'] === 'obligation') {
         $details['Tracked as'] = 'obligation ' . e($l['obligation']['obligation_number']) . ' <span class="text-muted">(older workflow: repayments are posted to it)</span>';

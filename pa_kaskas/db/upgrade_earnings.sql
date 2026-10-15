@@ -24,3 +24,9 @@ CREATE TABLE IF NOT EXISTS savings_goals (
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 -- Use the same collation as your other tables, e.g. on XAMPP:
 -- ALTER TABLE savings_goals CONVERT TO CHARACTER SET utf8mb4 COLLATE utf8mb4_general_ci;
+
+-- Your processing fee to the borrower (fixed amount or % of the purchase; billed with
+-- the first installment or spread). App marker: storage/upgrade_earnings_v3.done.
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS borrower_fee_type VARCHAR(20) NULL AFTER borrower_rate;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS borrower_fee_value DECIMAL(15,4) NULL AFTER borrower_fee_type;
+ALTER TABLE transactions ADD COLUMN IF NOT EXISTS borrower_fee_billing VARCHAR(20) NULL AFTER borrower_fee_value;

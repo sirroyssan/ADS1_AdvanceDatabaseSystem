@@ -45,6 +45,12 @@ function transaction_fields(?array $current = null, bool $withInstallment = true
         'borrower_rate'      => ['label' => 'Your rate to the borrower (% per month)', 'type' => 'decimal', 'scale' => 4, 'digits' => 8, 'min' => 0, 'max' => 100,
                                  'help' => 'Optional, for a purchase lent to a borrower: your own interest on the amount, per month (e.g. 1 = 1% × months). '
                                          . 'The borrower repays the bank\'s installments plus this; the bank is not affected. It counts as your earnings only when the borrower pays.'],
+        'borrower_fee_type'  => ['label' => 'Your processing fee to the borrower', 'type' => 'select', 'options' => INSTALLMENT_FEE_TYPES, 'initial' => 'none',
+                                 'help' => 'Optional, your own fee for lending the card (not the bank\'s). It counts as your earnings only when the borrower pays.'],
+        'borrower_fee_value' => ['label' => 'Your fee (₱ or %)', 'type' => 'decimal', 'scale' => 4, 'digits' => 15, 'min' => 0, 'required_mark' => true,
+                                 'attrs' => ['data-show-if' => 'f_borrower_fee_type=fixed|percent']],
+        'borrower_fee_billing' => ['label' => 'Your fee billed', 'type' => 'select', 'options' => INSTALLMENT_FEE_BILLING, 'initial' => 'first',
+                                   'attrs' => ['data-show-if' => 'f_borrower_fee_type=fixed|percent']],
         'merchant_id'        => ['label' => 'Merchant', 'type' => 'select', 'options' => merchant_options(), 'empty_label' => '— Not specified —',
                                  'option_data' => merchant_category_data(), 'attrs' => ['data-fills' => 'f_category_id:category'],
                                  'help' => 'Choosing a merchant fills in its category (from Merchants).'],
@@ -57,6 +63,9 @@ function transaction_fields(?array $current = null, bool $withInstallment = true
 
     if (!earnings_ready()) {
         unset($fields['borrower_rate']);   // before the upgrade adds the column
+    }
+    if (!earnings_fee_ready()) {
+        unset($fields['borrower_fee_type'], $fields['borrower_fee_value'], $fields['borrower_fee_billing']);
     }
 
     return $withInstallment ? $fields + transaction_installment_fields() : $fields;
@@ -174,12 +183,32 @@ function transaction_validate(array $fields, array $input, ?string $id = null): 
     if ((float) ($data['borrower_rate'] ?? 0) > 0 && empty($data['borrower_id']) && empty($data['borrower_email']) && !isset($errors['borrower_rate'])) {
         $errors['borrower_rate'] = 'Choose the borrower this rate is for, or leave the rate empty for your own purchase.';
     }
+    // Your processing fee: a value for the type chosen, a borrower, and stored only with a type.
+    if (array_key_exists('borrower_fee_type', $data)) {
+        $feeType = in_array($data['borrower_fee_type'], ['fixed', 'percent'], true) ? $data['borrower_fee_type'] : null;
+        if ($feeType && (float) ($data['borrower_fee_value'] ?? 0) <= 0 && !isset($errors['borrower_fee_value'])) {
+            $errors['borrower_fee_value'] = 'Enter your processing fee (₱ or %), or choose "No processing fee".';
+        } elseif ($feeType === 'percent' && (float) $data['borrower_fee_value'] > 100) {
+            $errors['borrower_fee_value'] = 'A percentage fee cannot be more than 100%.';
+        } elseif ($feeType && empty($data['borrower_id']) && empty($data['borrower_email'])) {
+            $errors['borrower_fee_type'] = 'Choose the borrower this fee is for, or set "No processing fee" for your own purchase.';
+        }
+        $data['borrower_fee_type'] = $feeType;
+        $data['borrower_fee_value'] = $feeType ? ($data['borrower_fee_value'] ?? null) : null;
+        $data['borrower_fee_billing'] = $feeType ? (($data['borrower_fee_billing'] ?? 'first') ?: 'first') : null;
+    }
     // Once a repayment is confirmed, what the borrower owes per installment is settled.
     if ($id !== null && array_key_exists('borrower_rate', $data) && !isset($errors['borrower_rate'])) {
-        $old = db_row('SELECT borrower_rate FROM transactions WHERE id = :id', [':id' => $id]);
-        if ($old && abs((float) $old['borrower_rate'] - (float) $data['borrower_rate']) >= 0.00005
-            && (int) db_value("SELECT COUNT(*) FROM borrower_payments WHERE transaction_id = :t AND status = 'approved'", [':t' => $id]) > 0) {
+        $old = db_row('SELECT * FROM transactions WHERE id = :id', [':id' => $id]);
+        $paidOn = $old && (int) db_value("SELECT COUNT(*) FROM borrower_payments WHERE transaction_id = :t AND status = 'approved'", [':t' => $id]) > 0;
+        if ($paidOn && abs((float) $old['borrower_rate'] - (float) $data['borrower_rate']) >= 0.00005) {
             $errors['borrower_rate'] = 'The borrower already has confirmed repayments on this purchase, so your rate (' . borrower_rate_text((float) $old['borrower_rate']) . ') can no longer change.';
+        }
+        if ($paidOn && array_key_exists('borrower_fee_type', $data)
+            && ((string) ($old['borrower_fee_type'] ?? '') !== (string) ($data['borrower_fee_type'] ?? '')
+                || abs((float) ($old['borrower_fee_value'] ?? 0) - (float) ($data['borrower_fee_value'] ?? 0)) >= 0.00005
+                || (string) ($old['borrower_fee_billing'] ?? '') !== (string) ($data['borrower_fee_billing'] ?? ''))) {
+            $errors['borrower_fee_type'] = 'The borrower already has confirmed repayments on this purchase, so your processing fee can no longer change.';
         }
     }
     if (array_key_exists('borrower_rate', $data) && (float) $data['borrower_rate'] <= 0) {

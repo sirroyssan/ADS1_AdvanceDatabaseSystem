@@ -28,12 +28,14 @@ defined('APP_ROOT') or exit('No direct access.');
 
 const EARNINGS_UPGRADE_MARKER = 'storage/upgrade_earnings.done';
 const EARNINGS_COLLATION_MARKER = 'storage/upgrade_earnings_v2.done';
+const EARNINGS_FEE_MARKER = 'storage/upgrade_earnings_v3.done';
 const SAVINGS_GOAL_STATUSES = ['active' => 'Saving', 'used' => 'Used', 'cancelled' => 'Cancelled'];
 
 function earnings_schema_upgrade(): void
 {
     if (marker_exists(EARNINGS_UPGRADE_MARKER)) {
         earnings_collation_fix();
+        earnings_fee_upgrade();
         return;
     }
     db()->exec('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS borrower_rate DECIMAL(8,4) NULL AFTER borrower_id');
@@ -59,6 +61,22 @@ function earnings_schema_upgrade(): void
     );
     marker_write(EARNINGS_UPGRADE_MARKER);
     marker_write(EARNINGS_COLLATION_MARKER);
+    earnings_fee_upgrade();
+}
+
+/**
+ * Your processing fee to the borrower (additive): fixed amount or % of the
+ * purchase, billed with the first installment or spread over all of them.
+ */
+function earnings_fee_upgrade(): void
+{
+    if (marker_exists(EARNINGS_FEE_MARKER)) {
+        return;
+    }
+    db()->exec('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS borrower_fee_type VARCHAR(20) NULL AFTER borrower_rate');
+    db()->exec('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS borrower_fee_value DECIMAL(15,4) NULL AFTER borrower_fee_type');
+    db()->exec('ALTER TABLE transactions ADD COLUMN IF NOT EXISTS borrower_fee_billing VARCHAR(20) NULL AFTER borrower_fee_value');
+    marker_write(EARNINGS_FEE_MARKER);
 }
 
 /**
@@ -100,6 +118,57 @@ function earnings_ready(): bool
     return $ready;
 }
 
+/** Are the processing fee columns there yet? */
+function earnings_fee_ready(): bool
+{
+    static $ready = null;
+    if (!$ready) {
+        $ready = borrowed_has_column('transactions', 'borrower_fee_value');
+    }
+
+    return $ready;
+}
+
+/**
+ * Your terms to the borrower: ['rate' => % per month, 'fee_type' => fixed|percent|null,
+ * 'fee_value' => float, 'fee_billing' => first|spread].
+ */
+function borrower_terms_of(array $t): array
+{
+    $keys = ['borrower_fee_type', 'borrower_fee_value', 'borrower_fee_billing'];
+    if (!array_key_exists('borrower_fee_value', $t) && earnings_fee_ready() && !empty($t['id'])) {
+        $t += db_row('SELECT borrower_fee_type, borrower_fee_value, borrower_fee_billing FROM transactions WHERE id = :t', [':t' => $t['id']]) ?: [];
+    }
+    $type = in_array($t['borrower_fee_type'] ?? null, ['fixed', 'percent'], true) ? $t['borrower_fee_type'] : null;
+
+    return [
+        'rate' => borrower_rate_of($t), 'fee_type' => $type, 'fee_value' => $type ? (float) ($t['borrower_fee_value'] ?? 0) : 0.0,
+        'fee_billing' => ($t['borrower_fee_billing'] ?? null) === 'spread' ? 'spread' : 'first',
+    ];
+}
+
+/** Your processing fee in pesos for a purchase amount. */
+function borrower_fee_amount(array $terms, float $principal): float
+{
+    return match ($terms['fee_type']) {
+        'fixed'   => round($terms['fee_value'], 2),
+        'percent' => round($principal * $terms['fee_value'] / 100, 2),
+        default   => 0.0,
+    };
+}
+
+/** "₱500.00 with the first installment" / "2% of the purchase, spread" */
+function borrower_fee_text(array $terms, float $principal): string
+{
+    if (!$terms['fee_type']) {
+        return 'none';
+    }
+
+    return format_money(borrower_fee_amount($terms, $principal))
+        . ($terms['fee_type'] === 'percent' ? ' (' . rtrim(rtrim(number_format($terms['fee_value'], 4), '0'), '.') . '% of the purchase)' : '')
+        . ($terms['fee_billing'] === 'spread' ? ', spread over the installments' : ', with the first installment');
+}
+
 /** The purchase's rate to the borrower (% per month), or 0. */
 function borrower_rate_of(array $t): float
 {
@@ -120,24 +189,30 @@ function borrower_rate_text(float $rate): string
 }
 
 /**
- * Add the owner's interest to the ledger's charge rows: purchase amount x
- * rate % x months (rows), split evenly in centavos. Each row keeps 'bank'
- * (the bank's amount) and gets 'markup'; 'amount' becomes their sum.
+ * Add your interest and processing fee to the ledger's charge rows. Interest:
+ * purchase amount x rate % x months (rows), split evenly in centavos. Fee:
+ * with the first row, or split evenly. Each row keeps 'bank' (the bank's
+ * amount) and gets 'fee', 'interest' and 'markup' (their sum); 'amount'
+ * becomes bank + markup.
  */
-function borrower_rate_rows(array $rows, float $principal, float $rate): array
+function borrower_rate_rows(array $rows, float $principal, array $terms): array
 {
     $n = count($rows);
     foreach ($rows as &$r) {
         $r['bank'] = (float) $r['amount'];
-        $r['markup'] = 0.0;
+        $r['fee'] = $r['interest'] = $r['markup'] = 0.0;
     }
     unset($r);
-    if ($rate <= 0 || $n === 0) {
+    if ($n === 0) {
         return $rows;
     }
-    $shares = installment_split((int) round($principal * 100 * $rate / 100 * $n), $n);
+    $interest = $terms['rate'] > 0 ? installment_split((int) round($principal * 100 * $terms['rate'] / 100 * $n), $n) : array_fill(0, $n, 0);
+    $feeCents = (int) round(borrower_fee_amount($terms, $principal) * 100);
+    $fees = $terms['fee_billing'] === 'spread' ? installment_split($feeCents, $n) : array_merge([$feeCents], array_fill(0, $n - 1, 0));
     foreach ($rows as $i => &$r) {
-        $r['markup'] = $shares[$i] / 100;
+        $r['interest'] = $interest[$i] / 100;
+        $r['fee'] = $fees[$i] / 100;
+        $r['markup'] = round($r['interest'] + $r['fee'], 2);
         $r['amount'] = round($r['bank'] + $r['markup'], 2);
     }
     unset($r);
@@ -145,10 +220,17 @@ function borrower_rate_rows(array $rows, float $principal, float $rate): array
     return $rows;
 }
 
-/** Interest received on a row: what was paid beyond the bank's part (bank first). */
-function borrower_rate_earned_row(array $r, float $paid): float
+/**
+ * What you received on a row: the part paid beyond the bank's amount (bank
+ * first), your fee before your interest. Returns ['fee' => .., 'interest' => ..].
+ */
+function borrower_rate_earned_row(array $r, float $paid): array
 {
-    return round(max(0, min((float) ($r['markup'] ?? 0), $paid - (float) ($r['bank'] ?? $r['amount']))), 2);
+    $beyond = max(0, $paid - (float) ($r['bank'] ?? $r['amount']));
+    $fee = min((float) ($r['fee'] ?? 0), $beyond);
+    $interest = min((float) ($r['interest'] ?? 0), $beyond - $fee);
+
+    return ['fee' => round($fee, 2), 'interest' => round(max(0, $interest), 2)];
 }
 
 /* ------------------------------------------------------------------
@@ -164,7 +246,8 @@ function earnings_purchases(?string $cardId = null): array
     if (!earnings_ready()) {
         return [];
     }
-    $where = ['t.borrower_id IS NOT NULL', 't.borrower_rate > 0', "t.status NOT IN ('cancelled', 'refunded')", owner_scope('transactions', 't')];
+    $where = ['t.borrower_id IS NOT NULL', earnings_fee_ready() ? '(t.borrower_rate > 0 OR t.borrower_fee_value > 0)' : 't.borrower_rate > 0',
+              "t.status NOT IN ('cancelled', 'refunded')", owner_scope('transactions', 't')];
     $params = [];
     if ($cardId) {
         $where[] = 't.credit_card_id = :c';
@@ -177,7 +260,9 @@ function earnings_purchases(?string $cardId = null): array
         if ($l['mode'] !== 'transaction') {
             continue;   // older purchases tracked by an obligation keep that obligation's agreed interest
         }
-        $out[] = $row + ['ledger' => $l, 'interest' => $l['markup'], 'earned' => $l['markup_earned'], 'to_receive' => round($l['markup'] - $l['markup_earned'], 2)];
+        $out[] = $row + ['ledger' => $l, 'interest' => $l['interest_total'], 'fee' => $l['fee_total'], 'total' => $l['markup'],
+                         'earned' => $l['markup_earned'], 'earned_interest' => $l['interest_earned'], 'earned_fee' => $l['fee_earned'],
+                         'to_receive' => round($l['markup'] - $l['markup_earned'], 2)];
     }
 
     return $out;
