@@ -3023,3 +3023,8 @@ td .decision-bar,
 .choice:has(input:checked) { border-color: var(--color-primary, #2563eb); background: rgba(37, 99, 235, .06); }
 fieldset.form-group { border: 0; padding: 0; margin: 0 0 1rem; }
 fieldset.form-group legend { font-weight: 600; padding: 0; }
+
+/* A short note under the header buttons (e.g. cash loan: what Void does) */
+.page-header__actions .page-header__note { flex-basis: 100%; max-width: 34rem; margin: .25rem 0 0 auto; text-align: right; }
+@media (max-width: 720px) { .page-header__actions .page-header__note { text-align: left; margin-left: 0; } }
+.page-header__actions:has(.page-header__note) { justify-content: flex-end; }

@@ -1403,6 +1403,10 @@ Once the owner's Google Drive (personal Gmail) is connected, a proof of payment 
 4. *Credentials → Create credentials → OAuth client ID*: choose **Web application**. Add the **Authorized redirect URI** shown on the Google Drive page, e.g. `http://localhost/pa_kaskas/pages/drive/callback.php`.
 5. Paste the Client ID and Client secret on the Google Drive page and save, then click **Connect Google Drive** and allow it.
 
+## Cash loan page: Void / Delete next to Edit (`pages/cash_loans/view.php`)
+
+The **Void cash loan** button (or **Delete loan** for an offer with no allocations or payments) and its short explanation now sit in the page header beside **Edit**, instead of in a separate "Delete" panel at the bottom of the side column. On a phone the note shows under the buttons. No schema change.
+
 ## Borrowers: duplicates filter, duplicate warning, delete or merge
 
 Two records for one person (for example two "Alfred Agasa") happen when the borrower is added twice; each Add creates a new borrower number.

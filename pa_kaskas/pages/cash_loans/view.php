@@ -53,6 +53,7 @@ require APP_ROOT . '/includes/header.php';
     <p class="print-header__meta">Printed: <?= e(date('F j, Y g:i A')) ?></p>
 </div>
 
+<?php $voidable = $allocations || array_filter($schedule, static fn ($s) => (float) $s['amount_paid'] > 0) || !in_array($loan['status'], ['offered', 'rejected', 'cancelled'], true); ?>
 <section class="page-header">
     <div>
         <h2 class="page-header__title"><?= e($loan['loan_reference']) ?></h2>
@@ -61,7 +62,14 @@ require APP_ROOT . '/includes/header.php';
     <div class="page-header__actions no-print">
         <a href="<?= e(url('pages/cash_loans/index.php')) ?>" class="btn btn--outline"><?= icon('arrow-left') ?> <span>Back</span></a>
         <button type="button" class="btn btn--outline" data-print><?= icon('printer') ?> <span>Print</span></button>
+        <?php if ($voidable && $loan['status'] !== 'cancelled'): ?>
+            <a data-modal-form class="btn btn--danger" href="<?= e(url('pages/cash_loans/void.php', ['id' => $id])) ?>"><?= icon('trash') ?> <span>Void cash loan</span></a>
+        <?php elseif (!$voidable): ?>
+            <?= post_button(url('pages/cash_loans/delete.php'), ['id' => $id], 'Delete loan', 'trash', 'btn btn--danger',
+                'Delete cash loan ' . $loan['loan_reference'] . '? This cannot be undone.') ?>
+        <?php endif; ?>
         <a data-modal-form href="<?= e(url('pages/cash_loans/edit.php', ['id' => $id])) ?>" class="btn btn--primary"><?= icon('edit') ?> <span>Edit</span></a>
+        <p class="page-header__note field-help"><?php if (!$voidable): ?>This offer has no allocations or payments, so it can be deleted.<?php elseif ($loan['status'] === 'cancelled'): ?>This loan is cancelled. It no longer counts on the card, its statements or any balance.<?php else: ?>Recorded by mistake (e.g. entered twice)? Void it: the loan, its schedule and its borrowers' obligations are cancelled with your reason and stop counting everywhere. Nothing is erased.<?php endif; ?></p>
     </div>
 </section>
 
@@ -126,22 +134,6 @@ require APP_ROOT . '/includes/header.php';
             <p class="field-help">The whole card now: <?= e(format_money($cardUsage['used'])) ?> used of <?= e(format_money($cardUsage['credit_limit'])) ?>,
                 <?= e(format_money($cardUsage['available'])) ?> available (<?= e(number_format($cardUsage['utilization'], 2)) ?>%).
                 Card payments lower the used credit; tick "Also a card payment" when paying an installment below.</p>
-        </section>
-
-        <section class="panel panel--danger no-print">
-            <header class="panel__header"><h3>Delete</h3></header>
-            <?php if ($allocations || array_filter($schedule, static fn ($s) => (float) $s['amount_paid'] > 0) || !in_array($loan['status'], ['offered', 'rejected', 'cancelled'], true)): ?>
-                <?php if ($loan['status'] !== 'cancelled'): ?>
-                    <p class="field-help">Recorded by mistake (e.g. entered twice)? Void it: the loan, its schedule and its borrowers' obligations are cancelled with your reason and stop counting everywhere. Nothing is erased.</p>
-                    <a data-modal-form class="btn btn--danger btn--block" href="<?= e(url('pages/cash_loans/void.php', ['id' => $id])) ?>"><?= icon('trash') ?> <span>Void cash loan</span></a>
-                <?php else: ?>
-                    <p class="field-help">This loan is cancelled. It no longer counts on the card, its statements or any balance.</p>
-                <?php endif; ?>
-            <?php else: ?>
-                <p class="field-help">This offer has no allocations or payments.</p>
-                <?= post_button(url('pages/cash_loans/delete.php'), ['id' => $id], 'Delete loan', 'trash', 'btn btn--danger btn--block',
-                    'Delete cash loan ' . $loan['loan_reference'] . '? This cannot be undone.') ?>
-            <?php endif; ?>
         </section>
     </div>
 </div>
